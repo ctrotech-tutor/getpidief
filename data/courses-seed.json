@@ -1,0 +1,86 @@
+[
+    {
+        "code": "MTH 101",
+        "name": "Elementary Mathematics I"
+    },
+    {
+        "code": "MTH 102",
+        "name": "Elementary Mathematics II"
+    },
+    {
+        "code": "CHM 101",
+        "name": "General Chemistry I"
+    },
+    {
+        "code": "CHM 102",
+        "name": "General Chemistry II"
+    },
+    {
+        "code": "PHY 101",
+        "name": "General Physics I"
+    },
+    {
+        "code": "PHY 102",
+        "name": "General Physics II"
+    },
+    {
+        "code": "BIO 101",
+        "name": "General Biology I"
+    },
+    {
+        "code": "BIO 102",
+        "name": "General Biology II"
+    },
+    {
+        "code": "GST 101",
+        "name": "Use of English & Communication Skills I"
+    },
+    {
+        "code": "GST 102",
+        "name": "Use of English & Communication Skills II"
+    },
+    {
+        "code": "GST 103",
+        "name": "Computer Fundamentals"
+    },
+    {
+        "code": "GST 104",
+        "name": "Use of Library, Study Skills & ICT"
+    },
+    {
+        "code": "CSC 101",
+        "name": "Introduction to Computer Science"
+    },
+    {
+        "code": "ECN 101",
+        "name": "Principles of Economics I"
+    },
+    {
+        "code": "ACC 101",
+        "name": "Introduction to Financial Accounting I"
+    },
+    {
+        "code": "BUS 101",
+        "name": "Introduction to Business I"
+    },
+    {
+        "code": "POL 101",
+        "name": "Introduction to Political Science"
+    },
+    {
+        "code": "SOC 101",
+        "name": "Introduction to Sociology I"
+    },
+    {
+        "code": "LAW 101",
+        "name": "Legal Method I"
+    },
+    {
+        "code": "LAW 102",
+        "name": "Legal Method II"
+    },
+    {
+        "code": "ENG 101",
+        "name": "Introduction to Engineering Mechanics"
+    }
+]

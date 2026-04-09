@@ -16,6 +16,12 @@ import { z } from "zod";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const authConfig: NextAuthConfig = {
+  // In development, Next.js/Turbopack and local proxies can cause host/URL
+  // mismatches that make cookies/session validation flaky unless we trust host.
+  trustHost: true,
+  // Ensure cookies work on http://localhost in dev.
+  useSecureCookies: process.env.NODE_ENV === "production",
+
   pages: {
     signIn:      "/login",
     signOut:     "/login",

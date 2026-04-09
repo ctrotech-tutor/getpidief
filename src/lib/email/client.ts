@@ -7,8 +7,8 @@ if (!process.env.RESEND_API_KEY) {
 export const resend = new Resend(process.env.RESEND_API_KEY);
 
 export const EMAIL_FROM = {
-  notifications: "getpidief <notifications@getpidief.com>",
-  digest:        "getpidief <digest@getpidief.com>",
-  noreply:       "getpidief <noreply@getpidief.com>",
-  auth:          "getpidief <auth@getpidief.com>",
+  notifications: "getpidief <notifications@getpidief.me>",
+  digest:        "getpidief <digest@getpidief.me>",
+  noreply:       "getpidief <noreply@getpidief.me>",
+  auth:          "getpidief <auth@getpidief.me>",
 } as const;

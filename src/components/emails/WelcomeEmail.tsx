@@ -21,7 +21,7 @@ export function WelcomeEmail({ name, email }: WelcomeEmailProps) {
         academic resources — past exams, lecture notes, research papers, and more.
       </EmailBody>
 
-      <EmailButton href="https://getpidief.com/explore">
+      <EmailButton href="https://getpidief.me/explore">
         Explore the Archive →
       </EmailButton>
 
@@ -46,7 +46,7 @@ export function WelcomeEmail({ name, email }: WelcomeEmailProps) {
 
       <EmailNote>
         Logged in as {email}.{" "}
-        <Link href="https://getpidief.com/settings" style={{ color: "#60A5FA" }}>
+        <Link href="https://getpidief.me/settings" style={{ color: "#60A5FA" }}>
           Manage your account
         </Link>
       </EmailNote>

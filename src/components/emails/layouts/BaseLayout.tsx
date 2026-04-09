@@ -73,11 +73,11 @@ export function BaseEmailLayout({ preview, children, footerText }: BaseEmailLayo
               {footerText ?? "You received this email because you have an account on getpidief."}
             </Text>
             <Text style={{ color: TEXT_MUTED, fontSize: "12px", margin: "8px 0 0" }}>
-              <Link href="https://getpidief.com/settings/notifications" style={{ color: TEXT_MUTED }}>
+              <Link href="https://getpidief.me/settings/notifications" style={{ color: TEXT_MUTED }}>
                 Manage email preferences
               </Link>
               {" · "}
-              <Link href="https://getpidief.com/privacy" style={{ color: TEXT_MUTED }}>
+              <Link href="https://getpidief.me/privacy" style={{ color: TEXT_MUTED }}>
                 Privacy Policy
               </Link>
             </Text>

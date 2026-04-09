@@ -6,12 +6,13 @@ import { redis, KEYS, incrCounter, invalidateCache } from "@/lib/redis/client";
 import { pusherServer, CHANNELS, EVENTS } from "@/lib/pusher/server";
 import { resend } from "@/lib/email/client";
 import webpush from "web-push";
+import { cron } from "inngest";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WORKER: Create and deliver notification
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const sendNotification = (inngest.createFunction as any)(
+export const sendNotification = inngest.createFunction(
   {
     id: "send-notification",
     name: "Send Notification",
@@ -22,8 +23,8 @@ export const sendNotification = (inngest.createFunction as any)(
       period: "1m",
       key: "event.data.recipientId",
     },
+    triggers: [{ event: "notification/send" }],
   },
-  { event: "notification/send" },
   async ({ event, step }) => {
     const {
       recipientId,
@@ -112,7 +113,7 @@ export const sendNotification = (inngest.createFunction as any)(
         if (!emailTemplate) return;
 
         await resend.emails.send({
-          from: "getpidief <notifications@getpidief.com>",
+          from: "getpidief <notifications@getpidief.me>",
           to: email,
           subject: emailTemplate.subject,
           react: emailTemplate.component,
@@ -189,14 +190,14 @@ export const sendNotification = (inngest.createFunction as any)(
 // Cron: every Monday at 9:00 AM UTC
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const sendWeeklyDigest = (inngest.createFunction as any)(
+export const sendWeeklyDigest = inngest.createFunction(
   {
     id: "send-weekly-digest",
     name: "Send Weekly Digest Emails",
     retries: 2,
     concurrency: { limit: 5 }, // process 5 batches in parallel
+    triggers: [cron("0 9 * * 1")], // 9 AM every Monday
   },
-  { cron: "0 9 * * 1" }, // 9 AM every Monday
   async ({ step }) => {
     // ── Step 1: Get users who want weekly digest ──────────────────────────────
     const eligibleUsers = await step.run("get-eligible-users", async () => {
@@ -229,15 +230,15 @@ export const sendWeeklyDigest = (inngest.createFunction as any)(
   }
 );
 
-export const processWeeklyDigest = (inngest.createFunction as any)(
+export const processWeeklyDigest = inngest.createFunction(
   {
     id: "process-weekly-digest",
     name: "Process Individual Weekly Digest",
     retries: 3,
     concurrency: { limit: 50 },
+    triggers: [{ event: "email/weekly-digest" }],
   },
-  { event: "email/weekly-digest" },
-  async ({ event, step }: any) => {
+  async ({ event, step }) => {
     const { userId, email } = event.data;
     const { sql } = await import("drizzle-orm");
 
@@ -299,7 +300,7 @@ export const processWeeklyDigest = (inngest.createFunction as any)(
     await step.run("send-digest-email", async () => {
       const { WeeklyDigestEmail } = await import("@/components/emails/WeeklyDigestEmail");
       await resend.emails.send({
-        from: "getpidief <digest@getpidief.com>",
+        from: "getpidief <digest@getpidief.me>",
         to: email,
         subject: "Your weekly academic digest 📚",
         react: WeeklyDigestEmail({ ...digestData, userId }),

@@ -4,7 +4,7 @@ import "./globals.css";
 import { SessionProvider } from "next-auth/react";
 import { auth } from "@/lib/auth/config";
 import { ThemeProvider } from "next-themes";
-import { Toaster } from "@/src/ui/sonner";
+import { Toaster } from "sonner";
 import { TanstackQueryProvider } from "@/components/layouts/TanstackQueryProvider";
 import { PostHogProvider } from "@/components/layouts/PostHogProvider";
 
@@ -41,20 +41,36 @@ export const metadata: Metadata = {
   description:
     "Discover, share, and study with millions of verified academic resources — curated by students, trusted by scholars.",
   keywords: [
-    "academic resources", "past exams", "lecture notes", "study materials",
-    "university", "students", "research papers", "getpidief",
+    "academic resources",
+    "past exams",
+    "lecture notes",
+    "study materials",
+    "university",
+    "students",
+    "research papers",
+    "getpidief",
   ],
   authors: [{ name: "getpidief" }],
   creator: "getpidief",
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://getpidief.me"),
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://getpidief.me"
+  ),
   openGraph: {
     type: "website",
     locale: "en_US",
     url: "https://getpidief.me",
     siteName: "getpidief",
     title: "getpidief — The Academic Resource Network",
-    description: "Discover, share, and study with millions of verified academic resources.",
-    images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "getpidief" }],
+    description:
+      "Discover, share, and study with millions of verified academic resources.",
+    images: [
+      {
+        url: "/og-default.png",
+        width: 1200,
+        height: 630,
+        alt: "getpidief",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
@@ -110,7 +126,16 @@ export default async function RootLayout({
             <TanstackQueryProvider>
               <PostHogProvider>
                 {children}
-                <Toaster />
+
+                {/* 🔥 Sonner Toaster */}
+                <Toaster
+                  position="top-right"
+                  richColors
+                  closeButton
+                  toastOptions={{
+                    className: "font-body",
+                  }}
+                />
               </PostHogProvider>
             </TanstackQueryProvider>
           </ThemeProvider>

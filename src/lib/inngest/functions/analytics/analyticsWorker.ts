@@ -3,20 +3,21 @@ import { db } from "@/lib/db/client";
 import { analyticsSnapshots } from "@/lib/db/schema";
 import { sql } from "drizzle-orm";
 import { redis, KEYS, zincrby } from "@/lib/redis/client";
+import { cron } from "inngest";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WORKER: Take daily analytics snapshot
 // Cron: runs at midnight UTC every day
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const takeDailySnapshot = (inngest.createFunction as any)(
+export const takeDailySnapshot = inngest.createFunction(
   {
     id: "take-daily-analytics-snapshot",
     name: "Take Daily Analytics Snapshot",
     retries: 3,
     concurrency: { limit: 1 },
+    triggers: [cron("0 0 * * *")], // Midnight UTC
   },
-  { cron: "0 0 * * *" }, // Midnight UTC
   async ({ step }) => {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
@@ -124,14 +125,14 @@ export const takeDailySnapshot = (inngest.createFunction as any)(
 // Reads from user_activity_log search events, updates Redis sorted set
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const aggregatePopularSearches = (inngest.createFunction as any)(
+export const aggregatePopularSearches = inngest.createFunction(
   {
     id: "aggregate-popular-searches",
     name: "Aggregate Popular Searches",
     retries: 2,
     concurrency: { limit: 1 },
+    triggers: [cron("0 * * * *")], // Every hour
   },
-  { cron: "0 * * * *" }, // Every hour
   async ({ step }) => {
     await step.run("aggregate-searches", async () => {
       const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -172,13 +173,13 @@ export const aggregatePopularSearches = (inngest.createFunction as any)(
 // WORKER: Institution leaderboard (top institutions by weekly activity)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const updateInstitutionLeaderboard = (inngest.createFunction as any)(
+export const updateInstitutionLeaderboard = inngest.createFunction(
   {
     id: "update-institution-leaderboard",
     name: "Update Institution Leaderboard",
     retries: 2,
+    triggers: [cron("0 */6 * * *")], // Every 6 hours
   },
-  { cron: "0 */6 * * *" }, // Every 6 hours
   async ({ step }) => {
     await step.run("update-leaderboard", async () => {
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -216,13 +217,13 @@ export const updateInstitutionLeaderboard = (inngest.createFunction as any)(
 // WORKER: Cleanup expired tokens and soft-deleted data
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const cleanupExpiredData = (inngest.createFunction as any)(
+export const cleanupExpiredData = inngest.createFunction(
   {
     id: "cleanup-expired-data",
     name: "Cleanup Expired Tokens and Deleted Data",
     retries: 2,
+    triggers: [cron("0 3 * * *")], // 3 AM daily (low traffic time)
   },
-  { cron: "0 3 * * *" }, // 3 AM daily (low traffic time)
   async ({ step }) => {
     // ── Delete expired password reset tokens ─────────────────────────────────
     await step.run("cleanup-reset-tokens", async () => {

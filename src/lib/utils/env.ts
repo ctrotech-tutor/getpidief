@@ -51,12 +51,12 @@ const envSchema = z.object({
 
   // ── Resend (email) ────────────────────────────────────────────────────────
   RESEND_API_KEY: z.string().min(1),
-  RESEND_FROM_EMAIL: z.string().email().default("noreply@getpidief.com"),
+  RESEND_FROM_EMAIL: z.string().email().default("noreply@getpidief.me"),
 
   // ── Web Push ──────────────────────────────────────────────────────────────
   VAPID_PUBLIC_KEY: z.string().min(1),
   VAPID_PRIVATE_KEY: z.string().min(1),
-  VAPID_SUBJECT: z.string().email().default("mailto:admin@getpidief.com"),
+  VAPID_SUBJECT: z.string().email().default("mailto:admin@getpidief.me"),
 
   // ── PostHog (analytics + feature flags) ──────────────────────────────────
   NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),

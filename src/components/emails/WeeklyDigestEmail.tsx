@@ -55,7 +55,7 @@ export function WeeklyDigestEmail({
               {followedDocs.map((doc) => (
                 <div key={doc.id} style={docContainer}>
                   <Text style={docTitle}>
-                    <Link href={`https://getpidief.com/d/${doc.slug}`} style={link}>
+                    <Link href={`https://getpidief.me/d/${doc.slug}`} style={link}>
                       {doc.title}
                     </Link>
                   </Text>
@@ -73,7 +73,7 @@ export function WeeklyDigestEmail({
               {trendingDocs.map((doc) => (
                 <div key={doc.id} style={docContainer}>
                   <Text style={docTitle}>
-                    <Link href={`https://getpidief.com/d/${doc.slug}`} style={link}>
+                    <Link href={`https://getpidief.me/d/${doc.slug}`} style={link}>
                       {doc.title}
                     </Link>
                   </Text>
@@ -90,7 +90,7 @@ export function WeeklyDigestEmail({
           <Text style={footer}>
             You received this email because you opted into weekly digests.
             <br />
-            <Link href="https://getpidief.com/settings/notifications" style={footerLink}>
+            <Link href="https://getpidief.me/settings/notifications" style={footerLink}>
               Unsubscribe or manage your preferences here.
             </Link>
           </Text>

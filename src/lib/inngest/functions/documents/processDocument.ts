@@ -6,6 +6,7 @@ import { redis, KEYS, invalidateCache, zincrby, zaddScore } from "@/lib/redis/cl
 import { pusherServer, CHANNELS, EVENTS } from "@/lib/pusher/server";
 import { storage } from "@/lib/storage/client";
 import { sql } from "drizzle-orm";
+import { cron } from "inngest";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WORKER: Process uploaded document
@@ -14,7 +15,7 @@ import { sql } from "drizzle-orm";
 //        → notify author → update trending sets
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const processUploadedDocument = (inngest.createFunction as any)(
+export const processUploadedDocument = inngest.createFunction(
   {
     id: "process-uploaded-document",
     name: "Process Uploaded Document",
@@ -25,9 +26,9 @@ export const processUploadedDocument = (inngest.createFunction as any)(
       period: "1h",
       key: "event.data.authorId",
     },
+    triggers: [{ event: "document/uploaded" }],
   },
-  { event: "document/uploaded" },
-  async ({ event, step }) => {
+  async ({ step, event }) => {
     const { documentId, authorId, fileUrl, fileSize } = event.data;
 
     // ── Step 1: Set status to processing ─────────────────────────────────────
@@ -171,13 +172,13 @@ export const processUploadedDocument = (inngest.createFunction as any)(
 //        → notify author → update institution/category counts → reputation update
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const handleDocumentApproved = (inngest.createFunction as any)(
+export const handleDocumentApproved = inngest.createFunction(
   {
     id: "handle-document-approved",
     name: "Handle Document Approved",
     retries: 3,
+    triggers: [{ event: "document/approved" }],
   },
-  { event: "document/approved" },
   async ({ event, step }) => {
     const { documentId, authorId, moderatorId } = event.data;
 
@@ -337,13 +338,13 @@ export const handleDocumentApproved = (inngest.createFunction as any)(
 // WORKER: Handle document rejection
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const handleDocumentRejected = (inngest.createFunction as any)(
+export const handleDocumentRejected = inngest.createFunction(
   {
     id: "handle-document-rejected",
     name: "Handle Document Rejected",
     retries: 3,
+    triggers: [{ event: "document/rejected" }],
   },
-  { event: "document/rejected" },
   async ({ event, step }) => {
     const { documentId, authorId, reasons, note } = event.data;
 
@@ -388,18 +389,18 @@ export const handleDocumentRejected = (inngest.createFunction as any)(
 // Formula: score = views*1 + likes*3 + downloads*5 + comments*2 + recency_bonus
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const recalculateTrending = (inngest.createFunction as any)(
+export const recalculateTrending = inngest.createFunction(
   {
     id: "recalculate-trending",
     name: "Recalculate Trending Scores",
     retries: 1,
     concurrency: { limit: 1 }, // Only one instance at a time
+    triggers: [
+      cron("*/15 * * * *"), // Every 15 minutes
+      { event: "analytics/trending-recalculate" }, // Or manual trigger
+    ],
   },
-  [
-    { cron: "*/15 * * * *" },                    // Every 15 minutes
-    { event: "analytics/trending-recalculate" }, // Or manual trigger
-  ] as any,
-  async ({ step }: any) => {
+  async ({ step }) => {
     // Acquire lock to prevent duplicate runs
     const locked = await step.run("acquire-lock", async () => {
       const result = await redis.set(KEYS.trendingLock(), "1", {
@@ -511,17 +512,17 @@ export const recalculateTrending = (inngest.createFunction as any)(
 // Runs every 5 minutes — prevents hot-row updates on high-traffic documents
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const flushEngagementCounters = (inngest.createFunction as any)(
+export const flushEngagementCounters = inngest.createFunction(
   {
     id: "flush-engagement-counters",
     name: "Flush Engagement Counters",
     retries: 3,
+    triggers: [
+      cron("*/5 * * * *"),
+      { event: "analytics/flush-counters" },
+    ],
   },
-  [
-    { cron: "*/5 * * * *" },
-    { event: "analytics/flush-counters" },
-  ] as any,
-  async ({ step }: any) => {
+  async ({ step }) => {
     const pendingIds = await step.run("get-pending", async () => {
       const members = await redis.smembers(KEYS.pendingCounterFlush());
       return members as string[];
@@ -562,13 +563,13 @@ export const flushEngagementCounters = (inngest.createFunction as any)(
 // WORKER: Rebuild search vectors for documents with stale vectors
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const rebuildSearchVectors = (inngest.createFunction as any)(
+export const rebuildSearchVectors = inngest.createFunction(
   {
     id: "rebuild-search-vectors",
     name: "Rebuild Document Search Vectors",
     retries: 2,
+    triggers: [{ event: "system/rebuild-search-vectors" }],
   },
-  { event: "system/rebuild-search-vectors" },
   async ({ event, step }) => {
     const { documentIds } = event.data;
 

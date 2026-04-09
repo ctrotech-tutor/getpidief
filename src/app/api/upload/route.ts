@@ -1,4 +1,8 @@
-import { createUploadthing, type FileRouter } from "uploadthing/next";
+import {
+  createRouteHandler,
+  createUploadthing,
+  type FileRouter,
+} from "uploadthing/next";
 import { auth } from "@/lib/auth/config";
 import { rateLimiters } from "@/lib/redis/client";
 import { inngest } from "@/lib/inngest/client";
@@ -106,3 +110,7 @@ export const ourFileRouter = {
 } satisfies FileRouter;
 
 export type OurFileRouter = typeof ourFileRouter;
+
+export const { GET, POST } = createRouteHandler({
+  router: ourFileRouter,
+});

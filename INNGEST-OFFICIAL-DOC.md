@@ -1,0 +1,226 @@
+# Next.js Quick Start
+
+This tutorial walks you through adding Inngest to a Next.js app. By the end, you'll have a working function that runs in the background, triggered by an event, with full visibility into its execution in the Inngest Dev Server.
+
+The guide takes about ten minutes. You'll need an existing Next.js project, or you can create one as part of the setup below.
+
+***
+
+## Before you start
+
+You can use any existing Next.js project for this tutorial. If you don't have one, create a new one by running:
+
+```shell {{ title: "App Router" }}
+npx create-next-app@latest --ts --eslint --tailwind --src-dir --app --import-alias='@/*' inngest-guide
+```
+
+```shell {{ title: "Pages Router" }}
+npx create-next-app@latest --ts --eslint --tailwind --no-src-dir --no-app --import-alias='@/*' inngest-guide
+```
+
+Once your project is ready, start the development server. If you're using the v4 SDK, set `INNGEST_DEV=1` so your app connects to the local Dev Server instead of Inngest Cloud:
+
+```shell
+INNGEST_DEV=1 npm run dev
+```
+
+You can also add `INNGEST_DEV=1` to your `.env.local` file so you don't need to pass it inline every time.
+
+***
+
+## 1. Install Inngest
+
+In a new terminal tab, run the following in your project's root directory:
+
+```shell
+npm install inngest
+```
+
+***
+
+## 2. Run the Inngest Dev Server
+
+The Inngest Dev Server is a local environment where you can send events, trigger functions, and inspect runs in real time. Start it with:
+
+```shell
+npx inngest-cli@latest dev
+```
+
+Open [http://localhost:8288](http://localhost:8288) to see the Dev Server UI. You'll use this to monitor function runs as you work through the tutorial.
+
+***
+
+## 3. Create an Inngest client
+
+Inngest invokes your functions through an API endpoint at `/api/inngest`. The serve handler at this endpoint lets Inngest discover which functions your app has and execute them when triggered. To set that up, you need an Inngest client and a serve route handler.
+
+```ts {{ title: "App Router" }}
+// src/inngest/client.ts
+import { Inngest } from "inngest";
+
+export const inngest = new Inngest({ id: "my-app" });
+```
+
+```ts {{ title: "Pages Router" }}
+// pages/api/inngest.ts
+import { Inngest } from "inngest";
+import { serve } from "inngest/next";
+
+export const inngest = new Inngest({ id: "my-app" });
+
+export default serve({
+  client: inngest,
+  functions: [],
+});
+```
+
+For the App Router, you also need to create a route handler that serves the Inngest API:
+
+```ts {{ filename: "src/app/api/inngest/route.ts" }}
+import { serve } from "inngest/next";
+import { inngest } from "../../../inngest/client";
+
+export const { GET, POST, PUT } = serve({
+  client: inngest,
+  functions: [],
+});
+```
+
+***
+
+## 4. Write your first function
+
+In this step you'll write a function that processes a task in the background. The function waits for a trigger event, runs a sequence of steps, and returns a result.
+
+This pattern is useful for anything you don't want running in a request/response cycle: sending emails, calling an AI model, processing a file upload, or chaining multiple operations together.
+
+Define the function:
+
+```ts {{ title: "App Router" }}
+// src/inngest/functions.ts
+import { inngest } from "./client";
+
+export const processTask = inngest.createFunction(
+  { id: "process-task", triggers: { event: "app/task.created" } },
+  async ({ event, step }) => {
+    const result = await step.run("handle-task", async () => {
+      return { processed: true, id: event.data.id };
+    });
+
+    await step.sleep("pause", "1s");
+
+    return { message: `Task ${event.data.id} complete`, result };
+  }
+);
+```
+
+```ts {{ title: "Pages Router" }}
+// pages/api/inngest.ts - add to existing file
+export const processTask = inngest.createFunction(
+  { id: "process-task", triggers: { event: "app/task.created" } },
+  async ({ event, step }) => {
+    const result = await step.run("handle-task", async () => {
+      return { processed: true, id: event.data.id };
+    });
+
+    await step.sleep("pause", "1s");
+
+    return { message: `Task ${event.data.id} complete`, result };
+  }
+);
+```
+
+Then register the function with your serve handler:
+
+```ts {{ title: "App Router" }}
+// src/app/api/inngest/route.ts
+import { serve } from "inngest/next";
+import { inngest } from "../../../inngest/client";
+import { processTask } from "../../../inngest/functions";
+
+export const { GET, POST, PUT } = serve({
+  client: inngest,
+  functions: [processTask],
+});
+```
+
+```ts {{ title: "Pages Router" }}
+// pages/api/inngest.ts - update the serve call
+export default serve({
+  client: inngest,
+  functions: [processTask],
+});
+```
+
+***
+
+## 5. Trigger your function
+
+There are two ways to trigger a function: from the Dev Server UI, or by sending an event from your app code.
+
+### From the Dev Server
+
+Open [http://localhost:8288/functions](http://localhost:8288/functions) and find `process-task`. Click **Invoke**, then send a payload like this:
+
+```json
+{
+  "data": {
+    "id": "task_001"
+  }
+}
+```
+
+Click **Invoke Function**. Switch to the **Runs** tab to see the execution in progress. Click into the run to see each step, its output, and the timeline.
+
+### From your app
+
+To trigger the function from code, send an event using the `inngest.send()` method.
+
+```ts {{ title: "App Router" }}
+// src/app/api/create-task/route.ts
+import { NextResponse } from "next/server";
+import { inngest } from "../../../inngest/client";
+
+export async function POST() {
+  await inngest.send({
+    name: "app/task.created",
+    data: { id: "task_001" },
+  });
+
+  return NextResponse.json({ message: "Event sent" });
+}
+```
+
+```ts {{ title: "Pages Router" }}
+// pages/api/create-task.ts
+import { NextApiRequest, NextApiResponse } from "next";
+import { inngest } from "./inngest";
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  await inngest.send({
+    name: "app/task.created",
+    data: { id: "task_001" },
+  });
+
+  res.status(200).json({ message: "Event sent" });
+}
+```
+
+Send a request to your new endpoint:
+
+```shell
+curl -X POST http://localhost:3000/api/create-task
+```
+
+You'll see a new run appear in the Dev Server. In practice, you would call `inngest.send()` from the places in your app that send events: form submissions, webhook handlers, API routes, and so on.
+ 
+***
+
+## Next steps
+
+You now have Inngest running locally in a Next.js app. From here, a few directions worth exploring:
+
+- **Configure checkpointing for serverless.** v4 enables [checkpointing](/docs-markdown/setup/checkpointing) by default, which lets multiple steps run in a single request. If you're on Vercel or another serverless platform, set `maxRuntime` on your client and `maxDuration` on your `/api/inngest` route to avoid timeout issues. See the [Vercel deployment guide](/docs-markdown/deploy/vercel?ref=docs-nextjs-quick-start) for details.
+- **Deploy to production.** Connect your app to Inngest Cloud and sync your functions. See the [deployment guide](/docs-markdown/deploy/vercel?ref=docs-nextjs-quick-start) if you're on Vercel.
+- **Build a multi-step workflow.** Add branching logic, retries, and parallel steps. The [Inngest Functions overview](/docs-markdown/learn/inngest-functions?ref=docs-nextjs-quick-start) covers what's available.
+- **Orchestrate AI workflows.** Use `step.ai.wrap()` to make LLM calls durable and retryable, or `step.waitForSignal()` to pause a workflow until a human approves an action. See the [AI orchestration guide](/docs-markdown/features/inngest-functions/steps-workflows/step-ai-orchestration?ref=docs-nextjs-quick-start).

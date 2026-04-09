@@ -172,13 +172,19 @@ export async function saveOnboardingStep3(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function searchInstitutions(query: string) {
-  if (!query || query.length < 2) {
+  const trimmed = query.trim();
+
+  if (!trimmed || trimmed.length < 2) {
     // Return popular institutions from Redis cache
     const cached = await redis.get<typeof institutions.$inferSelect[]>(
       KEYS.institutionsPopular()
     );
     if (cached) return cached;
   }
+
+  // Match the full-text index expression defined in `institutions` schema
+  // (see `institutions_name_search_idx`).
+  const fts = trimmed.replace(/\s+/g, " & ") + ":*";
 
   const results = await db.execute<{
     id: string;
@@ -194,9 +200,10 @@ export async function searchInstitutions(query: string) {
     FROM institutions
     WHERE is_active = true
       AND (
-        ${query.length >= 2
-          ? sql`search_vector @@ to_tsquery('english', ${query + ":*"})`
-          : sql`true`}
+        to_tsvector(
+          'english',
+          name || ' ' || coalesce(short_name, '')
+        ) @@ to_tsquery('english', ${fts})
       )
     ORDER BY document_count DESC, name ASC
     LIMIT 10

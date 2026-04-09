@@ -52,8 +52,8 @@ export const updateReputation = inngest.createFunction(
     id: "update-reputation",
     name: "Update User Reputation",
     retries: 3,
+    triggers: [{ event: "reputation/update" }],
   },
-  { event: "reputation/update" },
   async ({ event, step }) => {
     const { userId, eventType, pointsDelta, referenceType, referenceId } = event.data;
 
@@ -186,8 +186,8 @@ export const checkAndAwardBadges = inngest.createFunction(
     name: "Check and Award Badges",
     retries: 3,
     debounce: { period: "10s", key: "event.data.userId" }, // debounce per user
+    triggers: [{ event: "reputation/check-badges" }],
   },
-  { event: "reputation/check-badges" },
   async ({ event, step }) => {
     const { userId } = event.data;
 
@@ -290,8 +290,8 @@ export const updateUserStreak = inngest.createFunction(
     name: "Update User Activity Streak",
     retries: 2,
     debounce: { period: "1h", key: "event.data.userId" }, // once per hour max
+    triggers: [{ event: "user/streak-update" }],
   },
-  { event: "user/streak-update" },
   async ({ event, step }) => {
     const { userId } = event.data;
 

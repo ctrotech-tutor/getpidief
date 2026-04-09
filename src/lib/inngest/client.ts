@@ -4,9 +4,19 @@ import { Inngest } from "inngest";
 // INNGEST CLIENT
 // ─────────────────────────────────────────────────────────────────────────────
 
+const isDev =
+  process.env.INNGEST_DEV === "1" ||
+  process.env.NODE_ENV === "development" ||
+  process.env.NODE_ENV === "test";
+
 export const inngest = new Inngest({
   id: "getpidief",
   name: "getpidief — Academic Resource Network",
+  isDev,
+  checkpointing: {
+    // v4 enables checkpointing by default; on serverless set this below max duration.
+    maxRuntime: process.env.INNGEST_MAX_RUNTIME ?? "50s",
+  },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

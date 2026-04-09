@@ -9,7 +9,7 @@ interface VerificationEmailProps {
   token: string;
 }
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://getpidief.com";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://getpidief.me";
 
 export function VerificationEmail({ name, token }: VerificationEmailProps) {
   const verifyUrl = `${APP_URL}/verify-email?token=${token}`;

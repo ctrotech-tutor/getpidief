@@ -7,70 +7,96 @@
  */
 
 import "dotenv/config";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import { neon } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-http";
 import {
   institutions, categories, tags, badges, systemSettings,
   authUsers, users,
 } from "../src/lib/db/schema";
 import bcrypt from "bcryptjs";
 
-const pool   = new Pool({ connectionString: process.env.DATABASE_URL! });
-const seedDb = drizzle(pool);
+// Use Neon HTTP driver for scripts to avoid flaky TCP/pool timeouts.
+// Works well locally and in CI because it's stateless per query.
+const connectionString =
+  process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL!;
+const sql = neon(connectionString);
+const seedDb = drizzle(sql);
+
+async function withRetry<T>(label: string, fn: () => Promise<T>, attempts = 4): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      lastErr = err;
+      const code = err?.cause?.code ?? err?.code;
+      // Retry only for transient network failures.
+      if (code !== "ECONNRESET" && code !== "ETIMEDOUT" && code !== "ECONNREFUSED") {
+        throw err;
+      }
+      const delayMs = 400 * Math.pow(2, i);
+      console.warn(`     ! ${label} failed (${code}); retrying in ${delayMs}ms...`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw lastErr;
+}
 
 async function seed() {
   console.log("🌱  Starting seed...\n");
 
   // ── Institutions ──────────────────────────────────────────────────────────
   console.log("  → Seeding institutions...");
-  const institutionRows = await seedDb
-    .insert(institutions)
-    .values([
-      {
-        name: "University of Cape Town", slug: "uct",
-        shortName: "UCT", country: "South Africa", countryCode: "ZA",
-        city: "Cape Town", type: "university",
-        emailDomains: ["uct.ac.za", "myuct.ac.za"], isActive: true, isVerified: true,
-      },
-      {
-        name: "University of Lagos", slug: "unilag",
-        shortName: "UNILAG", country: "Nigeria", countryCode: "NG",
-        city: "Lagos", type: "university",
-        emailDomains: ["unilag.edu.ng"], isActive: true, isVerified: true,
-      },
-      {
-        name: "University of Ghana", slug: "ug",
-        shortName: "UG", country: "Ghana", countryCode: "GH",
-        city: "Accra", type: "university",
-        emailDomains: ["ug.edu.gh", "st.ug.edu.gh"], isActive: true, isVerified: true,
-      },
-      {
-        name: "Makerere University", slug: "makerere",
-        shortName: "MAK", country: "Uganda", countryCode: "UG",
-        city: "Kampala", type: "university",
-        emailDomains: ["mak.ac.ug"], isActive: true, isVerified: true,
-      },
-      {
-        name: "University of Nairobi", slug: "uon",
-        shortName: "UoN", country: "Kenya", countryCode: "KE",
-        city: "Nairobi", type: "university",
-        emailDomains: ["uonbi.ac.ke", "students.uonbi.ac.ke"], isActive: true, isVerified: true,
-      },
-      {
-        name: "MIT", slug: "mit",
-        shortName: "MIT", country: "United States", countryCode: "US",
-        city: "Cambridge", type: "university",
-        emailDomains: ["mit.edu"], isActive: true, isVerified: true,
-      },
-      {
-        name: "University of Oxford", slug: "oxford",
-        shortName: "Oxford", country: "United Kingdom", countryCode: "GB",
-        city: "Oxford", type: "university",
-        emailDomains: ["ox.ac.uk", "oxon.ac.uk"], isActive: true, isVerified: true,
-      },
-    ])
-    .onConflictDoNothing()
-    .returning({ id: institutions.id, slug: institutions.slug });
+  const institutionRows = await withRetry("institutions insert", async () => {
+    return seedDb
+      .insert(institutions)
+      .values([
+        {
+          name: "University of Cape Town", slug: "uct",
+          shortName: "UCT", country: "South Africa", countryCode: "ZA",
+          city: "Cape Town", type: "university",
+          emailDomains: ["uct.ac.za", "myuct.ac.za"], isActive: true, isVerified: true,
+        },
+        {
+          name: "University of Lagos", slug: "unilag",
+          shortName: "UNILAG", country: "Nigeria", countryCode: "NG",
+          city: "Lagos", type: "university",
+          emailDomains: ["unilag.edu.ng"], isActive: true, isVerified: true,
+        },
+        {
+          name: "University of Ghana", slug: "ug",
+          shortName: "UG", country: "Ghana", countryCode: "GH",
+          city: "Accra", type: "university",
+          emailDomains: ["ug.edu.gh", "st.ug.edu.gh"], isActive: true, isVerified: true,
+        },
+        {
+          name: "Makerere University", slug: "makerere",
+          shortName: "MAK", country: "Uganda", countryCode: "UG",
+          city: "Kampala", type: "university",
+          emailDomains: ["mak.ac.ug"], isActive: true, isVerified: true,
+        },
+        {
+          name: "University of Nairobi", slug: "uon",
+          shortName: "UoN", country: "Kenya", countryCode: "KE",
+          city: "Nairobi", type: "university",
+          emailDomains: ["uonbi.ac.ke", "students.uonbi.ac.ke"], isActive: true, isVerified: true,
+        },
+        {
+          name: "MIT", slug: "mit",
+          shortName: "MIT", country: "United States", countryCode: "US",
+          city: "Cambridge", type: "university",
+          emailDomains: ["mit.edu"], isActive: true, isVerified: true,
+        },
+        {
+          name: "University of Oxford", slug: "oxford",
+          shortName: "Oxford", country: "United Kingdom", countryCode: "GB",
+          city: "Oxford", type: "university",
+          emailDomains: ["ox.ac.uk", "oxon.ac.uk"], isActive: true, isVerified: true,
+        },
+      ])
+      .onConflictDoNothing()
+      .returning({ id: institutions.id, slug: institutions.slug });
+  });
 
   console.log(`     ✓ ${institutionRows.length} institutions seeded`);
 
@@ -218,7 +244,6 @@ async function seed() {
   }
 
   console.log("\n✅  Seed complete!\n");
-  await pool.end();
 }
 
 seed().catch((err) => {

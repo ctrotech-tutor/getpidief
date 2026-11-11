@@ -18,7 +18,8 @@
     "test": "vitest",
     "test:e2e": "playwright test",
     "test:coverage": "vitest --coverage",
-    "build:preview": "next build preview-app --webpack"
+    "build:preview": "next build preview-app --webpack",
+    "test:db": "node -e \"if (!process.env.TEST_DATABASE_URL) { console.error('TEST_DATABASE_URL must point to an isolated test database'); process.exit(1) }\" && vitest --run tests/integration/postgres-connectivity.test.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.1",

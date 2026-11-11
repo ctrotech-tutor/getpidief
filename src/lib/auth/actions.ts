@@ -3,7 +3,7 @@
 import { signIn, signOut } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
 import { authUsers, authAccounts, users, accountAgreements } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { registerSchema, forgotPasswordSchema, resetPasswordSchema } from "@/lib/validations/schemas";
@@ -18,7 +18,7 @@ import { headers } from "next/headers";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function signInWithGoogle() {
-  await signIn("google", { redirectTo: "/explore" });
+  await signIn("google", { redirectTo: "/" });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,7 +43,7 @@ export async function signInWithCredentials(
       password,
       redirect:   false,
     });
-    return actionSuccess({ redirectTo: "/explore" });
+    return actionSuccess({ redirectTo: "/" });
   } catch (error: unknown) {
     const authError = error as { type?: string };
     if (authError.type === "CredentialsSignin") {
@@ -205,9 +205,13 @@ export async function resetPassword(
 
   try {
     const newHash = await bcrypt.hash(password, 12);
-    const updated = await db.update(authAccounts).set({ providerAccountId: newHash })
-      .where(and(eq(authAccounts.userId, userId), eq(authAccounts.provider, "credentials")))
-      .returning({ userId: authAccounts.userId });
+    const updated = await db.transaction(async (tx) => {
+      const accounts = await tx.update(authAccounts).set({ providerAccountId: newHash })
+        .where(and(eq(authAccounts.userId, userId), eq(authAccounts.provider, "credentials")))
+        .returning({ userId: authAccounts.userId });
+      if (accounts.length) await tx.update(authUsers).set({ sessionVersion: sql`${authUsers.sessionVersion} + 1` }).where(eq(authUsers.id, userId));
+      return accounts;
+    });
     if (!updated.length) return actionError("This account does not have a password. Please use your original sign-in method.");
   } catch {
     return actionError("We could not update your password. Please request a new link.");

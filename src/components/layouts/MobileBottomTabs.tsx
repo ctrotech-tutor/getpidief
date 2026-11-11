@@ -17,7 +17,7 @@ type Tab = {
 
 const TABS: Tab[] = [
   {
-    href:  "/explore",
+    href:  "/",
     label: "Home",
     icon:  (active: boolean) => (
       <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden>
@@ -93,7 +93,7 @@ export function MobileBottomTabs() {
     >
       <div className="flex items-center justify-around h-[60px] px-2">
         {TABS.map((tab) => {
-          const isActive = pathname === tab.href || pathname.startsWith(tab.href + "/");
+          const isActive = pathname === tab.href || (tab.href !== "/" && pathname.startsWith(tab.href + "/")) || (tab.href === "/" && pathname.startsWith("/home"));
 
           return (
             <Link

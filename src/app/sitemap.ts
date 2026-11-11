@@ -1,7 +1,9 @@
 import type { MetadataRoute } from "next";
 import { db } from "@/lib/db/client";
 import { documents, users } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, isNull } from "drizzle-orm";
+
+export const dynamic = "force-dynamic";
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://getpidief.me";
 
@@ -17,7 +19,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const docs = await db
     .select({ slug: documents.slug, updatedAt: documents.updatedAt })
     .from(documents)
-    .where(eq(documents.status, "approved"))
+    .where(and(eq(documents.status, "approved"), eq(documents.visibility, "public"), isNull(documents.deletedAt)))
     .orderBy(desc(documents.updatedAt))
     .limit(50000); // Google sitemap limit
 

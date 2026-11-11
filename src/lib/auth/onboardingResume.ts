@@ -27,7 +27,7 @@ export async function resolveOnboardingStep(): Promise<1 | 2 | 3> {
     },
   });
 
-  if (user?.onboardingComplete) redirect("/explore");
+  if (user?.onboardingComplete) redirect("/");
 
   // Graceful fallback when profile row is missing/out-of-sync.
   if (!user) return 1;

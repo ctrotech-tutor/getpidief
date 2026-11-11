@@ -2,8 +2,12 @@ import { auth } from "@/lib/auth/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
+// Admin pages must never be prerendered without the request-scoped session.
+export const dynamic = "force-dynamic";
+
 const ADMIN_NAV = [
   { href: "/admin/dashboard",    label: "Executive Dashboard", icon: "📊" },
+  { href: "/admin/feed-reports", label: "Feed Reports", icon: "💬" },
   { href: "/admin/moderation",   label: "Moderation Queue",    icon: "📋", badge: "pending" },
   { href: "/admin/users",        label: "User Management",     icon: "👥" },
   { href: "/admin/analytics",    label: "Analytics",           icon: "📈" },

@@ -11,6 +11,7 @@ export * from "./documents";
 export * from "./uploads";
 export * from "./interactions";
 export * from "./social";
+export * from "./posts";
 export * from "./reputation";
 
 // ─────────────────────────────────────────────────────────────────────────────

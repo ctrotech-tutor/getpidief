@@ -284,6 +284,9 @@ export const rateLimiters = {
   /** Reports: 10 per hour per user */
   report: createRateLimiter("report", 60 * 60 * 1000, 10),
 
+  /** Feed posts: 10 per 10 minutes per user */
+  feedPost: createRateLimiter("feed_post", 10 * 60 * 1000, 10),
+
   /** Comment post: 10 per 5 minutes per user */
   comment: createRateLimiter("comment", 5 * 60 * 1000, 10),
 } as const;

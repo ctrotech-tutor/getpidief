@@ -25,7 +25,7 @@ export function TopNav() {
         <div className="max-w-7xl mx-auto h-full flex items-center justify-between px-4 sm:px-6 lg:px-8">
           {/* Left: Logo */}
           <div className="flex items-center gap-4">
-            <Link href="/explore" className="flex items-center gap-2 group">
+            <Link href="/" className="flex items-center gap-2 group">
               <TopNavLogo />
               <span className="hidden font-bold text-lg lg:inline-block group-hover:text-primary transition-colors">
                 getpidief

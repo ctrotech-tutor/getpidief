@@ -22,10 +22,8 @@ export default auth((req) => {
   const { pathname } = nextUrl;
   const user = session?.user;
 
-  // Redirect logged-in users away from auth pages
-  if (user?.onboardingComplete && ["/login", "/register"].includes(pathname)) {
-    return Response.redirect(new URL("/explore", req.url));
-  }
+  // Do not redirect away from sign-in using edge-only token claims. A token
+  // may have been revoked in the database since this proxy last saw it.
 
   // Block suspended/deleted accounts
   if (

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
 import { documents } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { documentsRepository } from "@/lib/db/repositories/documents";
 import { apiSuccess, apiNotFound, apiForbidden, apiUnauthorized, handleApiError } from "@/lib/utils/api";
 import { inngest } from "@/lib/inngest/client";
@@ -14,12 +14,17 @@ export async function GET(req: NextRequest, { params }: Params) {
   try {
     const { id } = await params;
 
-    // Try to find by slug first, then by ID
+    // The public endpoint only returns approved, public documents.
     const doc = await db.query.documents.findFirst({
-      where: eq(documents.id, id),
+      where: and(eq(documents.id, id), eq(documents.status, "approved"),
+        eq(documents.visibility, "public"), isNull(documents.deletedAt)),
+      columns: { id: true, slug: true, title: true, description: true,
+        authorId: true, categoryId: true, institutionId: true, resourceType: true,
+        academicYear: true, language: true, pageCount: true, thumbnailUrl: true,
+        allowDownload: true, publishedAt: true },
     });
 
-    if (!doc || doc.deletedAt) return apiNotFound("Document");
+    if (!doc) return apiNotFound("Document");
     return apiSuccess(doc);
   } catch (e) {
     return handleApiError(e);

@@ -70,7 +70,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   try {
     const { id } = await params;
     const result = await trackDownload(req, id);
-    if (!result.doc?.fileUrl) {
+    if (!result.tracked || !result.doc?.fileUrl) {
       return NextResponse.redirect(new URL("/404", req.url));
     }
     return NextResponse.redirect(result.doc.fileUrl);

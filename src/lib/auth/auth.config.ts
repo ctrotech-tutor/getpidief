@@ -85,6 +85,7 @@ export const authConfig: NextAuthConfig = {
         "/u/",
         "/search",
         "/explore",
+        "/feed-preview",
         "/offline",
         "/maintenance",
         "/api/auth",

@@ -50,13 +50,17 @@ describe("documentsRepository", () => {
       expect(result).toBeNull();
     });
 
-    it("returns cached result when available", async () => {
-      const { getCache } = await import("@/lib/redis/client");
-      const cachedDoc = { id: "1", slug: "test-doc", title: "Test" };
-      (getCache as Mock).mockResolvedValue(cachedDoc);
+    it("ignores legacy shared cache entries that can contain another user's state", async () => {
+      const { db } = await import("@/lib/db/client");
+      const { getCache, setCache } = await import("@/lib/redis/client");
+      (getCache as Mock).mockResolvedValue({ id: "old", isBookmarked: true });
+      (db.query.documents.findFirst as Mock).mockResolvedValue({ id: "1", slug: "test-doc", status: "approved", visibility: "public" });
 
       const result = await documentsRepository.getBySlug("test-doc");
-      expect(result).toEqual(cachedDoc);
+      expect(result?.id).toBe("1");
+      expect(result?.isBookmarked).toBe(false);
+      expect(getCache).not.toHaveBeenCalled();
+      expect(setCache).not.toHaveBeenCalled();
     });
   });
 

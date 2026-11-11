@@ -267,6 +267,8 @@ export const rateLimiters = {
   /** Register: 3 requests per 10 minutes per IP */
   register: createRateLimiter("register", 10 * 60 * 1000, 3),
 
+  verificationResend: createRateLimiter("verification_resend", 15 * 60 * 1000, 5),
+
   /** Password reset: 3 per 15 minutes per email */
   passwordReset: createRateLimiter("pwd_reset", 15 * 60 * 1000, 3),
 

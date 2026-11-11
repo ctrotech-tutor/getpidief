@@ -25,7 +25,7 @@ import { Eye, EyeOff, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 // ── Form schema (client-side, mirrors server loginSchema) ────────────────────
 const loginFormSchema = z.object({
   email:      z.string().email("Please enter a valid email address"),
-  password:   z.string().min(8, "Password must be at least 8 characters"),
+  password:   z.string().min(8, "Password must be at least 8 characters").max(72, "Password is too long").refine(value => new TextEncoder().encode(value).length <= 72, "Password is too long"),
 });
 
 type LoginFormValues = z.infer<typeof loginFormSchema>;
@@ -49,6 +49,7 @@ export function LoginForm() {
   const [isPending, startTransition] = useTransition();
   const [showPassword, setShowPassword] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
 
   // Read OAuth error from URL (?error=OAuthAccountNotLinked etc.)
   const urlError   = searchParams.get("error");
@@ -71,11 +72,12 @@ export function LoginForm() {
 
   async function handleResendVerification() {
     const email = getValues("email");
-    if (!email) {
-      setError("root", { message: "Please enter your email address first." });
+    if (!z.string().email().safeParse(email).success) {
+      setError("root", { message: "Please enter a valid email address first." });
       return;
     }
 
+    setResendMessage(null);
     setIsResending(true);
     try {
       const response = await fetch("/api/auth/resend-verification", {
@@ -83,20 +85,19 @@ export function LoginForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.toLowerCase() }),
       });
-      
+
       if (response.ok) {
-        setError("root", { 
-          message: "Verification email sent! Please check your inbox." 
-        });
+        form.clearErrors("root");
+        setResendMessage("If the account needs verification, an email will be requested.");
       } else {
         const data = await response.json();
-        setError("root", { 
-          message: data.error || "Failed to resend verification email." 
+        setError("root", {
+          message: data.error || "Failed to resend verification email."
         });
       }
     } catch {
-      setError("root", { 
-        message: "Something went wrong. Please try again." 
+      setError("root", {
+        message: "Something went wrong. Please try again."
       });
     } finally {
       setIsResending(false);
@@ -126,17 +127,17 @@ export function LoginForm() {
       // Success - check if email is verified
       const requested = searchParams.get("callbackUrl");
       const callbackUrl = requested?.startsWith("/") && !requested.startsWith("//") && !requested.includes("\\") ? requested : "/explore";
-      
+
       // Check if user needs email verification
       if (result.url?.includes("/verify-email")) {
         // User needs to verify email - show message and redirect
-        setError("root", { 
-          message: "Please verify your email address. Check your inbox or resend verification below." 
+        setError("root", {
+          message: "Please verify your email address. Check your inbox or resend verification below."
         });
         // Don't redirect automatically - let user see the message
         return;
       }
-      
+
       router.push(callbackUrl);
       router.refresh(); // revalidate server components with new session
     });
@@ -191,16 +192,7 @@ export function LoginForm() {
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
                 {errors.root.message}
-                {errors.root.message?.includes("verify your email") && (
-                  <button
-                    type="button"
-                    onClick={() => handleResendVerification()}
-                    disabled={isResending}
-                    className="mt-2 text-xs underline hover:no-underline disabled:opacity-50"
-                  >
-                    {isResending ? "Sending..." : "Resend verification email"}
-                  </button>
-                )}
+
               </AlertDescription>
             </Alert>
           )}
@@ -225,6 +217,11 @@ export function LoginForm() {
             )}
           />
 
+          {resendMessage && <p role="status" className="text-xs text-primary">{resendMessage}</p>}
+          <button type="button" onClick={handleResendVerification} disabled={isResending} className="text-xs text-primary underline disabled:opacity-50">
+            {isResending ? "Requesting…" : "Resend verification email"}
+          </button>
+
           {/* Password */}
           <FormField
             control={form.control}
@@ -240,27 +237,28 @@ export function LoginForm() {
                     Forgot password?
                   </Link>
                 </div>
-                <FormControl>
-                  <div className="relative">
+                <div className="relative">
+                  <FormControl>
                     <Input
                       type={showPassword ? "text" : "password"}
                       autoComplete="current-password"
                       placeholder="••••••••"
                       {...field}
-                      className={cn("pr-10")}
+                      className={cn("pr-12")}
                     />
+                  </FormControl>
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
                       onClick={() => setShowPassword((v) => !v)}
-                      className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                      className="absolute right-0 top-1/2 -translate-y-1/2 h-11 w-11"
                       aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-pressed={showPassword}
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                   </div>
-                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -287,7 +285,7 @@ export function LoginForm() {
       <p className="text-center text-sm text-muted-foreground">
         Don&apos;t have an account?{" "}
         <Link href="/register" className="font-medium text-primary hover:text-primary/80 transition-colors">
-          Create an account →
+          Create an account
         </Link>
       </p>
     </div>

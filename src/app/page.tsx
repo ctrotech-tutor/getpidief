@@ -1,20 +1,14 @@
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowDown, ArrowRight, Bookmark, FileText, MessageCircle, Sparkles } from "lucide-react";
-import { Brand } from "@/components/brand/Brand";
+import { PublicHeader, PublicFooter } from "@/components/public/PublicShell";
 import styles from "./home.module.css";
 
 export default function HomePage() {
   return (
     <main className={styles.page}>
       <div className={styles.announcement}><span className={styles.statusDot} /> A little more human. A lot more learning. <Link href="/feed-preview">Explore the preview <ArrowRight size={13} /></Link></div>
-      <header className={styles.header}>
-        <Brand />
-        <nav className={styles.nav} aria-label="Main navigation">
-          <a href="#the-idea">The idea</a><a href="#how-it-works">How it works</a><Link href="/feed-preview">Explore preview</Link>
-        </nav>
-        <div className={styles.headerActions}><Link className={styles.signIn} href="/login">Log in</Link><Link className={styles.smallButton} href="/register">Join getpidief <ArrowRight size={15} /></Link></div>
-      </header>
+      <PublicHeader />
 
       <section className={styles.hero} aria-labelledby="hero-title">
         <div className={styles.heroCopy}>
@@ -49,7 +43,7 @@ export default function HomePage() {
       </section>
 
       <section className={styles.finalCta}><div><div className={styles.sectionLabel}><span>03</span> YOUR NEXT CHAPTER</div><h2>Curiosity looks<br />{" "}<em>good on you.</em></h2><p>Come with a question. See where it takes you.</p><Link className={styles.lightButton} href="/register">Create your account <ArrowRight size={17} /></Link></div><div className={styles.ctaMark} aria-hidden="true">g<span>.</span></div></section>
-      <footer className={styles.footer}><Brand /><p>A social home for learning.</p><div><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/login">Log in</Link></div><small>© {new Date().getFullYear()} getpidief</small></footer>
+      <PublicFooter />
     </main>
   );
 }

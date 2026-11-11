@@ -1,55 +1,20 @@
-import { Metadata } from "next"
-import { Navigation } from "@/components/landing/Navigation"
-import { Footer } from "@/components/landing/Footer"
+import type { Metadata } from "next";
+import { PublicShell } from "@/components/public/PublicShell";
+import styles from "@/components/public/pages.module.css";
 
-export const metadata: Metadata = {
-  title: "Terms of Service - getpidief",
-  description: "Read getpidief's terms of service and user agreement.",
-}
-
-export default function TermsPage() {
-  return (
-    <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
-      {/* Fixed Navigation Container */}
-      <div className="fixed top-0 left-0 right-0 z-50">
-        <Navigation />
-      </div>
-      <div className="pt-16"></div>
-      {/* Content with padding to account for fixed nav */}
-      <div className="">
-        {/* Hero Section */}
-        <section className="py-24 px-4 bg-gradient-to-b from-primary/5 to-transparent">
-          <div className="container mx-auto">
-            <div className="text-center max-w-4xl mx-auto">
-              <h1 className="font-heading font-black text-foreground tracking-tight mb-6" style={{ fontSize: "clamp(48px, 6vw, 72px)" }}>
-                Terms of Service
-              </h1>
-              <p className="text-xl text-muted-foreground mb-8 leading-relaxed">
-                These terms govern your use of getpidief's services and platform. Please read them carefully.
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Last updated: November 2024
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Terms Content */}
-        <section className="py-24 px-4">
-          <div className="container mx-auto">
-            <div className="max-w-4xl mx-auto prose prose-lg max-w-none">
-              
-              <div className="space-y-8">
-                <section>
-                  <h2 className="text-2xl font-bold text-foreground mb-4">Agreement to Terms</h2>
+export const metadata: Metadata = { title: "Terms of Service | getpidief", description: "The existing terms for using getpidief." };
+export default function PolicyPage() {
+  return <PublicShell><section className={`${styles.hero} ${styles.legalHero}`}><div className={styles.eyebrow}>THE DETAILS</div><div><h1>Terms of Service</h1><p className={styles.lead}>The existing terms for using getpidief.</p><div className={styles.notice}><strong>Review in progress.</strong> This is the existing policy text, dated November 2024. It has not yet been verified against the current service or reviewed for legal accuracy. Some contact details and described practices may be outdated.</div></div></section><div className={styles.legalLayout}><nav className={styles.legalNav} aria-label="On this page"><span>ON THIS PAGE</span><a href="#agreement-to-terms">Agreement to Terms</a><a href="#description-of-service">Description of Service</a><a href="#user-accounts">User Accounts</a><a href="#acceptable-use">Acceptable Use</a><a href="#content-and-intellectual-property">Content and Intellectual Property</a><a href="#privacy">Privacy</a><a href="#disclaimers">Disclaimers</a><a href="#limitation-of-liability">Limitation of Liability</a><a href="#indemnification">Indemnification</a><a href="#termination">Termination</a><a href="#governing-law">Governing Law</a><a href="#changes-to-terms">Changes to Terms</a><a href="#contact-information">Contact Information</a></nav><article className={styles.legalBody}>
+                <section id="agreement-to-terms">
+                  <h2>Agreement to Terms</h2>
                   <p className="text-muted-foreground">
                     By accessing and using getpidief ("the Service"), you agree to be bound by these Terms of Service 
                     ("Terms"). If you disagree with any part of these terms, then you may not access the Service.
                   </p>
                 </section>
 
-                <section>
-                  <h2 className="text-2xl font-bold text-foreground mb-4">Description of Service</h2>
+                <section id="description-of-service">
+                  <h2>Description of Service</h2>
                   <p className="text-muted-foreground">
                     getpidief is an academic knowledge-sharing platform that connects students, researchers, and 
                     educational institutions. Our service allows users to:
@@ -63,8 +28,8 @@ export default function TermsPage() {
                   </ul>
                 </section>
 
-                <section>
-                  <h2 className="text-2xl font-bold text-foreground mb-4">User Accounts</h2>
+                <section id="user-accounts">
+                  <h2>User Accounts</h2>
                   
                   <h3 className="text-xl font-semibold text-foreground mb-3">Registration</h3>
                   <p className="text-muted-foreground mb-4">
@@ -84,8 +49,8 @@ export default function TermsPage() {
                   </p>
                 </section>
 
-                <section>
-                  <h2 className="text-2xl font-bold text-foreground mb-4">Acceptable Use</h2>
+                <section id="acceptable-use">
+                  <h2>Acceptable Use</h2>
                   <p className="text-muted-foreground mb-4">You agree to use the Service only for lawful purposes and in accordance with these Terms. You agree not to:</p>
                   <ul className="list-disc list-inside text-muted-foreground space-y-2">
                     <li>Use the Service for any illegal or unauthorized purpose</li>
@@ -99,8 +64,8 @@ export default function TermsPage() {
                   </ul>
                 </section>
 
-                <section>
-                  <h2 className="text-2xl font-bold text-foreground mb-4">Content and Intellectual Property</h2>
+                <section id="content-and-intellectual-property">
+                  <h2>Content and Intellectual Property</h2>
                   
                   <h3 className="text-xl font-semibold text-foreground mb-3">User Content</h3>
                   <p className="text-muted-foreground mb-4">
@@ -122,16 +87,16 @@ export default function TermsPage() {
                   </p>
                 </section>
 
-                <section>
-                  <h2 className="text-2xl font-bold text-foreground mb-4">Privacy</h2>
+                <section id="privacy">
+                  <h2>Privacy</h2>
                   <p className="text-muted-foreground">
                     Your privacy is important to us. Please review our Privacy Policy, which also governs your use 
                     of the Service, to understand our practices.
                   </p>
                 </section>
 
-                <section>
-                  <h2 className="text-2xl font-bold text-foreground mb-4">Disclaimers</h2>
+                <section id="disclaimers">
+                  <h2>Disclaimers</h2>
                   <p className="text-muted-foreground mb-4">
                     The Service is provided on an "AS IS" and "AS AVAILABLE" basis. We make no representations or warranties 
                     of any kind, express or implied, including but not limited to:
@@ -144,8 +109,8 @@ export default function TermsPage() {
                   </ul>
                 </section>
 
-                <section>
-                  <h2 className="text-2xl font-bold text-foreground mb-4">Limitation of Liability</h2>
+                <section id="limitation-of-liability">
+                  <h2>Limitation of Liability</h2>
                   <p className="text-muted-foreground">
                     In no event shall getpidief, its directors, employees, partners, agents, suppliers, or affiliates be 
                     liable for any indirect, incidental, special, consequential, or punitive damages, including loss of 
@@ -153,8 +118,8 @@ export default function TermsPage() {
                   </p>
                 </section>
 
-                <section>
-                  <h2 className="text-2xl font-bold text-foreground mb-4">Indemnification</h2>
+                <section id="indemnification">
+                  <h2>Indemnification</h2>
                   <p className="text-muted-foreground">
                     You agree to defend, indemnify, and hold harmless getpidief and its licensee and licensors, and 
                     their employees, contractors, agents, officers and directors, from and against any and all claims, 
@@ -163,16 +128,16 @@ export default function TermsPage() {
                   </p>
                 </section>
 
-                <section>
-                  <h2 className="text-2xl font-bold text-foreground mb-4">Termination</h2>
+                <section id="termination">
+                  <h2>Termination</h2>
                   <p className="text-muted-foreground">
                     We may terminate or suspend your account and bar access to the Service immediately, without prior 
                     notice or liability, under our sole discretion, for any reason whatsoever and without limitation.
                   </p>
                 </section>
 
-                <section>
-                  <h2 className="text-2xl font-bold text-foreground mb-4">Governing Law</h2>
+                <section id="governing-law">
+                  <h2>Governing Law</h2>
                   <p className="text-muted-foreground">
                     These Terms shall be interpreted and governed by the laws of Nigeria, without regard to its 
                     conflict of law provisions. Any disputes arising from these Terms shall be resolved in the 
@@ -180,16 +145,16 @@ export default function TermsPage() {
                   </p>
                 </section>
 
-                <section>
-                  <h2 className="text-2xl font-bold text-foreground mb-4">Changes to Terms</h2>
+                <section id="changes-to-terms">
+                  <h2>Changes to Terms</h2>
                   <p className="text-muted-foreground">
                     We reserve the right to modify these Terms at any time. If we make material changes, we will 
                     notify you by email or by posting a notice on the Service prior to the change becoming effective.
                   </p>
                 </section>
 
-                <section>
-                  <h2 className="text-2xl font-bold text-foreground mb-4">Contact Information</h2>
+                <section id="contact-information">
+                  <h2>Contact Information</h2>
                   <p className="text-muted-foreground mb-4">If you have any questions about these Terms, please contact us:</p>
                   <div className="bg-surface/30 rounded-lg p-6 space-y-2">
                     <p className="text-muted-foreground"><strong>Email:</strong> legal@getpidief.com</p>
@@ -197,13 +162,5 @@ export default function TermsPage() {
                     <p className="text-muted-foreground"><strong>Phone:</strong> +234 123 456 7890</p>
                   </div>
                 </section>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-      
-      <Footer />
-    </div>
-  )
+</article></div></PublicShell>;
 }

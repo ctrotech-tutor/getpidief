@@ -85,7 +85,7 @@ function InvalidToken({ reason }: { reason: "missing" | "expired" }) {
         </Link>
       </Button>
       <Link href="/login" className="block text-sm text-muted-foreground hover:text-foreground transition-colors">
-        ← Back to Sign In
+        Back to sign in
       </Link>
     </div>
   );

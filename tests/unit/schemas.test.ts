@@ -67,6 +67,13 @@ describe("registerSchema", () => {
     const result = registerSchema.safeParse({ ...valid, password: "Password!", confirmPassword: "Password!" });
     expect(result.success).toBe(false);
   });
+  it("rejects passwords exceeding bcrypt's 72-byte limit even when under 72 characters", () => {
+    const password = "A1!" + "é".repeat(35);
+    expect(registerSchema.safeParse({ ...valid, password, confirmPassword: password }).success).toBe(false);
+  });
+  it("rejects whitespace-only names", () => {
+    expect(registerSchema.safeParse({ ...valid, firstName: "   " }).success).toBe(false);
+  });
   it("rejects when terms not accepted", () => {
     const result = registerSchema.safeParse({ ...valid, acceptTerms: false });
     expect(result.success).toBe(false);

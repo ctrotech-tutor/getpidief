@@ -57,7 +57,7 @@ export function ForgotPasswordForm() {
         clearInterval(interval);
       };
     }
-  }, [state.success]);
+  }, [state]);
 
   // ── Sent state ────────────────────────────────────────────────────────────
   if (state.success) {
@@ -96,7 +96,7 @@ export function ForgotPasswordForm() {
                 : "text-primary hover:text-primary/80"
             )}
           >
-            {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend email →"}
+            {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend email"}
           </Button>
         </form>
 
@@ -174,7 +174,7 @@ function BackLink() {
         href="/login"
         className="text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
-        ← Back to Sign In
+        Back to sign in
       </Link>
     </p>
   );

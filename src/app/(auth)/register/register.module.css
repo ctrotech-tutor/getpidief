@@ -1,0 +1,5 @@
+.registration :global([data-slot="form-item"]) { gap: 5px; }
+.registration :global([data-slot="input"]) { height: 44px; }
+.registration :global(form) { margin-top: 0; }
+.registration :global([data-slot="button"][data-variant="default"]) { min-height: 44px; }
+.registration :global([data-slot="form-message"]) { font-size: 12px; }

@@ -15,6 +15,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import { inngest } from "@/lib/inngest/client";
+import { rateLimiters, redisRateLimit } from "@/lib/redis/client";
 
 type AuthSessionUser = {
   id?: string;
@@ -71,11 +72,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email:    { label: "Email",    type: "email"    },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
+        // The client calls Auth.js directly, so limiting only a server action is insufficient.
+        if (process.env.NODE_ENV === "production" && !redisRateLimit) return null;
+        const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+        try { if (!(await rateLimiters.login.limit(ip)).success) return null; }
+        catch { return null; }
         const parsed = z
           .object({
             email:    z.string().email(),
-            password: z.string().min(8),
+            password: z.string().min(8).max(72).refine(value => new TextEncoder().encode(value).length <= 72),
           })
           .safeParse(credentials);
 
@@ -174,7 +180,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     ...authConfig.callbacks,
 
     // Override jwt to enrich with fresh DB profile data
-    async jwt({ token, user, trigger, session: updateSession }) {
+    async jwt({ token, user, trigger }) {
       // On sign-in: attach profile fields from user object
       if (user) {
         const u = user as AuthSessionUser;
@@ -191,9 +197,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.reputationLevel     = u.reputationLevel     ?? "scholar";
       }
 
-      // On update trigger (e.g. after onboarding completes)
-      if (trigger === "update" && updateSession) {
-        Object.assign(token, updateSession);
+      // Client-supplied session updates are untrusted. Reload authorization and
+      // profile fields from the database instead of merging arbitrary input.
+      if (trigger === "update" && typeof token.id === "string") {
+        const profile = await db.query.users.findFirst({
+          where: eq(users.id, token.id),
+          columns: { role: true, status: true, onboardingComplete: true, username: true, displayName: true, avatarUrl: true, institutionId: true, verificationStatus: true, reputationScore: true, reputationLevel: true },
+        });
+        if (profile) {
+          token.role = profile.role;
+          token.status = profile.status;
+          token.onboardingComplete = profile.onboardingComplete;
+          token.username = profile.username;
+          token.displayName = profile.displayName;
+          token.avatarUrl = profile.avatarUrl;
+          token.institutionId = profile.institutionId;
+          token.verificationStatus = profile.verificationStatus;
+          token.reputationScore = profile.reputationScore;
+          token.reputationLevel = profile.reputationLevel;
+        } else {
+          token.role = "student";
+          token.status = "deleted";
+          token.onboardingComplete = false;
+        }
       }
 
       return token;

@@ -32,6 +32,16 @@ export const authUsers = pgTable(
   })
 );
 
+// Evidence of the policy text accepted during credential registration.
+// The self-description is optional and never grants application permissions.
+export const accountAgreements = pgTable("account_agreements", {
+  userId: uuid("user_id").primaryKey().references(() => authUsers.id, { onDelete: "cascade" }),
+  termsVersion: text("terms_version").notNull(),
+  privacyVersion: text("privacy_version").notNull(),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }).notNull().defaultNow(),
+  isAcademicResearcherOrStudent: boolean("is_academic_researcher_or_student").notNull().default(false),
+});
+
 export const authAccounts = pgTable(
   "auth_accounts",
   {

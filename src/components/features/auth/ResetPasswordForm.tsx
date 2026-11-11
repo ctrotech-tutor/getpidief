@@ -29,7 +29,8 @@ const resetPasswordSchema = z.object({
     .max(72, "Maximum 72 characters")
     .regex(/[A-Z]/, "Must include an uppercase letter")
     .regex(/[0-9]/, "Must include a number")
-    .regex(/[^A-Za-z0-9]/, "Must include a special character"),
+    .regex(/[^A-Za-z0-9]/, "Must include a special character")
+      .refine((value) => new TextEncoder().encode(value).length <= 72, "Password must be at most 72 UTF-8 bytes"),
   confirmPassword: z.string(),
 }).refine((d) => d.password === d.confirmPassword, {
   message: "Passwords do not match",
@@ -46,6 +47,7 @@ const initialState: ActionResult<{ message: string }> = {
 export function ResetPasswordForm({ token }: { token: string }) {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
 
   const form = useForm<ResetPasswordValues>({
     resolver: zodResolver(resetPasswordSchema),
@@ -105,8 +107,8 @@ export function ResetPasswordForm({ token }: { token: string }) {
           render={({ field }) => (
             <FormItem>
               <FormLabel>New Password</FormLabel>
-              <FormControl>
-                <div className="relative">
+              <div className="relative">
+                <FormControl>
                   <Input
                     type={showPassword ? "text" : "password"}
                     autoComplete="new-password"
@@ -114,18 +116,19 @@ export function ResetPasswordForm({ token }: { token: string }) {
                     {...field}
                     className="pr-10"
                   />
+                </FormControl>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                    className="absolute right-0 top-1/2 -translate-y-1/2 h-11 w-11"
                     aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-pressed={showPassword}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
                 </div>
-              </FormControl>
               <FormMessage />
               {passwordValue && <PasswordStrengthMeter password={passwordValue} />}
             </FormItem>
@@ -138,15 +141,11 @@ export function ResetPasswordForm({ token }: { token: string }) {
           name="confirmPassword"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Confirm New Password</FormLabel>
-              <FormControl>
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="new-password"
-                  placeholder="Repeat your new password"
-                  {...field}
-                />
-              </FormControl>
+              <FormLabel>Confirm new password</FormLabel>
+              <div className="relative">
+                <FormControl><Input type={showConfirmation ? "text" : "password"} autoComplete="new-password" placeholder="Repeat your password" className="pr-12" {...field} /></FormControl>
+                <Button type="button" variant="ghost" size="icon" onClick={() => setShowConfirmation(v => !v)} className="absolute right-0 top-1/2 -translate-y-1/2 h-11 w-11" aria-label={showConfirmation ? "Hide confirmation password" : "Show confirmation password"} aria-pressed={showConfirmation}>{showConfirmation ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</Button>
+              </div>
               <FormMessage />
             </FormItem>
           )}

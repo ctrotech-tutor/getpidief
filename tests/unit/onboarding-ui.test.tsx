@@ -1,0 +1,32 @@
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { InstitutionSearchStep } from "@/components/features/auth/Institutionsearchstep";
+import { AcademicFocusStep } from "@/components/features/auth/AcademicFocusStep";
+import { InterestTagsStep } from "@/components/features/auth/InterestTagsStep";
+vi.mock("@/lib/auth/onboardingActions", () => ({ saveOnboardingStep1: vi.fn(), saveOnboardingStep2: vi.fn(), saveOnboardingStep3: vi.fn(), searchInstitutions: vi.fn() }));
+vi.mock("next-auth/react", () => ({ useSession: () => ({ update: vi.fn() }) }));
+describe("onboarding for an empty database", () => {
+  it("offers a real institution skip when there are no institutions", () => {
+    render(<InstitutionSearchStep popularInstitutions={[]} initialInstitution={null} />);
+    expect(screen.getByText(/No institutions are available/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue without an institution" })).toHaveAttribute("name", "skip");
+  });
+  it("offers a skip that bypasses academic form validation", () => {
+    render(<AcademicFocusStep faculties={["Law"]} levels={[{ value: "other", label: "Other" }]} profile={null} />);
+    expect(screen.getByRole("button", { name: "Skip for now" })).toHaveAttribute("formnovalidate");
+  });
+  it("can finish without topic data", () => {
+    render(<InterestTagsStep allTags={[]} />);
+    expect(screen.getByText(/There aren.t any topics/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue without topics" })).toHaveAttribute("name", "skip");
+  });
+  it("tracks topic selection accessibly and enables completion at three", () => {
+    const tags = ["Law", "Science", "Art"].map((name, i) => ({ name, id: String(i), slug: name }));
+    render(<InterestTagsStep allTags={tags} />);
+    const finish = screen.getByRole("button", { name: "Go to your feed" });
+    expect(finish).toBeDisabled();
+    for (const name of ["Law", "Science", "Art"]) fireEvent.click(screen.getByRole("button", { name: `+ ${name}` }));
+    expect(finish).toBeEnabled();
+    expect(screen.getByRole("button", { name: "✓ Law" })).toHaveAttribute("aria-pressed", "true");
+  });
+});

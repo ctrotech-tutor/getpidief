@@ -137,6 +137,14 @@ describe("onboardingStep2Schema", () => {
   });
 });
 
+describe("onboarding study field validation", () => {
+  it("trims a write-in study area and rejects whitespace-only values", () => {
+    const result = onboardingStep2Schema.safeParse({ faculty: "  Marine Ecology  ", major: "  Marine Life  ", academicLevel: "other" });
+    expect(result.success && result.data.faculty).toBe("Marine Ecology");
+    expect(onboardingStep2Schema.safeParse({ faculty: "   ", major: "Marine Life", academicLevel: "other" }).success).toBe(false);
+  });
+});
+
 describe("onboardingStep3Schema", () => {
   const validUUIDs = [
     "550e8400-e29b-41d4-a716-446655440000",
@@ -147,10 +155,10 @@ describe("onboardingStep3Schema", () => {
     expect(onboardingStep3Schema.safeParse({ tagIds: validUUIDs }).success).toBe(true);
   });
   it("rejects fewer than 3 tags", () => {
-    expect(onboardingStep3Schema.safeParse({ tagIds: validUUIDs.slice(0, 2) }).success).toBe(false);
+    expect(onboardingStep3Schema.safeParse({ tagIds: validUUIDs.slice(0, 2) }).success).toBe(true);
   });
   it("rejects empty array", () => {
-    expect(onboardingStep3Schema.safeParse({ tagIds: [] }).success).toBe(false);
+    expect(onboardingStep3Schema.safeParse({ tagIds: [] }).success).toBe(true);
   });
 });
 

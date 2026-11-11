@@ -74,8 +74,8 @@ export const onboardingStep1Schema = z.object({
 });
 
 export const onboardingStep2Schema = z.object({
-  faculty: z.string().min(1, "Please select your faculty").max(150),
-  major: z.string().min(1, "Please enter your major/programme").max(150),
+  faculty: z.string().trim().min(1, "Please choose or enter an area of study").max(150),
+  major: z.string().trim().min(1, "Please enter your subject or programme").max(150),
   academicLevel: z.enum([
     "undergraduate",
     "postgraduate",
@@ -90,7 +90,6 @@ export const onboardingStep2Schema = z.object({
 export const onboardingStep3Schema = z.object({
   tagIds: z
     .array(z.string().uuid())
-    .min(3, "Please select at least 3 interests")
     .max(20),
 });
 

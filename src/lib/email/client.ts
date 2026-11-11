@@ -3,7 +3,7 @@ import { Resend } from "resend";
 import nodemailer from "nodemailer";
 
 export type EmailMessage = { from: string; to: string; subject: string; html: string };
-type EmailProvider = "sendgrid" | "resend" | "gmail" | "brevo" | "local";
+type EmailProvider = "sendgrid" | "resend" | "gmail" | "brevo" | "local" | "console";
 
 function required(name: string): string {
   const value = process.env[name]?.trim();
@@ -13,8 +13,8 @@ function required(name: string): string {
 function provider(): EmailProvider {
   // Preserve existing deployments that configured SendGrid before EMAIL_PROVIDER existed.
   const value = (process.env.EMAIL_PROVIDER || "sendgrid").trim().toLowerCase();
-  if (!["sendgrid", "resend", "gmail", "brevo", "local"].includes(value)) throw new Error("EMAIL_PROVIDER must be sendgrid, resend, gmail, brevo, or local");
-  if (value === "local" && process.env.NODE_ENV !== "development") throw new Error("The local email provider is allowed only in development");
+  if (!["sendgrid", "resend", "gmail", "brevo", "local", "console"].includes(value)) throw new Error("EMAIL_PROVIDER must be sendgrid, resend, gmail, brevo, local, or console");
+  if ((value === "local" || value === "console") && process.env.NODE_ENV !== "development") throw new Error("Local email providers are allowed only in development");
   return value as EmailProvider;
 }
 function sender(input: string, selected: EmailProvider): string {
@@ -34,6 +34,14 @@ export function getEmailClient() {
     const selected = provider();
     const from = sender(message.from, selected);
     if (selected === "local") {
+      // Restrict the unencrypted development SMTP connection to this machine.
+      const rawPort = process.env.MAILPIT_SMTP_PORT || "1025";
+      if (!/^\d+$/.test(rawPort) || Number(rawPort) < 1 || Number(rawPort) > 65535) throw new Error("MAILPIT_SMTP_PORT must be a valid port");
+      const transport = nodemailer.createTransport({ host: "127.0.0.1", port: Number(rawPort), secure: false, ignoreTLS: true, connectionTimeout: 5000 });
+      await transport.sendMail({ ...message, from });
+      return;
+    }
+    if (selected === "console") {
       // HTML contains one-time tokens. This provider is opt-in and development-only.
       const links = [...message.html.matchAll(/href=["']([^"']+)["']/g)]
         .map(match => match[1].replaceAll("&amp;", "&"))

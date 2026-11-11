@@ -33,11 +33,22 @@ describe("configurable email delivery", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ sender: { name: "Learning Team", email: "team@example.test" }, to: [{ email: message.to }], subject: message.subject, htmlContent: message.html });
     await expect(getEmailClient().send(message)).rejects.toThrow("Brevo failed to accept email (HTTP 401)");
   });
-  it("prints the local message only in development and never in production or test", async () => {
-    vi.stubEnv("EMAIL_PROVIDER", "local"); const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  it("prints console messages only in development and never in production or test", async () => {
+    vi.stubEnv("EMAIL_PROVIDER", "console"); const log = vi.spyOn(console, "log").mockImplementation(() => {});
     await getEmailClient().send(message); expect(log).toHaveBeenCalledWith(expect.stringContaining("Local email"), message.to, expect.any(String), expect.any(String), expect.any(String), message.subject, expect.any(String), "http://localhost:3000/verify-email?token=test", expect.any(String), message.html);
     log.mockClear(); vi.stubEnv("NODE_ENV", "production"); await expect(getEmailClient().send(message)).rejects.toThrow("only in development");
     vi.stubEnv("NODE_ENV", "test"); await expect(getEmailClient().send(message)).rejects.toThrow("only in development"); expect(log).not.toHaveBeenCalled();
+  });
+  it("delivers local messages to loopback Mailpit only in development", async () => {
+    vi.stubEnv("EMAIL_PROVIDER", "local"); vi.stubEnv("MAILPIT_SMTP_PORT", "1025");
+    await getEmailClient().send(message);
+    expect(m.transport).toHaveBeenCalledWith({ host: "127.0.0.1", port: 1025, secure: false, ignoreTLS: true, connectionTimeout: 5000 });
+    expect(m.mail).toHaveBeenCalledWith(message);
+    m.transport.mockClear(); vi.stubEnv("NODE_ENV", "production");
+    await expect(getEmailClient().send(message)).rejects.toThrow("only in development");
+    expect(m.transport).not.toHaveBeenCalled();
+    vi.stubEnv("NODE_ENV", "development"); vi.stubEnv("MAILPIT_SMTP_PORT", "abc");
+    await expect(getEmailClient().send(message)).rejects.toThrow("valid port");
   });
   it("rejects missing credentials and unknown providers without sending", async () => {
     vi.stubEnv("EMAIL_PROVIDER", "resend"); vi.stubEnv("RESEND_API_KEY", ""); await expect(getEmailClient().send(message)).rejects.toThrow("RESEND_API_KEY");

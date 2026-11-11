@@ -51,7 +51,7 @@ const envSchema = z.object({
   INNGEST_SIGNING_KEY: z.string().min(1),
 
   // Selected provider validates its credentials at send time.
-  EMAIL_PROVIDER: z.enum(["local", "resend", "sendgrid", "gmail", "brevo"]).default("sendgrid"),
+  EMAIL_PROVIDER: z.enum(["local", "console", "resend", "sendgrid", "gmail", "brevo"]).default("sendgrid"),
   EMAIL_FROM: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().optional(),

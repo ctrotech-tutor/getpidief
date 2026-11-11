@@ -12,13 +12,13 @@ This guide is for a separate development database. It does not reset or migrate 
 
    If you have uncommitted local changes, Git may require you to save or stash them before switching branches or pulling. `--ignore-scripts` avoids optional install-time binary downloads; the Inngest CLI and other install-script-dependent tools may require separate setup.
 
-2. Start the development PostgreSQL container:
+2. Start the development PostgreSQL and Mailpit containers:
 
    ```bash
    docker compose up -d
    ```
 
-   Compose uses a persistent local volume. It is fresh only if that volume has never been used. If it already contains a database, do not delete it or run migrations against it until you have checked what it contains. Choose a separate empty database instead. See [DATABASE.md](DATABASE.md).
+   PostgreSQL uses a persistent local volume. It is fresh only if that volume has never been used. If it already contains a database, do not delete it or run migrations against it until you have checked what it contains. Choose a separate empty database instead. See [DATABASE.md](DATABASE.md).
 
 3. Create `.env.local` in the repository root. Do not commit it or use production credentials:
 
@@ -57,8 +57,8 @@ Email, authentication providers, uploads, storage, background processing, rate l
 
 ## Local signup email
 
-`EMAIL_PROVIDER=local` prints complete message HTML, including one-time verification and reset links, in the Next.js server console. It sends no email and is rejected outside `NODE_ENV=development`. Never use real users or shared logs for this mode. Follow the verification link from the console; it must start with `http://localhost:3000` when the app URL is set above.
+`EMAIL_PROVIDER=local` sends messages to Mailpit on this machine only. Open **http://localhost:8025** to view the inbox and click the verification link, which should start with `http://localhost:3000`. Mailpit does not send real email and local mode is rejected outside `NODE_ENV=development`. Messages contain one-time links: use test accounts only, and do not expose the inbox or SMTP port to other machines. Mailpit messages are not persisted across container recreation. If port 1025 or 8025 is in use, resolve the conflict before starting Compose.
 
-Registration still requires a reachable development Upstash REST Redis, and the email worker still requires an Inngest development server connected to `http://localhost:3000/api/inngest`. Inngest processes the message asynchronously; the email appears in the app server's console, not necessarily immediately after registration. Running `npm ci --ignore-scripts` may leave the bundled Inngest CLI unavailable; install the Inngest CLI separately, then run `inngest dev -u http://localhost:3000/api/inngest`. Check the Inngest dashboard for worker failures. These services have not been verified against a real account in this environment.
+Registration still requires a reachable development Upstash REST Redis, and the email worker still requires an Inngest development server connected to `http://localhost:3000/api/inngest`. Inngest processes the message asynchronously; the email appears in the Mailpit inbox, not necessarily immediately after registration. Running `npm ci --ignore-scripts` may leave the bundled Inngest CLI unavailable; install the Inngest CLI separately, then run `inngest dev -u http://localhost:3000/api/inngest`. Check the Inngest dashboard for worker failures. These services have not been verified against a real account in this environment.
 
 Other provider settings and sender verification are documented in [EMAIL.md](EMAIL.md). With an empty database, the current onboarding requires reference institutions and interests, and the visible skip link does not complete onboarding; no seed is automatically installed.

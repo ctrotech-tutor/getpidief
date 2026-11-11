@@ -149,7 +149,7 @@ export const documentReportSchema = z.object({
         "spam", "misinformation", "other",
       ])
     )
-    .min(1, "Please select at least one reason"),
+    .min(1, "Please select at least one reason").max(9),
   additionalInfo: z.string().max(500).optional(),
 });
 

@@ -62,10 +62,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (body.visibility && body.visibility !== "public") return apiError("UNSUPPORTED_VISIBILITY", "Restricted uploads are unavailable until private storage is configured.");
     if (body.visibility) allowedFields.visibility = body.visibility;
 
-    // Admins can change status
-    if (isAdmin && body.status) {
-      allowedFields.status = body.status;
-    }
+    // Status changes must go through the audited moderation service.
+    if (body.status !== undefined) return apiError("INVALID_PARAMS", "Use the moderation endpoint to change status.");
 
     await db.update(documents).set(allowedFields).where(eq(documents.id, id));
     await documentsRepository.invalidateCache(id);

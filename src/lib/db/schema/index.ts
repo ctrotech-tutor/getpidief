@@ -8,6 +8,7 @@ export * from "./auth";
 export * from "./users";
 export * from "./institutions";
 export * from "./documents";
+export * from "./uploads";
 export * from "./interactions";
 export * from "./social";
 export * from "./reputation";

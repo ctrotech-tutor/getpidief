@@ -4,19 +4,17 @@ import { useState, useEffect, useRef, useTransition, useCallback } from "react";
 import Image from "next/image";
 import { useSession } from "@/hooks/useSession";
 import type { SessionUser } from "@/hooks/useSession";
-import { getPusherClient } from "@/lib/pusher/server";
-import { CHANNELS, EVENTS } from "@/lib/pusher/server";
 import { timeAgo } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
-import type { Channel } from "pusher-js";
 
 interface Comment {
   id:          string;
-  userId:      string;
+  userId:      string | null;
   content:     string;
   contentHtml?: string | null;
   createdAt:   string | Date;
   isEdited:    boolean;
+  isDeleted?:  boolean;
   helpfulCount:number;
   replyCount:  number;
   parentId:    string | null;
@@ -26,45 +24,37 @@ interface Comment {
     displayName:       string;
     avatarUrl:         string | null;
     verificationStatus?:string;
-  };
+  } | null;
   replies?: Comment[];
 }
-
-type CommentRealtimePayload = {
-  commentId: string;
-  userId: string;
-  content: string;
-  contentHtml?: string | null;
-  createdAt: string;
-  parentId?: string | null;
-  username: string;
-  avatarUrl?: string | null;
-};
 
 interface CommentStreamProps {
   documentId:    string;
   initialCount?: number;
 }
 
-export function CommentStream({ documentId, initialCount = 0 }: CommentStreamProps) {
+export function CommentStream({ documentId }: CommentStreamProps) {
   const { user, isAuthenticated } = useSession();
   const [comments,    setComments]    = useState<Comment[]>([]);
   const [loading,     setLoading]     = useState(true);
   const [hasMore,     setHasMore]     = useState(false);
   const [page,        setPage]        = useState(1);
-  const [totalCount,  setTotalCount]  = useState(initialCount);
-  const channelRef = useRef<Channel | null>(null);
+  const [error, setError] = useState("");
 
   const loadComments = useCallback(async (p: number) => {
     setLoading(true);
+    setError("");
     try {
       const res  = await fetch(`/api/comments?documentId=${documentId}&page=${p}&limit=20`);
+      if (!res.ok) throw new Error("Could not load discussion");
       const json = await res.json();
       const data = json.data?.comments ?? [];
       if (p === 1) setComments(data);
       else setComments((prev) => [...prev, ...data]);
       setHasMore(json.data?.hasMore ?? false);
       setPage(p);
+    } catch {
+      setError("Could not load the discussion. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -75,55 +65,6 @@ export function CommentStream({ documentId, initialCount = 0 }: CommentStreamPro
     loadComments(1);
   }, [documentId, loadComments]);
 
-  // Subscribe to real-time comments via Pusher
-  useEffect(() => {
-    let pusher: ReturnType<typeof getPusherClient> | null = null;
-    try {
-      pusher    = getPusherClient();
-      const ch  = pusher.subscribe(CHANNELS.privateDocument(documentId));
-      channelRef.current = ch;
-
-      ch.bind(EVENTS.COMMENT_POSTED, (data: CommentRealtimePayload) => {
-        const newComment: Comment = {
-          id:          data.commentId,
-          userId:      data.userId,
-          content:     data.content,
-          contentHtml: data.contentHtml,
-          createdAt:   data.createdAt,
-          isEdited:    false,
-          helpfulCount:0,
-          replyCount:  0,
-          parentId:    data.parentId ?? null,
-          user: {
-            id:          data.userId,
-            username:    data.username,
-            displayName: data.username,
-            avatarUrl:   data.avatarUrl ?? null,
-          },
-          replies: [],
-        };
-
-        if (!data.parentId) {
-          setComments((prev) => [newComment, ...prev]);
-          setTotalCount((c) => c + 1);
-        } else {
-          // Add to parent's replies
-          setComments((prev) =>
-            prev.map((c) =>
-              c.id === data.parentId
-                ? { ...c, replies: [...(c.replies ?? []), newComment], replyCount: c.replyCount + 1 }
-                : c
-            )
-          );
-        }
-      });
-    } catch {}
-
-    return () => {
-      try { pusher?.unsubscribe(CHANNELS.privateDocument(documentId)); } catch {}
-    };
-  }, [documentId]);
-
   return (
     <section className="space-y-5">
       {/* Header */}
@@ -131,11 +72,7 @@ export function CommentStream({ documentId, initialCount = 0 }: CommentStreamPro
         <h3 className="font-heading font-semibold text-foreground text-base">
           Discussion
         </h3>
-        {totalCount > 0 && (
-          <span className="text-xs bg-secondary border border-border rounded-full px-2 py-0.5 text-muted-foreground">
-            {totalCount}
-          </span>
-        )}
+        <button type="button" onClick={() => loadComments(1)} disabled={loading} className="ml-auto text-xs text-muted-foreground hover:text-foreground disabled:opacity-50">Refresh</button>
       </div>
 
       {/* Composer */}
@@ -147,10 +84,12 @@ export function CommentStream({ documentId, initialCount = 0 }: CommentStreamPro
         />
       )}
 
+      {!isAuthenticated && <p className="text-sm text-muted-foreground"><a href="/login" className="underline">Sign in</a> to join the discussion.</p>}
+      {error && <div role="alert" className="text-sm text-destructive">{error} <button className="underline" onClick={() => loadComments(page)}>Try again</button></div>}
       {/* Comments list */}
       {loading && comments.length === 0 ? (
         <CommentSkeletons />
-      ) : comments.length === 0 ? (
+      ) : !error && comments.length === 0 ? (
         <EmptyComments />
       ) : (
         <div className="space-y-4">
@@ -159,7 +98,7 @@ export function CommentStream({ documentId, initialCount = 0 }: CommentStreamPro
               key={comment.id}
               comment={comment}
               documentId={documentId}
-              currentUserId={user?.id}
+              onReplyPosted={() => loadComments(1)}
             />
           ))}
 
@@ -197,21 +136,24 @@ function CommentComposer({
   placeholder?:string;
 }) {
   const [content, setContent]   = useState("");
+  const [error, setError] = useState("");
   const [isPending, start]      = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   async function submit() {
-    if (!content.trim()) return;
+    if (!content.trim() || isPending) return;
+    setError("");
     start(async () => {
       try {
-        await fetch("/api/comments", {
+        const response = await fetch("/api/comments", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
           body:    JSON.stringify({ documentId, content: content.trim(), parentId }),
         });
+        if (!response.ok) throw new Error("Comment could not be posted");
         setContent("");
         onPosted();
-      } catch {}
+      } catch { setError("Could not post your comment. Your text is still here, so you can try again."); }
     });
   }
 
@@ -221,6 +163,8 @@ function CommentComposer({
       <div className="flex-1 space-y-2">
         <textarea
           ref={textareaRef}
+          aria-label={parentId ? "Write a reply" : "Write a comment"}
+          maxLength={2000}
           value={content}
           onChange={(e) => setContent(e.target.value)}
           placeholder={placeholder}
@@ -234,9 +178,10 @@ function CommentComposer({
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
           }}
         />
+        {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground">
-            ⌘↵ to post · Markdown supported
+            Ctrl or ⌘ + Enter to post
           </span>
           <div className="flex gap-2">
             {onCancel && (
@@ -251,7 +196,7 @@ function CommentComposer({
                          rounded-lg hover:bg-primary/90 transition-colors
                          disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isPending ? "Posting…" : "Post"}
+              {isPending ? "Posting…" : parentId ? "Post reply" : "Post"}
             </button>
           </div>
         </div>
@@ -265,24 +210,54 @@ function CommentComposer({
 function CommentItem({
   comment,
   documentId,
-  currentUserId,
+  onReplyPosted,
   isReply = false,
 }: {
   comment:       Comment;
   documentId:    string;
-  currentUserId?:string;
+  onReplyPosted: () => void;
   isReply?:      boolean;
 }) {
   const { user, isAuthenticated } = useSession();
   const [showReplyBox, setShowReplyBox] = useState(false);
+  const [replies, setReplies] = useState<Comment[] | null>(null);
+  const [replyPage, setReplyPage] = useState(0);
+  const [moreReplies, setMoreReplies] = useState(false);
+  const [replyLoading, setReplyLoading] = useState(false);
+  const [replyError, setReplyError] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(comment.content);
+  const [actionError, setActionError] = useState("");
+  const [pending, setPending] = useState(false);
+  const [voted, setVoted] = useState(false);
   const [helpfulCount, setHelpfulCount] = useState(comment.helpfulCount);
-  const [voted,        setVoted]        = useState(false);
-
-  async function voteHelpful() {
-    if (voted || !isAuthenticated) return;
-    setVoted(true);
-    setHelpfulCount((c) => c + 1);
-    await fetch(`/api/comments/${comment.id}/helpful`, { method: "POST" }).catch(() => {});
+  async function updateComment(kind: "edit" | "delete" | "vote") {
+    if (pending) return;
+    if (kind === "delete" && !window.confirm("Delete this comment? Replies will remain visible.")) return;
+    setPending(true); setActionError("");
+    try {
+      const response = await fetch(`/api/comments/${comment.id}`, {
+        method: kind === "delete" ? "DELETE" : "PATCH",
+        headers: { "Content-Type": "application/json" },
+        ...(kind === "delete" ? {} : { body: JSON.stringify(kind === "vote" ? { action: "helpful" } : { content: draft }) }),
+      });
+      if (!response.ok) throw new Error("Update failed");
+      const data = await response.json();
+      if (kind === "vote") { setVoted(true); setHelpfulCount(data.data.helpfulCount); }
+      else { setEditing(false); onReplyPosted(); }
+    } catch { setActionError("Could not update this comment. Please try again."); }
+    finally { setPending(false); }
+  }
+  async function loadReplies(page: number) {
+    setReplyLoading(true); setReplyError("");
+    try {
+      const res = await fetch(`/api/comments?documentId=${documentId}&parentId=${comment.id}&page=${page}&limit=20`);
+      if (!res.ok) throw new Error("Could not load replies");
+      const json = await res.json();
+      setReplies((current) => page === 1 ? json.data.comments : [...(current ?? []), ...json.data.comments]);
+      setReplyPage(page); setMoreReplies(json.data.hasMore);
+    } catch { setReplyError("Could not load replies. Try again."); }
+    finally { setReplyLoading(false); }
   }
 
   return (
@@ -292,13 +267,13 @@ function CommentItem({
       <div className="flex-1 min-w-0 space-y-1.5">
         {/* Header */}
         <div className="flex items-center gap-2 flex-wrap">
-          <a
+          {comment.user ? <a
             href={`/u/${comment.user.username}`}
             className="text-sm font-medium text-foreground hover:text-primary transition-colors"
           >
             {comment.user.displayName}
-          </a>
-          {comment.user.verificationStatus === "verified" && (
+          </a> : <span className="text-sm text-muted-foreground">Deleted comment</span>}
+          {comment.user?.verificationStatus === "verified" && (
             <span title="Verified" className="text-[var(--gold)]">
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-label="Verified">
                 <circle cx="5" cy="5" r="4.5" fill="currentColor" fillOpacity="0.2" stroke="currentColor" strokeWidth="0.8"/>
@@ -311,34 +286,24 @@ function CommentItem({
         </div>
 
         {/* Content */}
-        {comment.contentHtml ? (
-          <div
-            className="text-sm text-foreground leading-relaxed prose prose-sm prose-invert max-w-none"
-            dangerouslySetInnerHTML={{ __html: comment.contentHtml }}
-          />
-        ) : (
-          <p className="text-sm text-foreground leading-relaxed">{comment.content}</p>
-        )}
+        {editing ? <div className="space-y-2">
+          <textarea aria-label="Edit comment" maxLength={2000} value={draft} onChange={(event) => setDraft(event.target.value)}
+            className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm" />
+          <div className="flex gap-3 text-xs">
+            <button type="button" disabled={pending || !draft.trim()} onClick={() => updateComment("edit")}>Save</button>
+            <button type="button" disabled={pending} onClick={() => { setEditing(false); setDraft(comment.content); }}>Cancel</button>
+          </div>
+        </div> : <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words">{comment.content}</p>}
+        {actionError && <p role="alert" className="text-xs text-destructive">{actionError}</p>}
 
         {/* Actions */}
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <button
-            onClick={voteHelpful}
-            disabled={voted || !isAuthenticated}
-            className={cn(
-              "flex items-center gap-1 hover:text-foreground transition-colors",
-              voted && "text-[var(--emerald)]"
-            )}
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
-              <path d="M6 1l1.5 3 3.5.5-2.5 2.5.5 3.5L6 9l-3 1.5.5-3.5L1 4.5 4.5 4z"
-                    stroke="currentColor" strokeWidth="1" strokeLinejoin="round"
-                    fill={voted ? "currentColor" : "none"}/>
-            </svg>
-            Helpful {helpfulCount > 0 && `(${helpfulCount})`}
-          </button>
-
-          {!isReply && isAuthenticated && (
+          {isAuthenticated && !comment.isDeleted && <button type="button" disabled={pending || voted} onClick={() => updateComment("vote")} className="hover:text-foreground disabled:opacity-60">{voted ? "Marked helpful" : "Helpful"} ({helpfulCount})</button>}
+          {isAuthenticated && user?.id === comment.userId && !comment.isDeleted && !editing && <>
+            <button type="button" disabled={pending} onClick={() => setEditing(true)} className="hover:text-foreground">Edit</button>
+            <button type="button" disabled={pending} onClick={() => updateComment("delete")} className="hover:text-foreground">Delete</button>
+          </>}
+          {!isReply && isAuthenticated && !comment.isDeleted && (
             <button
               onClick={() => setShowReplyBox((v) => !v)}
               className="hover:text-foreground transition-colors"
@@ -361,27 +326,29 @@ function CommentItem({
               documentId={documentId}
               parentId={comment.id}
               user={user}
-              onPosted={() => setShowReplyBox(false)}
+              onPosted={() => { setShowReplyBox(false); setReplies(null); onReplyPosted(); }}
               onCancel={() => setShowReplyBox(false)}
-              placeholder={`Reply to ${comment.user.displayName}…`}
+              placeholder={`Reply to ${comment.user?.displayName ?? "this comment"}…`}
             />
           </div>
         )}
 
         {/* Nested replies */}
-        {comment.replies && comment.replies.length > 0 && (
+        {(replies ?? comment.replies ?? []).length > 0 && (
           <div className="space-y-3 mt-3">
-            {comment.replies.map((reply) => (
+            {(replies ?? comment.replies ?? []).map((reply) => (
               <CommentItem
                 key={reply.id}
                 comment={reply}
                 documentId={documentId}
-                currentUserId={currentUserId}
+                onReplyPosted={() => { setReplies(null); onReplyPosted(); }}
                 isReply
               />
             ))}
           </div>
         )}
+        {!isReply && ((replies === null && comment.replyCount > (comment.replies?.length ?? 0)) || (replies !== null && moreReplies)) && <button type="button" disabled={replyLoading} onClick={() => loadReplies(replies === null ? 1 : replyPage + 1)} className="text-xs text-primary underline disabled:opacity-50">{replyLoading ? "Loading replies…" : replies === null ? "View all replies" : "Load more replies"}</button>}
+        {replyError && <p role="alert" className="text-xs text-destructive">{replyError} <button className="underline" onClick={() => loadReplies(replies === null ? 1 : replyPage + 1)}>Retry</button></p>}
       </div>
     </div>
   );

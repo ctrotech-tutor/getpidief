@@ -279,6 +279,9 @@ export const rateLimiters = {
   /** General API: 120 per minute per user */
   api: createRateLimiter("api", 60 * 1000, 120),
 
+  /** Reports: 10 per hour per user */
+  report: createRateLimiter("report", 60 * 60 * 1000, 10),
+
   /** Comment post: 10 per 5 minutes per user */
   comment: createRateLimiter("comment", 5 * 60 * 1000, 10),
 } as const;

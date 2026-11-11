@@ -23,12 +23,12 @@ export async function POST(req: NextRequest) {
       return apiError("INVALID_PARAMS", "You cannot follow yourself");
     }
 
-    await usersRepository.follow(followerId, followingId);
+    const { changed } = await usersRepository.follow(followerId, followingId);
 
-    await inngest.send({
+    if (changed) await inngest.send({
       name: "user/followed",
       data: { followerId, followingId },
-    });
+    }).catch((error) => console.error("Follow notification failed", error));
 
     return apiSuccess({ following: true });
   } catch (e) {
@@ -45,6 +45,7 @@ export async function DELETE(req: NextRequest) {
     const parsed = followSchema.safeParse(body);
     if (!parsed.success) return apiError("INVALID_PARAMS", "Invalid user ID");
 
+    if (session.user.id === parsed.data.followingId) return apiError("INVALID_PARAMS", "You cannot unfollow yourself");
     await usersRepository.unfollow(session.user.id, parsed.data.followingId);
 
     return apiSuccess({ following: false });

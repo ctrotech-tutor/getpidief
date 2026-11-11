@@ -6,6 +6,10 @@ import { UploadDropzone } from "@/components/features/upload/UploadDropzone";
 import { UploadForm } from "@/components/features/upload/UploadForm";
 import { useUIStore } from "@/stores/index";
 import Link from "next/link";
+import { generateReactHelpers } from "@uploadthing/react";
+import type { OurFileRouter } from "@/app/api/upload/route";
+
+const { uploadFiles } = generateReactHelpers<OurFileRouter>();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // These are fetched server-side but we need client state for the upload flow.
@@ -18,7 +22,7 @@ export default function UploadNewPage() {
 
   const [step,         setStep]         = useState<"drop" | "form" | "success">("drop");
   const [uploadedUrl,  setUploadedUrl]  = useState<string | null>(null);
-  const [uploadedSize, setUploadedSize] = useState<number>(0);
+
   const [isUploading,  setIsUploading]  = useState(false);
   const [progress,     setProgress]     = useState(0);
   const [uploadError,  setUploadError]  = useState<string | null>(null);
@@ -47,35 +51,14 @@ export default function UploadNewPage() {
     setProgress(0);
 
     try {
-      // Simulate progress ticks while uploading
-      const progressInterval = setInterval(() => {
-        setProgress((p) => Math.min(p + Math.random() * 15, 85));
-      }, 400);
-
-      // Use the Uploadthing endpoint
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body:   formData,
+      const [uploaded] = await uploadFiles("documentPdf", {
+        files: [file],
+        onUploadProgress: ({ totalProgress }) => setProgress(totalProgress),
       });
-
-      clearInterval(progressInterval);
-
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json?.error?.message ?? "Upload failed");
-      }
-
-      const json = await res.json();
-      const url  = json.data?.url ?? json.url;
-
-      if (!url) throw new Error("No URL returned from upload");
-
+      const uploadId = uploaded?.serverData?.uploadId;
+      if (!uploadId) throw new Error("The upload could not be confirmed. Please try again.");
       setProgress(100);
-      setUploadedUrl(url);
-      setUploadedSize(file.size);
+      setUploadedUrl(uploadId);
 
       // Slight delay before showing form
       setTimeout(() => setStep("form"), 600);
@@ -120,7 +103,6 @@ export default function UploadNewPage() {
             onClick={() => {
               setStep("drop");
               setUploadedUrl(null);
-              setUploadedSize(0);
               setProgress(0);
             }}
             className="px-5 py-2.5 border border-border text-foreground rounded-xl text-sm font-medium
@@ -178,6 +160,8 @@ export default function UploadNewPage() {
         })}
       </div>
 
+      {step === "drop" && <p className="text-sm text-muted-foreground">Upload only files you are comfortable sharing publicly. The storage link may be accessible before review and can bypass download or print settings; private uploads are not available yet.</p>}
+
       {/* Step 1: File drop */}
       {step === "drop" && (
         <UploadDropzone
@@ -192,8 +176,7 @@ export default function UploadNewPage() {
       {/* Step 2: Metadata form */}
       {step === "form" && uploadedUrl && dataLoaded && (
         <UploadForm
-          fileUrl={uploadedUrl}
-          fileSize={uploadedSize}
+          uploadId={uploadedUrl}
           categories={categories}
           institutions={institutions}
           userInstitutionId={user?.institutionId}

@@ -47,7 +47,8 @@ export async function generateMetadata(
   };
 }
 
-export const revalidate = 300; // 5 min ISR
+// This page includes the current user's bookmark and reaction state.
+export const dynamic = "force-dynamic";
 
 export default async function DocumentWorkspacePage({ params }: PageProps) {
   const { slug } = await params;

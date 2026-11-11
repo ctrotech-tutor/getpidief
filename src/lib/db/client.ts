@@ -1,86 +1,31 @@
-import { neon, neonConfig, Pool } from "@neondatabase/serverless";
-import { drizzle as drizzleNeon } from "drizzle-orm/neon-http";
-import { drizzle as drizzlePool } from "drizzle-orm/neon-serverless";
-import { drizzle as drizzleNode } from "drizzle-orm/node-postgres";
-import { Pool as PgPool } from "pg";
-import ws from "ws";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 import * as schema from "./schema";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ENVIRONMENT VALIDATION
-// ─────────────────────────────────────────────────────────────────────────────
+// All application queries and transactions use the PostgreSQL wire protocol.
+// This module is server-only and must not be imported by Edge runtime code.
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) throw new Error("DATABASE_URL environment variable is not set");
 
-const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) {
-  throw new Error("DATABASE_URL environment variable is not set");
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CLIENT STRATEGY
-//
-// We use THREE different clients depending on context:
-//
-// 1. HTTP (serverless)  — Next.js Edge Functions, API Routes, Server Components
-//    ✅ No connection state, cold-start safe, works on Vercel Edge
-//
-// 2. WebSocket Pool     — Long-running contexts needing transactions
-//    ✅ Real transactions, use in Server Actions with BEGIN/COMMIT
-//
-// 3. Node-postgres      — Inngest workers, migration scripts, seeding
-//    ✅ Full pg features, not edge-compatible
-//
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Configure Neon WebSocket for non-edge environments
-if (typeof process !== "undefined" && process.env.NEXT_RUNTIME !== "edge") {
-  neonConfig.webSocketConstructor = ws;
-}
-
-// ── 1. HTTP Client (default — use this everywhere unless you need transactions) ──
-
-const httpSql = neon(DATABASE_URL);
-
-export const db = drizzleNeon(httpSql, {
-  schema,
-  logger: process.env.NODE_ENV === "development",
+// Reuse one bounded pool in a Node process, including during development reloads.
+const globalForDb = globalThis as typeof globalThis & { getpidiefPool?: Pool };
+const pool = globalForDb.getpidiefPool ?? new Pool({
+  connectionString,
+  max: 5,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 10_000,
 });
+if (process.env.NODE_ENV !== "production") globalForDb.getpidiefPool = pool;
 
-// ── 2. Pool Client (for Server Actions that need transactions) ─────────────────
-
-let _pool: Pool | null = null;
-
-function getPool(): Pool {
-  if (!_pool) {
-    _pool = new Pool({ connectionString: DATABASE_URL });
-  }
-  return _pool;
-}
-
-export function getPooledDb() {
-  return drizzlePool(getPool(), { schema, logger: false });
-}
-
-// ── 3. Node client (for scripts / Inngest workers) ────────────────────────────
-
-export function getNodeDb() {
-  const pool = new PgPool({ connectionString: DATABASE_URL });
-  return drizzleNode(pool, { schema, logger: false });
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TRANSACTION HELPER  (wraps pooled client)
-// ─────────────────────────────────────────────────────────────────────────────
+export const db = drizzle(pool, { schema, logger: process.env.NODE_ENV === "development" });
+export function getPooledDb() { return db; }
+export function getNodeDb() { return db; }
 
 export async function withTransaction<T>(
-  callback: (tx: ReturnType<typeof getPooledDb>) => Promise<T>
+  callback: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => Promise<T>
 ): Promise<T> {
-  const pooledDb = getPooledDb();
-  return pooledDb.transaction(callback as never);
+  return db.transaction(callback);
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TYPE EXPORTS
-// ─────────────────────────────────────────────────────────────────────────────
 
 export type Database = typeof db;
 export type { schema };

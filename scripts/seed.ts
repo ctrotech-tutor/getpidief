@@ -6,9 +6,11 @@
  * Seeds: institutions, categories, tags, badges, system settings, + 3 test users
  */
 
-import "dotenv/config";
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import { config } from "dotenv";
+config({ path: ".env.local", quiet: true });
+config({ path: ".env", quiet: true });
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { inArray, sql } from "drizzle-orm";
 import {
   institutions, categories, tags, badges, systemSettings,
@@ -19,12 +21,11 @@ import {
 } from "../src/lib/db/schema";
 import bcrypt from "bcryptjs";
 
-// Use Neon HTTP driver for scripts to avoid flaky TCP/pool timeouts.
-// Works well locally and in CI because it's stateless per query.
-const connectionString =
-  process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL!;
-const neonSql = neon(connectionString);
-const seedDb = drizzle(neonSql);
+// Seeding writes demo accounts and content. Only use an explicitly chosen database.
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) throw new Error("DATABASE_URL environment variable is not set");
+const pool = new Pool({ connectionString });
+const seedDb = drizzle(pool);
 
 async function withRetry<T>(label: string, fn: () => Promise<T>, attempts = 4): Promise<T> {
   let lastErr: unknown;
@@ -480,5 +481,5 @@ async function seed() {
 
 seed().catch((err) => {
   console.error("❌ Seed failed:", err);
-  process.exit(1);
-});
+  process.exitCode = 1;
+}).finally(() => pool.end());

@@ -33,33 +33,39 @@ export function WorkstationActions({
 
   async function handleReaction(type: "like" | "dislike") {
     if (!isAuthenticated) { addToast({ type: "info", title: "Sign in to react to documents" }); return; }
-    // Optimistic update
+    if (isPending) return;
+    // Keep the most recent confirmed values in case this request fails.
     const prev = reaction;
+    const previousLikes = likes;
+    const previousDislikes = dislikes;
+    const nextReaction = reaction === type ? null : type;
     if (type === "like") {
-      setLikes((l) => reaction === "like" ? l - 1 : l + 1);
+      setLikes((l) => reaction === "like" ? Math.max(0, l - 1) : l + 1);
       if (reaction === "dislike") setDislikes((d) => Math.max(0, d - 1));
     } else {
-      setDislikes((d) => reaction === "dislike" ? d - 1 : d + 1);
+      setDislikes((d) => reaction === "dislike" ? Math.max(0, d - 1) : d + 1);
       if (reaction === "like") setLikes((l) => Math.max(0, l - 1));
     }
-    setReaction(reaction === type ? null : type);
+    setReaction(nextReaction);
 
     start(async () => {
       try {
         const res  = await fetch(`/api/documents/${documentId}/react`, {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ type }),
+          body:    JSON.stringify({ reaction: nextReaction }),
         });
         if (!res.ok) throw new Error();
         const json = await res.json();
         setLikes(json.data.likeCount);
         setDislikes(json.data.dislikeCount);
+        setReaction(json.data.userReaction);
       } catch {
         // Revert
         setReaction(prev);
-        setLikes(initialLikeCount);
-        setDislikes(initialDislikeCount);
+        setLikes(previousLikes);
+        setDislikes(previousDislikes);
+        addToast({ type: "error", title: "Could not update your reaction" });
       }
     });
   }
@@ -70,17 +76,19 @@ export function WorkstationActions({
     setBookmarked((v) => !v);
     start(async () => {
       try {
-        await fetch("/api/bookmarks", {
+        const res = await fetch("/api/bookmarks", {
           method:  prev ? "DELETE" : "POST",
           headers: { "Content-Type": "application/json" },
           body:    JSON.stringify({ documentId }),
         });
+        if (!res.ok) throw new Error("Bookmark update failed");
         addToast({
           type:  "success",
           title: prev ? "Removed from library" : "Saved to library",
         });
       } catch {
         setBookmarked(prev);
+        addToast({ type: "error", title: "Could not update your library" });
       }
     });
   }
@@ -90,6 +98,7 @@ export function WorkstationActions({
       {/* Like */}
       <ActionButton
         onClick={() => handleReaction("like")}
+        toggle
         active={reaction === "like"}
         activeColor="text-primary"
         disabled={isPending}
@@ -106,6 +115,7 @@ export function WorkstationActions({
       {/* Dislike */}
       <ActionButton
         onClick={() => handleReaction("dislike")}
+        toggle
         active={reaction === "dislike"}
         activeColor="text-destructive"
         disabled={isPending}
@@ -121,6 +131,7 @@ export function WorkstationActions({
       {/* Bookmark */}
       <ActionButton
         onClick={handleBookmark}
+        toggle
         active={bookmarked}
         activeColor="text-[var(--gold)]"
         disabled={isPending}
@@ -168,6 +179,7 @@ function ActionButton({
   children,
   onClick,
   active     = false,
+  toggle = false,
   activeColor= "text-primary",
   disabled   = false,
   className,
@@ -176,6 +188,7 @@ function ActionButton({
   children:   React.ReactNode;
   onClick:    () => void;
   active?:    boolean;
+  toggle?: boolean;
   activeColor?:string;
   disabled?:  boolean;
   className?: string;
@@ -187,6 +200,7 @@ function ActionButton({
       onClick={onClick}
       disabled={disabled}
       aria-label={ariaLabel}
+      aria-pressed={toggle ? active : undefined}
       className={cn(
         "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium",
         "border transition-all duration-150",

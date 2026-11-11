@@ -4,7 +4,7 @@ import { authUsers } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { redis, KEYS } from "@/lib/redis/client";
 import { nanoid } from "nanoid";
-import { sgMail, EMAIL_FROM } from "@/lib/email/client";
+import { getEmailClient, EMAIL_FROM } from "@/lib/email/client";
 import { render } from "@react-email/render";
 import { VerificationEmail } from "@/components/emails/VerificationEmail";
 
@@ -63,7 +63,7 @@ export const sendEmailVerification = inngest.createFunction(
           token,
           verificationLink,
         }));
-      await sgMail.send({
+      await getEmailClient().send({
         from: EMAIL_FROM.verification,
         to: user.email,
         subject: "Verify your email address — getpidief",

@@ -3,8 +3,6 @@
 import { useState, useRef, useEffect, useTransition } from "react";
 import { useUIStore } from "@/stores/index";
 import { cn } from "@/lib/utils/cn";
-import { usePusherChannel } from "@/hooks/usePusher";
-import { CHANNELS, EVENTS } from "@/lib/pusher/server";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // REPORT MODAL
@@ -38,9 +36,6 @@ export function ReportModal() {
   const [isPending, start] = useTransition();
 
   const isOpen = !!documentId;
-
-  // Real-time admin channel for report notifications
-  const { bind } = usePusherChannel(CHANNELS.ADMIN);
 
   // Reset when opened
   useEffect(() => {

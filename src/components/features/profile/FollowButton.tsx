@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useSession } from "@/hooks/useSession";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
 
 export function FollowButton({
@@ -12,34 +13,43 @@ export function FollowButton({
   isFollowing: boolean;
 }) {
   const { isAuthenticated } = useSession();
+  const router = useRouter();
+  const [error, setError] = useState("");
   const [following, setFollowing] = useState(initial);
   const [isPending, start]        = useTransition();
 
   async function toggle() {
     if (!isAuthenticated) {
-      window.location.href = "/login";
+      router.push("/login");
       return;
     }
+    if (isPending) return;
+    setError("");
     const prev = following;
     setFollowing((v) => !v);
     start(async () => {
       try {
-        await fetch("/api/follows", {
+        const response = await fetch("/api/follows", {
           method:  prev ? "DELETE" : "POST",
           headers: { "Content-Type": "application/json" },
           body:    JSON.stringify({ followingId }),
         });
+        if (!response.ok) throw new Error("Follow request failed");
+        router.refresh();
       } catch {
         setFollowing(prev);
+        setError("Could not update following. Please try again.");
       }
     });
   }
 
   return (
+    <div>
     <button
       type="button"
       onClick={toggle}
       disabled={isPending}
+      aria-pressed={following}
       className={cn(
         "w-full py-2 rounded-xl text-sm font-medium transition-all duration-150",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -51,5 +61,7 @@ export function FollowButton({
     >
       {following ? "Following" : "Follow"}
     </button>
+    {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}
+    </div>
   );
 }

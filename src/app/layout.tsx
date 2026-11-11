@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
 import { ThemeProvider, ThemeScript } from "@/components/providers/theme-provider";
@@ -9,26 +9,11 @@ import { PostHogProvider } from "@/components/providers/PostHogProvider";
 
 // ── Fonts ─────────────────────────────────────────────────────────────────────
 
-const geist = Geist({
-  variable: "--font-display",
-  subsets: ["latin"],
-  display: "swap",
-  weight: ["400", "500", "600", "700", "800"],
-});
-
-const inter = Inter({
-  variable: "--font-body",
-  subsets: ["latin"],
-  display: "swap",
-  weight: ["300", "400", "500", "600"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-mono",
-  subsets: ["latin"],
-  display: "swap",
-  weight: ["400", "500"],
-});
+// Self-hosted variable fonts keep builds independent of Google Fonts and avoid
+// a browser-side third-party font request. Licenses live beside each font.
+const geist = localFont({ src: "./fonts/geist/geist.woff2", variable: "--font-display", display: "swap", weight: "100 900" });
+const inter = localFont({ src: "./fonts/inter/inter.woff2", variable: "--font-body", display: "swap", weight: "100 900" });
+const geistMono = localFont({ src: "./fonts/geist-mono/geist-mono.woff2", variable: "--font-mono", display: "swap", weight: "100 900" });
 
 // ── Metadata ──────────────────────────────────────────────────────────────────
 

@@ -33,7 +33,9 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     if (!profile) return apiNotFound("User");
 
-    return apiSuccess(profile);
+    const response = apiSuccess(profile);
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
   } catch (e) {
     return handleApiError(e);
   }

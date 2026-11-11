@@ -4,7 +4,7 @@ import { notifications, users, pushSubscriptions, documents, comments, userActiv
 import { eq, and, sql } from "drizzle-orm";
 import { redis, KEYS, incrCounter, invalidateCache } from "@/lib/redis/client";
 import { pusherServer, CHANNELS, EVENTS } from "@/lib/pusher/server";
-import { sgMail } from "@/lib/email/client";
+import { getEmailClient } from "@/lib/email/client";
 import webpush from "web-push";
 import { cron } from "inngest";
 import type { ReactElement } from "react";
@@ -141,7 +141,7 @@ export const sendNotification = inngest.createFunction(
 
         if (!emailTemplate) return;
 
-        await sgMail.send({
+        await getEmailClient().send({
           from: "getpidief <notifications@getpidief.me>",
           to: email,
           subject: emailTemplate.subject,
@@ -657,7 +657,7 @@ export const processWeeklyDigest = inngest.createFunction(
           fromFollowed: Array.from(contributorMap.values()),
           trendingAtInstitution,
         }));
-      await sgMail.send({
+      await getEmailClient().send({
         from: "getpidief <digest@getpidief.me>",
         to: email,
         subject: "Your weekly academic digest 📚",

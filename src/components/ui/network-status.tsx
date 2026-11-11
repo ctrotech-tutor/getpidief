@@ -13,10 +13,10 @@ interface NetworkStatus {
 
 export function NetworkStatus() {
   const [status, setStatus] = useState<NetworkStatus>({
-    isOnline: navigator.onLine,
+    isOnline: true,
     isSlow: false,
     isUnstable: false,
-    lastChecked: Date.now(),
+    lastChecked: 0,
   });
   const [isVisible, setIsVisible] = useState(false);
 

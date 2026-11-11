@@ -2,7 +2,7 @@ import { inngest } from "../../client";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
-import { sgMail, EMAIL_FROM } from "@/lib/email/client";
+import { getEmailClient, EMAIL_FROM } from "@/lib/email/client";
 import { redis, KEYS, invalidateCache } from "@/lib/redis/client";
 import { render } from "@react-email/render";
 import { WelcomeEmail } from "@/components/emails/WelcomeEmail";
@@ -26,7 +26,7 @@ export const handleUserRegistered = inngest.createFunction(
     // Send welcome email
     await step.run("send-welcome-email", async () => {
       const html = await render(WelcomeEmail({ name, email }));
-      await sgMail.send({
+      await getEmailClient().send({
         from:    EMAIL_FROM.auth,
         to:      email,
         subject: "Welcome to getpidief — your scholar profile is ready",
@@ -76,7 +76,7 @@ export const sendPasswordResetEmail = inngest.createFunction(
 
     await step.run("send-email", async () => {
       const html = await render(PasswordResetEmail({ name, token, ipAddress }));
-      await sgMail.send({
+      await getEmailClient().send({
         from:    EMAIL_FROM.auth,
         to:      email,
         subject: "Reset your getpidief password",

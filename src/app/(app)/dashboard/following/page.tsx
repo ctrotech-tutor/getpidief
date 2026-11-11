@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { usersRepository } from "@/lib/db/repositories/users";
 import Link from "next/link";
 import Image from "next/image";
+import { FollowButton } from "@/components/features/profile/FollowButton";
 import { formatNumber } from "@/lib/utils/format";
 
 type FollowingUser = Awaited<
@@ -14,6 +15,8 @@ type FollowingUser = Awaited<
   follower_count?: number;
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function FollowingPage({
   searchParams,
 }: {
@@ -24,7 +27,8 @@ export default async function FollowingPage({
 
   const params = await searchParams;
   const tab    = params.tab === "followers" ? "followers" : "following";
-  const page   = parseInt(params.page ?? "1", 10);
+  const pageValue = params.page ?? "1";
+  const page = /^[1-9]\d*$/.test(pageValue) && Number.isSafeInteger(Number(pageValue)) && Number(pageValue) <= 100000 ? Number(pageValue) : 1;
 
   const [followingData, followersData] = await Promise.all([
     usersRepository.getFollowing(session.user.id, { page, limit: 20 }),
@@ -107,24 +111,17 @@ export default async function FollowingPage({
                 </div>
 
                 {tab === "following" && (
-                  <form action={async () => {
-                    "use server";
-                    // Inline unfollow — will use server action
-                  }}>
-                    <Link
-                      href={`/u/${uname}`}
-                      className="text-xs px-3 py-1.5 border border-border rounded-lg
-                                 text-muted-foreground hover:text-foreground hover:border-ring/40 transition-colors"
-                    >
-                      View
-                    </Link>
-                  </form>
+                  <div className="min-w-24"><FollowButton followingId={u.id} isFollowing /></div>
                 )}
               </div>
             );
           })}
         </div>
       )}
+      <nav className="flex gap-3 justify-center" aria-label="People pages">
+        {page > 1 && <Link href={`/dashboard/following?tab=${tab}&page=${page - 1}`} className="text-sm underline">Previous</Link>}
+        {page < (tab === "followers" ? followersData.totalPages : followingData.totalPages) && <Link href={`/dashboard/following?tab=${tab}&page=${page + 1}`} className="text-sm underline">Next</Link>}
+      </nav>
     </div>
   );
 }

@@ -1,12 +1,14 @@
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
-import { documents, auditLogs } from "@/lib/db/schema";
-import { eq, desc, count } from "drizzle-orm";
+import { documents, users } from "@/lib/db/schema";
+import { eq, desc, count, and, isNull, sql } from "drizzle-orm";
 import { formatDate, formatFileSize } from "@/lib/utils/format";
 import { revalidatePath } from "next/cache";
 import { RESOURCE_TYPE_LABELS } from "@/types/index";
 import Link from "next/link";
-import { inngest } from "@/lib/inngest/client";
+import { moderateDocument, moderationInput } from "@/lib/moderation/documents";
+import { resolveReport, resolveReportInput } from "@/lib/moderation/reports";
+import { redirect } from "next/navigation";
 
 interface PageProps {
   searchParams: Promise<{ status?: string; page?: string }>;
@@ -17,6 +19,7 @@ const STATUS_TABS = [
   { value: "approved", label: "Approved", color: "text-[var(--emerald)]" },
   { value: "rejected", label: "Rejected", color: "text-destructive"       },
   { value: "flagged",  label: "Flagged",  color: "text-[var(--amber)]"   },
+  { value: "reported", label: "Reported", color: "text-[var(--amber)]" },
 ];
 
 const REJECTION_REASONS = [
@@ -29,15 +32,26 @@ const REJECTION_REASONS = [
 ];
 
 export default async function ModerationPage({ searchParams }: PageProps) {
-  const params  = await searchParams;
-  const status  = (params.status ?? "pending") as any;
-  const page    = parseInt(params.page ?? "1", 10);
-  const limit   = 15;
-  const offset  = (page - 1) * limit;
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
+  const actor = await db.query.users.findFirst({
+    where: and(eq(users.id, session.user.id), eq(users.status, "active"), isNull(users.deletedAt)),
+    columns: { role: true },
+  });
+  if (!actor || !["moderator", "admin", "super_admin"].includes(actor.role)) redirect("/explore");
+  const params = await searchParams;
+  const status = (["pending", "approved", "rejected", "flagged", "reported"] as const).find((s) => s === params.status) ?? "pending";
+  const parsedPage = Number(params.page ?? "1");
+  const page = Number.isSafeInteger(parsedPage) && parsedPage > 0 ? Math.min(parsedPage, 10000) : 1;
+  const limit = 15;
+  const offset = (page - 1) * limit;
 
+  const filter = status === "reported"
+    ? and(isNull(documents.deletedAt), sql`exists (select 1 from document_reports r where r.document_id = ${documents.id} and r.status in ('open', 'under_review'))`)
+    : and(eq(documents.status, status), isNull(documents.deletedAt));
   const [docs, totalResult] = await Promise.all([
     db.query.documents.findMany({
-      where: eq(documents.status, status),
+      where: filter,
       orderBy: [desc(documents.createdAt)],
       limit,
       offset,
@@ -47,64 +61,57 @@ export default async function ModerationPage({ searchParams }: PageProps) {
         institution: { columns: { id: true, name: true } },
       },
     }),
-    db.select({ count: count() }).from(documents).where(eq(documents.status, status)),
+    db.select({ count: count() }).from(documents).where(filter),
   ]);
+
+  // Bound reports per resource, not globally, so a heavily reported item cannot
+  // hide every other resource's reports. Oldest first makes reviews fair.
+  const reports = status === "reported" && docs.length
+    ? (await db.execute<{ id: string; documentId: string; reasons: string[]; additionalInfo: string | null; createdAt: Date; total: number }>(sql`
+        SELECT id, document_id AS "documentId", reasons, additional_info AS "additionalInfo", created_at AS "createdAt", total::int
+        FROM (
+          SELECT id, document_id, reasons, additional_info, created_at,
+            row_number() OVER (PARTITION BY document_id ORDER BY created_at ASC, id ASC) AS position,
+            count(*) OVER (PARTITION BY document_id) AS total
+          FROM document_reports WHERE document_id IN (${sql.join(docs.map((doc) => sql`${doc.id}::uuid`), sql`, `)})
+            AND status IN ('open', 'under_review')
+        ) pending WHERE position <= 5 ORDER BY created_at ASC, id ASC
+      `)).rows
+    : [];
 
   const total      = totalResult[0]?.count ?? 0;
   const totalPages = Math.ceil(total / limit);
 
-  // Server actions
+  // Server actions are independently authenticated and authorized in the service.
   async function approveDocument(formData: FormData) {
     "use server";
-    const s   = await auth();
-    if (!s?.user?.id) return;
-    const docId = formData.get("docId") as string;
-
-    await db.update(documents).set({
-      status:       "approved",
-      publishedAt:  new Date(),
-      moderatedByAdminId: s.user.id,
-      moderatedAt:  new Date(),
-      updatedAt:    new Date(),
-    }).where(eq(documents.id, docId));
-
-    await db.insert(auditLogs).values({
-      adminId:     s.user.id,
-      action:      "document_approved",
-      entityType:  "document",
-      entityId:    docId,
-      afterState:  { status: "approved" },
-    });
-
-    await inngest.send({ name: "document/approved", data: { documentId: docId, moderatorId: s.user.id } });
+    const session = await auth();
+    if (!session?.user?.id) throw new Error("Unauthorized");
+    const input = moderationInput.parse({ documentId: formData.get("docId"), action: "approve" });
+    const result = await moderateDocument(session.user.id, input);
+    if (result.outcome === "forbidden" || result.outcome === "not_found") throw new Error("Action unavailable");
     revalidatePath("/admin/moderation");
   }
 
   async function rejectDocument(formData: FormData) {
     "use server";
-    const s = await auth();
-    if (!s?.user?.id) return;
-    const docId  = formData.get("docId") as string;
-    const reason = formData.get("rejectionReason") as string;
-    const note   = formData.get("rejectionNote") as string;
+    const session = await auth();
+    if (!session?.user?.id) throw new Error("Unauthorized");
+    const input = moderationInput.parse({ documentId: formData.get("docId"), action: "reject",
+      rejectionReason: formData.get("rejectionReason"), rejectionNote: formData.get("rejectionNote") || undefined });
+    const result = await moderateDocument(session.user.id, input);
+    if (result.outcome === "forbidden" || result.outcome === "not_found") throw new Error("Action unavailable");
+    revalidatePath("/admin/moderation");
+  }
 
-    await db.update(documents).set({
-      status:          "rejected",
-      rejectionReasons: [reason],
-      moderatedByAdminId: s.user.id,
-      moderatedAt:     new Date(),
-      updatedAt:       new Date(),
-    }).where(eq(documents.id, docId));
-
-    await db.insert(auditLogs).values({
-      adminId:    s.user.id,
-      action:     "document_rejected",
-      entityType: "document",
-      entityId:   docId,
-      afterState: { status: "rejected", reason },
-    });
-
-    await inngest.send({ name: "document/rejected", data: { documentId: docId, moderatorId: s.user.id, reason, note } });
+  async function reviewReport(formData: FormData) {
+    "use server";
+    const session = await auth();
+    if (!session?.user?.id) throw new Error("Unauthorized");
+    const input = resolveReportInput.parse({ reportId: formData.get("reportId"), documentId: formData.get("documentId"),
+      decision: formData.get("decision"), note: formData.get("note") });
+    const result = await resolveReport(session.user.id, input);
+    if (!["updated", "unchanged"].includes(result.outcome)) throw new Error("Report resolution unavailable. Refresh and try again.");
     revalidatePath("/admin/moderation");
   }
 
@@ -185,8 +192,30 @@ export default async function ModerationPage({ searchParams }: PageProps) {
                   </a>
                 </div>
 
+                {status === "reported" && (
+                  <div className="space-y-2 rounded-lg border border-border p-3 text-sm">
+                    <p className="font-medium">Open reports {reports.find((report) => report.documentId === doc.id)?.total ?? 0}</p>
+                    {reports.filter((report) => report.documentId === doc.id).map((report) => (
+                      <div key={report.id} className="text-muted-foreground border-t border-border pt-3 space-y-2">
+                        <p>{report.reasons.join(", ").replaceAll("_", " ")}</p>
+                        {report.additionalInfo && <p>{report.additionalInfo}</p>}
+                        <p className="text-xs">{formatDate(report.createdAt)}</p>
+                        <form action={reviewReport} className="flex flex-wrap gap-2 items-center">
+                          <input type="hidden" name="reportId" value={report.id} />
+                          <input type="hidden" name="documentId" value={doc.id} />
+                          <label className="sr-only" htmlFor={`note-${report.id}`}>Resolution note</label>
+                          <input id={`note-${report.id}`} name="note" required minLength={3} maxLength={500}
+                            placeholder="Resolution note" className="min-w-48 flex-1 h-9 px-3 text-sm bg-secondary border border-border rounded-lg" />
+                          <button name="decision" value="actioned" className="px-3 py-2 rounded-lg border border-border text-foreground text-xs">Mark actioned</button>
+                          <button name="decision" value="dismissed" className="px-3 py-2 rounded-lg border border-border text-foreground text-xs">Dismiss</button>
+                        </form>
+                      </div>
+                    ))}
+                    <p className="text-xs text-muted-foreground">Showing up to five oldest reports for this resource. Resolve reports to see the next ones. Resolving a report does not change the resource status; use the resource actions separately.</p>
+                  </div>
+                )}
                 {/* Approve / Reject actions */}
-                {status === "pending" && (
+                {(status === "pending" || status === "reported" || status === "flagged") && (
                   <div className="flex items-start gap-3 pt-3 border-t border-border flex-wrap">
                     {/* Approve */}
                     <form action={approveDocument}>
@@ -250,7 +279,7 @@ export default async function ModerationPage({ searchParams }: PageProps) {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex justify-center gap-2">
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+          {Array.from({ length: Math.min(totalPages, 10000) }, (_, i) => i + 1).slice(Math.max(0, page - 3), page + 2).map((p) => (
             <Link
               key={p}
               href={`/admin/moderation?status=${status}&page=${p}`}

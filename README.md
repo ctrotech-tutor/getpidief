@@ -20,7 +20,7 @@ npm ci
 npm run dev
 ```
 
-For a local PostgreSQL container and provider-neutral database configuration, see [database setup](docs/DATABASE.md).
+For a fresh local setup and pull instructions, see [local quickstart](docs/LOCAL-QUICKSTART.md). For PostgreSQL provider and migration details, see [database setup](docs/DATABASE.md).
 
 Open http://localhost:3000. Existing authenticated features and integrations require their own environment configuration and services; the minimal homepage does not demonstrate that those features work. Some packages run install scripts, including an Inngest CLI binary download, which requires access to GitHub releases.
 

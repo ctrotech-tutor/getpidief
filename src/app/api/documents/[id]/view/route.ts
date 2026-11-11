@@ -1,66 +1,53 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
+import { sql } from "drizzle-orm";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
-import { documentViews } from "@/lib/db/schema";
-import { apiSuccess, handleApiError } from "@/lib/utils/api";
+import { apiError, apiSuccess, handleApiError } from "@/lib/utils/api";
 import { redis, KEYS, incrCounter } from "@/lib/redis/client";
 import { inngest } from "@/lib/inngest/client";
 import crypto from "crypto";
 
 interface Params { params: Promise<{ id: string }> }
 
-// POST /api/documents/[id]/view — track document view
 export async function POST(req: NextRequest, { params }: Params) {
   try {
-    const { id }  = await params;
+    const { id } = await params;
+    if (!z.string().uuid().safeParse(id).success) return apiError("INVALID_PARAMS", "Invalid document ID");
     const session = await auth();
-    const ip      = req.headers.get("x-forwarded-for") ?? "unknown";
-    const ipHash  = crypto.createHash("sha256").update(ip).digest("hex");
-    const sessionId = req.cookies.get("__session")?.value ?? ipHash.slice(0, 16);
+    const userId = session?.user?.id ?? null;
+    const ip = (req.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
+    const ipHash = crypto.createHash("sha256").update(ip).digest("hex");
+    // Never store an authentication cookie or raw referrer in analytics.
+    const sessionId = ipHash.slice(0, 16);
+    const userAgent = req.headers.get("user-agent")?.slice(0, 500) ?? null;
+    const result = await db.execute<{ id: string }>(sql`
+      WITH eligible AS MATERIALIZED (
+        SELECT id FROM documents WHERE id = ${id}::uuid AND status = 'approved'
+          AND visibility = 'public' AND deleted_at IS NULL FOR UPDATE
+      )
+      INSERT INTO document_views (document_id, user_id, session_id, ip_hash, user_agent)
+      SELECT id, ${userId}::uuid, ${sessionId}, ${ipHash}, ${userAgent} FROM eligible RETURNING id
+    `);
+    if (!result.rows.length) return apiError("NOT_FOUND", "Document not found", 404);
 
-    // Buffer view count increment in Redis (flushed to DB every 5 min by Inngest)
-    await incrCounter(KEYS.viewCountBuffer(id));
-    if (redis) {
-      try {
-        await redis.sadd(KEYS.pendingCounterFlush(), id);
-      } catch (error) {
-        console.warn("[Documents] Failed to add to pending counter flush:", error);
-      }
-    }
-
-    // Insert raw view event (for analytics — high write table)
-    await db.insert(documentViews).values({
-      documentId: id,
-      userId:     session?.user?.id ?? null,
-      sessionId,
-      ipHash,
-      userAgent:  req.headers.get("user-agent") ?? null,
-      referrer:   req.headers.get("referer") ?? null,
-    });
-
-    if (session?.user?.id) {
-      // Update recently viewed in Redis
+    // The view has committed. Analytics delivery must not turn it into a failure.
+    try {
+      await incrCounter(KEYS.viewCountBuffer(id));
+      if (redis) await redis.sadd(KEYS.pendingCounterFlush(), id);
+    } catch (error) { console.warn("View counter buffering failed", error); }
+    if (userId) {
       if (redis) {
         try {
-          await redis.zadd(
-            KEYS.recentlyViewed(session.user.id),
-            { score: Date.now(), member: id }
-          );
-          // Keep only last 50
-          await redis.zremrangebyrank(KEYS.recentlyViewed(session.user.id), 0, -51);
-        } catch (error) {
-          console.warn("[Documents] Failed to update recently viewed:", error);
-        }
+          await redis.zadd(KEYS.recentlyViewed(userId), { score: Date.now(), member: id });
+          await redis.zremrangebyrank(KEYS.recentlyViewed(userId), 0, -51);
+        } catch (error) { console.warn("Recently viewed update failed", error); }
       }
-
-      await inngest.send({
-        name: "document/viewed",
-        data: { documentId: id, userId: session.user.id, sessionId, ipHash },
-      });
+      try { await inngest.send({ name: "document/viewed", data: { documentId: id, userId, sessionId, ipHash } }); }
+      catch (error) { console.warn("View event delivery failed", error); }
     }
-
-    return apiSuccess({ tracked: true });
-  } catch (e) {
-    return handleApiError(e);
-  }
+    const response = apiSuccess({ tracked: true });
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
+  } catch (error) { return handleApiError(error); }
 }

@@ -10,13 +10,14 @@ const mocks = vi.hoisted(() => ({ auth: vi.fn(), send: vi.fn(), trigger: vi.fn()
 vi.mock("@/lib/auth/auth", () => ({ auth: mocks.auth }));
 vi.mock("@/lib/inngest/client", () => ({ inngest: { send: mocks.send } }));
 vi.mock("@/lib/pusher/server", () => ({ pusherServer: { trigger: mocks.trigger }, CHANNELS: { privateDocument: (id: string) => id }, EVENTS: { REACTION_UPDATED: "reaction", COMMENT_POSTED: "comment" } }));
-vi.mock("@/lib/redis/client", () => ({ rateLimiters: { report: { limit: async () => ({ success: true }) }, comment: { limit: async () => ({ success: true }) } }, KEYS: { followerCount: (id: string) => id, userFollowingList: (id: string) => id }, invalidateCache: async () => {} }));
+vi.mock("@/lib/redis/client", () => ({ redis: null, incrCounter: async () => {}, rateLimiters: { report: { limit: async () => ({ success: true }) }, comment: { limit: async () => ({ success: true }) } }, KEYS: { viewCountBuffer: (id: string) => id, followerCount: (id: string) => id, userFollowingList: (id: string) => id }, invalidateCache: async () => {} }));
 
 describe.skipIf(!enabled)("real PostgreSQL social mutations", () => {
   const ids = { actor: randomUUID(), author: randomUUID(), mod: randomUUID(), doc: randomUUID(), privateDoc: randomUUID(), category: randomUUID(), institution: randomUUID(), upload: randomUUID() };
   let db: typeof import("@/lib/db/client").db;
   let bookmark: typeof import("@/app/api/bookmarks/route");
   let reaction: typeof import("@/app/api/documents/[id]/react/route");
+  let views: typeof import("@/app/api/documents/[id]/view/route");
   let reports: typeof import("@/app/api/reports/route");
   let comments: typeof import("@/app/api/comments/route");
   let commentActions: typeof import("@/app/api/comments/[id]/route");
@@ -35,6 +36,7 @@ describe.skipIf(!enabled)("real PostgreSQL social mutations", () => {
     ({ db } = await import("@/lib/db/client"));
     bookmark = await import("@/app/api/bookmarks/route");
     reaction = await import("@/app/api/documents/[id]/react/route");
+    views = await import("@/app/api/documents/[id]/view/route");
     reports = await import("@/app/api/reports/route");
     comments = await import("@/app/api/comments/route");
     commentActions = await import("@/app/api/comments/[id]/route");
@@ -160,6 +162,16 @@ describe.skipIf(!enabled)("real PostgreSQL social mutations", () => {
     const result = await comments.POST(request({ documentId: ids.doc, content: "should not post" }));
     expect(result.status).toBe(404);
     await db.execute(sql`UPDATE users SET status = 'active' WHERE id = ${ids.actor}::uuid`);
+  });
+
+  it("records only public document views without storing authentication cookies", async () => {
+    const viewRequest = () => new NextRequest("http://localhost/view", { method: "POST", headers: { cookie: "__session=sensitive-cookie", referer: "https://example.test/private?token=secret" } });
+    expect((await views.POST(viewRequest(), params(ids.privateDoc))).status).toBe(404);
+    expect((await views.POST(viewRequest(), params(ids.doc))).status).toBe(200);
+    const rows = (await db.execute<{ session_id: string; referrer: string | null }>(sql`SELECT session_id, referrer FROM document_views WHERE document_id = ${ids.doc}::uuid`)).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].session_id).not.toContain("sensitive-cookie");
+    expect(rows[0].referrer).toBeNull();
   });
 
 });

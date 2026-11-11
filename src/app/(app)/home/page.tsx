@@ -17,8 +17,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
     likeCount: sql<number>`(select count(*)::int from post_likes where post_id = ${posts.id})`,
     liked: sql<boolean>`exists (select 1 from post_likes where post_id = ${posts.id} and user_id = ${userId}::uuid)`,
     saved: sql<boolean>`exists (select 1 from post_saves where post_id = ${posts.id} and user_id = ${userId}::uuid)`,
-    replyCount: sql<number>`(select count(*)::int from post_replies r join users u on u.id = r.author_id where r.post_id = ${posts.id} and r.deleted_at is null and u.status = 'active')`,
-  }).from(posts).innerJoin(users, eq(posts.authorId, users.id)).where(and(isNull(posts.deletedAt), eq(users.status, "active"),
+    replyCount: sql<number>`(select count(*)::int from post_replies r join users u on u.id = r.author_id where r.post_id = ${posts.id} and r.deleted_at is null and u.status = 'active' and u.deleted_at is null)`,
+  }).from(posts).innerJoin(users, eq(posts.authorId, users.id)).where(and(isNull(posts.deletedAt), eq(users.status, "active"), isNull(users.deletedAt),
     saved ? sql`exists (select 1 from post_saves where post_id = ${posts.id} and user_id = ${userId}::uuid)` : undefined,
     before ? sql`(${posts.createdAt}, ${posts.id}) < (select created_at, id from posts where id = ${before}::uuid)` : undefined,
   )).orderBy(desc(posts.createdAt), desc(posts.id)).limit(21);
@@ -31,7 +31,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
     cross join lateral (
       select r.id, r.body, u.display_name as name, r.created_at
       from post_replies r join users u on u.id = r.author_id
-      where r.post_id = p.id and r.deleted_at is null and u.status = 'active'
+      where r.post_id = p.id and r.deleted_at is null and u.status = 'active' and u.deleted_at is null
       order by r.created_at desc, r.id desc limit 3
     ) r where p.id in (${sql.join(ids.map(id => sql`${id}::uuid`), sql`, `)})
     order by p.id, r.created_at, r.id

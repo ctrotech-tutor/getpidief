@@ -11,7 +11,7 @@ async function currentUser() {
   const session = await auth();
   const id = session?.user?.id;
   if (!id) throw new Error("Please sign in again.");
-  const user = await db.query.users.findFirst({ where: eq(users.id, id), columns: { status: true, onboardingComplete: true } });
+  const user = await db.query.users.findFirst({ where: and(eq(users.id, id), isNull(users.deletedAt)), columns: { status: true, onboardingComplete: true } });
   if (!user || user.status !== "active" || !user.onboardingComplete) throw new Error("Account unavailable.");
   return id;
 }
@@ -33,7 +33,7 @@ function body(form: FormData, limit: number) {
 async function postId(form: FormData) {
   const id = form.get("postId");
   if (typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new Error("Invalid post.");
-  const [post] = await db.select({ id: posts.id }).from(posts).innerJoin(users, eq(posts.authorId, users.id)).where(and(eq(posts.id, id), isNull(posts.deletedAt), eq(users.status, "active"))).limit(1);
+  const [post] = await db.select({ id: posts.id }).from(posts).innerJoin(users, eq(posts.authorId, users.id)).where(and(eq(posts.id, id), isNull(posts.deletedAt), eq(users.status, "active"), isNull(users.deletedAt))).limit(1);
   if (!post) throw new Error("Post unavailable.");
   return id;
 }
@@ -52,7 +52,11 @@ export async function reply(form: FormData) {
   const text = body(form, 1000);
   const id = await postId(form);
   await limit(userId, "comment");
-  await db.insert(postReplies).values({ postId: id, authorId: userId, body: text });
+  await db.transaction(async tx => {
+    const [post] = await tx.select({ id: posts.id }).from(posts).where(and(eq(posts.id, id), isNull(posts.deletedAt))).for("update");
+    if (!post) throw new Error("Post unavailable.");
+    await tx.insert(postReplies).values({ postId: id, authorId: userId, body: text });
+  });
   revalidatePath("/");
   revalidatePath("/home");
   revalidatePath(`/home/post/${id}`);
@@ -100,4 +104,13 @@ export async function reportFeedContent(form: FormData) {
   });
   revalidatePath("/admin/feed-reports");
   redirect(`/home/post/${id}?reported=1`);
+}
+
+export async function deleteReply(form: FormData) {
+  const userId = await currentUser();
+  const id = await postId(form);
+  const replyId = form.get("replyId");
+  if (typeof replyId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(replyId)) throw new Error("Invalid reply.");
+  await db.update(postReplies).set({ deletedAt: new Date() }).where(and(eq(postReplies.id, replyId), eq(postReplies.postId, id), eq(postReplies.authorId, userId), isNull(postReplies.deletedAt)));
+  revalidatePath("/"); revalidatePath("/home"); revalidatePath(`/home/post/${id}`);
 }

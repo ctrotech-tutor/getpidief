@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const m = vi.hoisted(() => ({ auth: vi.fn(), profile: vi.fn(), select: vi.fn(), insert: vi.fn(), update: vi.fn(), del: vi.fn(), limitPost: vi.fn(), limitReply: vi.fn(), revalidate: vi.fn() }));
+const m = vi.hoisted(() => ({ auth: vi.fn(), profile: vi.fn(), select: vi.fn(), insert: vi.fn(), update: vi.fn(), del: vi.fn(), transaction: vi.fn(), limitPost: vi.fn(), limitReply: vi.fn(), revalidate: vi.fn() }));
 vi.mock("@/lib/auth/auth", () => ({ auth: m.auth }));
-vi.mock("@/lib/db/client", () => ({ db: { query: { users: { findFirst: m.profile } }, select: m.select, insert: m.insert, update: m.update, delete: m.del } }));
+vi.mock("@/lib/db/client", () => ({ db: { query: { users: { findFirst: m.profile } }, select: m.select, insert: m.insert, update: m.update, delete: m.del, transaction: m.transaction } }));
 vi.mock("@/lib/redis/client", () => ({ redisRateLimit: {}, rateLimiters: { feedPost: { limit: m.limitPost }, comment: { limit: m.limitReply } } }));
 vi.mock("next/cache", () => ({ revalidatePath: m.revalidate }));
 import { createPost, reply, toggleLike, deletePost } from "@/app/(app)/home/actions";
@@ -15,6 +15,7 @@ beforeEach(() => {
   m.limitPost.mockResolvedValue({ success: true }); m.limitReply.mockResolvedValue({ success: true });
   m.select.mockReturnValue({ from: () => ({ innerJoin: () => ({ where: () => ({ limit: async () => [{ id }] }) }) }) });
   m.insert.mockReturnValue({ values: () => ({ onConflictDoNothing: async () => {} }) });
+  m.transaction.mockImplementation(fn => fn({ select: () => ({ from: () => ({ where: () => ({ for: async () => [{ id }] }) }) }), insert: m.insert }));
   m.update.mockReturnValue({ set: () => ({ where: async () => {} }) });
 });
 describe("home feed mutations", () => {

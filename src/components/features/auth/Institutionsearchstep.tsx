@@ -44,7 +44,6 @@ export function InstitutionSearchStep({ popularInstitutions, initialInstitution 
     {!selected && popularInstitutions.length > 0 && <div className={styles.group}><p className={styles.label}>A few places to start</p><div className={styles.choices}>{popularInstitutions.map(item => <button type="button" key={item.id} className={styles.chip} onClick={() => choose(item)}>{item.name}</button>)}</div></div>}
     {!selected && !query && popularInstitutions.length === 0 && <div className={`${styles.group} ${styles.empty}`}><strong>Learning happens everywhere.</strong><br />Search the global directory above, or continue without an institution.</div>}
     <div className={styles.bottom}><SkipButton /><Submit disabled={!selected} /></div>
-    <p className={styles.directoryNote}>Search terms are shared with an external institution directory.</p>
   </form>;
 }
 function Submit({ disabled }: { disabled: boolean }) { const { pending } = useFormStatus(); return <button className={styles.primary} disabled={pending || disabled}>{pending ? "Saving…" : "Continue"}</button>; }

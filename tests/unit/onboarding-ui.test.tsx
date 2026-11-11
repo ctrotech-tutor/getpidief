@@ -18,7 +18,6 @@ describe("onboarding for an empty database", () => {
     fireEvent.change(screen.getByLabelText("Find your institution"), { target: { value: "Lagos" } });
     await waitFor(() => expect(screen.getByRole("button", { name: /University of Lagos/ })).toBeInTheDocument());
     expect(screen.queryByText(/ROR|Research Organization Registry/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/external institution directory/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /University of Lagos/ }));
     expect(screen.getByText("Selected: University of Lagos")).toBeInTheDocument();
   });

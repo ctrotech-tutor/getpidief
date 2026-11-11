@@ -6,6 +6,8 @@ import {
 import { auth } from "@/lib/auth/auth";
 import { rateLimiters } from "@/lib/redis/client";
 import { db } from "@/lib/db/client";
+import { documentUploads, users } from "@/lib/db/schema";
+import { and, eq, isNull } from "drizzle-orm";
 
 const f = createUploadthing();
 type SessionUserWithInstitution = { institutionId?: string | null };
@@ -17,9 +19,16 @@ type SessionUserWithInstitution = { institutionId?: string | null };
 export const ourFileRouter = {
   // ── Document PDF upload ───────────────────────────────────────────────────
   documentPdf: f({ pdf: { maxFileSize: "64MB", maxFileCount: 1 } })
-    .middleware(async () => {
+    .middleware(async ({ files }) => {
+      if (files.some((file) => file.size <= 0 || file.size > 50 * 1024 * 1024)) throw new Error("INVALID_FILE_SIZE");
       const session = await auth();
       if (!session?.user?.id) throw new Error("UNAUTHORIZED");
+
+      const active = await db.query.users.findFirst({
+        where: and(eq(users.id, session.user.id), eq(users.status, "active"), isNull(users.deletedAt)),
+        columns: { id: true },
+      });
+      if (!active) throw new Error("UNAUTHORIZED");
 
       // Rate limit uploads
       const { success } = await rateLimiters.upload.limit(session.user.id);
@@ -31,15 +40,23 @@ export const ourFileRouter = {
       };
     })
     .onUploadComplete(async ({ metadata, file }) => {
-      // file.url is the Uploadthing CDN URL
-      // We return it to the client — client then submits the full metadata form
-      return {
-        uploadedBy: metadata.userId,
-        url: file.url,
-        key: file.key,
-        name: file.name,
-        size: file.size,
-      };
+      if (file.size <= 0 || file.size > 50 * 1024 * 1024) throw new Error("INVALID_FILE_SIZE");
+      // The provider callback, not the browser, supplies the key, URL and size.
+      // Duplicate callbacks must not reset expiry or make a consumed receipt reusable.
+      await db.insert(documentUploads).values({
+        userId: metadata.userId,
+        storageKey: file.key,
+        fileUrl: file.url,
+        fileSize: file.size,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      }).onConflictDoNothing({ target: documentUploads.storageKey });
+      const receipt = await db.query.documentUploads.findFirst({
+        where: and(eq(documentUploads.storageKey, file.key), eq(documentUploads.userId, metadata.userId)),
+        columns: { id: true },
+      });
+      if (!receipt) throw new Error("Upload receipt could not be created");
+      return { uploadId: receipt.id };
+
     }),
 
   // ── Avatar upload ─────────────────────────────────────────────────────────

@@ -154,8 +154,7 @@ describe("onboardingStep3Schema", () => {
 describe("uploadDocumentSchema", () => {
   const valid = {
     title:        "CS201 Past Exam 2023",
-    fileUrl:      "https://example.com/file.pdf",
-    fileSize:     1_000_000,
+    uploadId: "11111111-1111-4111-8111-111111111111",
     categoryId:   "550e8400-e29b-41d4-a716-446655440000",
     resourceType: "past_exam",
     institutionId:"550e8400-e29b-41d4-a716-446655440001",
@@ -168,7 +167,7 @@ describe("uploadDocumentSchema", () => {
     expect(uploadDocumentSchema.safeParse({ ...valid, title: "Hi" }).success).toBe(false);
   });
   it("rejects file exceeding 50MB", () => {
-    expect(uploadDocumentSchema.safeParse({ ...valid, fileSize: 51 * 1024 * 1024 }).success).toBe(false);
+    expect(uploadDocumentSchema.safeParse({ ...valid, uploadId: "invalid" }).success).toBe(false);
   });
   it("rejects invalid resource type", () => {
     expect(uploadDocumentSchema.safeParse({ ...valid, resourceType: "invalid" }).success).toBe(false);

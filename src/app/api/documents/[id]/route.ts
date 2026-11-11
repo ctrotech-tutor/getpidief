@@ -4,7 +4,7 @@ import { db } from "@/lib/db/client";
 import { documents } from "@/lib/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { documentsRepository } from "@/lib/db/repositories/documents";
-import { apiSuccess, apiNotFound, apiForbidden, apiUnauthorized, handleApiError } from "@/lib/utils/api";
+import { apiSuccess, apiError, apiNotFound, apiForbidden, apiUnauthorized, handleApiError } from "@/lib/utils/api";
 import { inngest } from "@/lib/inngest/client";
 
 interface Params { params: Promise<{ id: string }> }
@@ -59,7 +59,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     if (body.title)       allowedFields.title       = body.title;
     if (body.description) allowedFields.description = body.description;
-    if (body.visibility)  allowedFields.visibility  = body.visibility;
+    if (body.visibility && body.visibility !== "public") return apiError("UNSUPPORTED_VISIBILITY", "Restricted uploads are unavailable until private storage is configured.");
+    if (body.visibility) allowedFields.visibility = body.visibility;
 
     // Admins can change status
     if (isAdmin && body.status) {

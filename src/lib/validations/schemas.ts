@@ -101,8 +101,7 @@ export const uploadDocumentSchema = z.object({
     .max(500, "Title cannot exceed 500 characters")
     .trim(),
   description: z.string().max(800).optional(),
-  fileUrl: z.string().url("Invalid file URL"),
-  fileSize: z.number().int().positive().max(50 * 1024 * 1024), // 50MB
+  uploadId: z.string().uuid("Invalid upload receipt"),
   categoryId: z.string().uuid("Please select a category"),
   resourceType: z.enum([
     "past_exam", "lecture_notes", "research_paper", "textbook_summary",
@@ -137,8 +136,7 @@ export const uploadDocumentSchema = z.object({
 });
 
 export const updateDocumentSchema = uploadDocumentSchema.partial().omit({
-  fileUrl: true,
-  fileSize: true,
+  uploadId: true,
 });
 
 export const documentReportSchema = z.object({

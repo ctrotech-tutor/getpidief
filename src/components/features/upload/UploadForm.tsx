@@ -61,8 +61,7 @@ const LICENSES = [
 ];
 
 interface UploadFormProps {
-  fileUrl:        string;
-  fileSize:       number;
+  uploadId:       string;
   categories:     { id: string; name: string; color: string }[];
   institutions:   { id: string; name: string; countryCode: string }[];
   userInstitutionId?: string | null;
@@ -70,8 +69,7 @@ interface UploadFormProps {
 }
 
 export function UploadForm({
-  fileUrl,
-  fileSize,
+  uploadId,
   categories,
   institutions,
   userInstitutionId,
@@ -98,7 +96,7 @@ export function UploadForm({
       resourceType:  savedDraft?.resourceType  ?? undefined,
       institutionId: savedDraft?.institutionId ?? userInstitutionId ?? "",
       language:      savedDraft?.language      ?? "en",
-      visibility:    savedDraft?.visibility    ?? "public",
+      visibility:    "public",
       license:       savedDraft?.license       ?? "cc_by",
       allowDownload: savedDraft?.allowDownload ?? true,
       allowPrint:    savedDraft?.allowPrint    ?? true,
@@ -143,8 +141,7 @@ export function UploadForm({
           body:    JSON.stringify({
             title:         data.title,
             description:   data.description,
-            fileUrl,
-            fileSize,
+            uploadId,
             categoryId:    data.categoryId,
             resourceType:  data.resourceType,
             institutionId: data.institutionId,
@@ -306,8 +303,7 @@ export function UploadForm({
           <FormField label="Visibility" error={errors.visibility?.message}>
             <select {...register("visibility")} className={inputClass()}>
               <option value="public">Public — Anyone can find it</option>
-              <option value="institution">Institution only</option>
-              <option value="private">Private — Only me</option>
+
             </select>
           </FormField>
 

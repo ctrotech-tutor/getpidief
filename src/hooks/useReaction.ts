@@ -22,6 +22,8 @@ export function useReaction({
 
   const react = useCallback(
     (type: "like" | "dislike") => {
+      if (isPending) return;
+      const desired = userReaction === type ? null : type;
       // Optimistic update
       const prev = { likeCount, dislikeCount, userReaction };
 
@@ -44,7 +46,7 @@ export function useReaction({
           const res = await fetch(`/api/documents/${documentId}/react`, {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ type }),
+            body:    JSON.stringify({ reaction: desired }),
           });
 
           if (!res.ok) {
@@ -59,6 +61,7 @@ export function useReaction({
           // Sync with server truth
           setLikeCount(json.data.likeCount);
           setDislikeCount(json.data.dislikeCount);
+          setUserReaction(json.data.userReaction);
         } catch {
           setLikeCount(prev.likeCount);
           setDislikeCount(prev.dislikeCount);
@@ -66,7 +69,7 @@ export function useReaction({
         }
       });
     },
-    [documentId, likeCount, dislikeCount, userReaction]
+    [documentId, likeCount, dislikeCount, userReaction, isPending]
   );
 
   return { likeCount, dislikeCount, userReaction, react, isPending };

@@ -37,4 +37,19 @@ describe("resource save action", () => {
     expect(fetcher).not.toHaveBeenCalled();
     expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Sign in to save documents" }));
   });
+  it("keeps the last confirmed reaction count after a later failure", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { likeCount: 1, dislikeCount: 0, userReaction: "like" } }) })
+      .mockResolvedValueOnce({ ok: false });
+    vi.stubGlobal("fetch", fetcher);
+    renderActions();
+    fireEvent.click(screen.getByRole("button", { name: "Like document (0)" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Like document (1)" })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Dislike" }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Could not update your reaction" })));
+    expect(screen.getByRole("button", { name: "Like document (1)" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Dislike" })).toHaveAttribute("aria-pressed", "false");
+    expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual({ reaction: "dislike" });
+  });
+
 });

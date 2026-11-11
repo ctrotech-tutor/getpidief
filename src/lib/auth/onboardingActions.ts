@@ -2,7 +2,7 @@
 import { db, withTransaction } from "@/lib/db/client";
 import { users, institutions, authUsers } from "@/lib/db/schema";
 import { eq, sql, and } from "drizzle-orm";
-import { requireAuth } from "@/lib/auth/auth";
+import { requireAuth, unstable_update } from "@/lib/auth/auth";
 import { redis, redisRateLimit, rateLimiters, KEYS } from "@/lib/redis/client";
 import { inngest } from "@/lib/inngest/client";
 import { getRor, searchRor } from "@/lib/institutions/ror";
@@ -147,6 +147,11 @@ export async function saveOnboardingStep3(
     } catch (error) { console.warn("[Onboarding] Completion event failed:", error); }
   }
 
+  // Refresh the JWT from the database, not client-supplied profile fields. If
+  // Auth.js is unavailable, completion still succeeds: protected layouts read
+  // persisted onboarding state from PostgreSQL.
+  try { await unstable_update({}); }
+  catch (error) { console.warn("[Onboarding] Session refresh failed:", error); }
   return actionSuccess({ next: "/" });
 }
 

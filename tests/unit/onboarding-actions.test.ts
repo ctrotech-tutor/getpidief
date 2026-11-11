@@ -23,6 +23,7 @@ vi.mock("@/lib/db/client", () => ({
 }));
 vi.mock("@/lib/redis/client", () => ({ redis: null, KEYS: { onboardingState: () => "state", recommended: () => "recommendations" } }));
 vi.mock("@/lib/inngest/client", () => ({ inngest: { send: m.send } }));
+import { unstable_update } from "@/lib/auth/auth";
 import { saveOnboardingStep1, saveOnboardingStep2, saveOnboardingStep3 } from "@/lib/auth/onboardingActions";
 
 const skip = () => { const f = new FormData(); f.set("skip", "yes"); return f; };
@@ -50,6 +51,13 @@ describe("onboarding progress", () => {
     expect(await saveOnboardingStep3(null, skip())).toMatchObject({ success: true, data: { next: "/" } });
     expect(m.txSet).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
     expect(m.send).toHaveBeenCalledOnce(); warn.mockRestore();
+  });
+  it("refreshes the session from server state and tolerates refresh failure", async () => {
+    vi.mocked(unstable_update).mockRejectedValueOnce(new Error("unavailable"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await saveOnboardingStep3(null, skip())).toMatchObject({ success: true });
+    expect(unstable_update).toHaveBeenCalledWith({});
+    warn.mockRestore();
   });
   it("does not send a completion event twice", async () => {
     m.returning.mockResolvedValueOnce([]);

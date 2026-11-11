@@ -37,4 +37,5 @@ vi.mock("@/lib/auth/auth", () => ({
   requireRole:     vi.fn(() => Promise.resolve({ id: "test-user-id", role: "admin" })),
   signIn:          vi.fn(),
   signOut:         vi.fn(),
+  unstable_update: vi.fn(() => Promise.resolve(null)),
 }));

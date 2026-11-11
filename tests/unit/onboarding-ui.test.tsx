@@ -5,7 +5,6 @@ import { AcademicFocusStep } from "@/components/features/auth/AcademicFocusStep"
 import { searchInstitutions } from "@/lib/auth/onboardingActions";
 import { InterestTagsStep } from "@/components/features/auth/InterestTagsStep";
 vi.mock("@/lib/auth/onboardingActions", () => ({ saveOnboardingStep1: vi.fn(), saveOnboardingStep2: vi.fn(), saveOnboardingStep3: vi.fn(), searchInstitutions: vi.fn() }));
-vi.mock("next-auth/react", () => ({ useSession: () => ({ update: vi.fn() }) }));
 describe("onboarding for an empty database", () => {
   it("offers a real institution skip when there are no institutions", () => {
     render(<InstitutionSearchStep popularInstitutions={[]} initialInstitution={null} />);

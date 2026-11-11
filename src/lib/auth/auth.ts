@@ -40,7 +40,7 @@ type AuthSessionUser = {
 //     Use auth.config.ts in middleware instead.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
   ...authConfig,
 
   // ── Database adapter ─────────────────────────────────────────────────────

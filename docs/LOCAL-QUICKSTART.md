@@ -43,7 +43,7 @@ This guide is for a separate development database. It does not reset or migrate 
    npm run dev
    ```
 
-   Visit `http://localhost:3000/feed-preview` for the sample social feed. Its posts and interactions are examples and reset on refresh. The regular application uses real services and is not yet fully configured by a database URL alone. No seed command is required or recommended for a fresh empty database.
+   Visit `http://localhost:3000/feed-preview` for the sample social feed. Its posts and interactions are examples and reset on refresh. The regular application uses real services and is not yet fully configured by a database URL alone. No seed is required for onboarding. To populate a separate local database with clearly labeled demo accounts and content, see [LOCAL-SEED.md](LOCAL-SEED.md).
 
 5. Optional checks:
 

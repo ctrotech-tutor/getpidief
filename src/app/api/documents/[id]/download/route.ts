@@ -75,6 +75,8 @@ export async function GET(req: NextRequest, { params }: Params) {
       return NextResponse.redirect(new URL("/404", req.url));
     }
     if (isPrivatePdfReference(result.doc.fileUrl)) return NextResponse.redirect(new URL(`/api/documents/${id}/file`, req.url), { headers: { "Cache-Control": "private, no-store" } });
+    // Local demo guides are same-origin static files, never arbitrary relative URLs.
+    if (/^\/seed-assets\/guide-\d{2}\.pdf$/.test(result.doc.fileUrl)) return NextResponse.redirect(new URL(result.doc.fileUrl, req.url));
     return NextResponse.redirect(result.doc.fileUrl);
   } catch (e) {
     return handleApiError(e);

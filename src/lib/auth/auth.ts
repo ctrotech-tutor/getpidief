@@ -19,6 +19,7 @@ import { rateLimiters, redisRateLimit } from "@/lib/redis/client";
 
 type AuthSessionUser = {
   id?: string;
+  sessionVersion?: number;
   role?: string;
   status?: string;
   username?: string;
@@ -131,6 +132,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         return {
           id:                  authUser.id,
+          sessionVersion:      authUser.sessionVersion,
           email:               authUser.email,
           name:                authUser.name,
           image:               authUser.image,
@@ -181,6 +183,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
     // Override jwt to enrich with fresh DB profile data
     async jwt({ token, user, trigger }) {
+      // Every server-side session check consults the current version. Edge proxy
+      // checks are only a routing convenience, never authorization.
+      const id = user?.id ?? (typeof token.id === "string" ? token.id : undefined);
+      if (!id) return null;
+      const account = await db.query.authUsers.findFirst({
+        where: eq(authUsers.id, id), columns: { sessionVersion: true },
+      });
+      if (!account) return null;
+      if (user) {
+        const version = (user as AuthSessionUser).sessionVersion;
+        // Credentials were verified against this version. Reject a concurrent reset.
+        if (version !== undefined && version !== account.sessionVersion) return null;
+        token.sessionVersion = account.sessionVersion;
+      } else if (typeof token.sessionVersion !== "number" || token.sessionVersion !== account.sessionVersion) {
+        return null;
+      }
       // On sign-in: attach profile fields from user object
       if (user) {
         const u = user as AuthSessionUser;

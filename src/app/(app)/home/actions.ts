@@ -4,6 +4,7 @@ import { db } from "@/lib/db/client";
 import { users, posts, postReplies, postLikes, postSaves } from "@/lib/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { rateLimiters, redisRateLimit } from "@/lib/redis/client";
 
 async function currentUser() {
   const session = await auth();
@@ -12,6 +13,16 @@ async function currentUser() {
   const user = await db.query.users.findFirst({ where: eq(users.id, id), columns: { status: true, onboardingComplete: true } });
   if (!user || user.status !== "active" || !user.onboardingComplete) throw new Error("Account unavailable.");
   return id;
+}
+async function limit(userId: string, kind: "feedPost" | "comment") {
+  // Never silently disable abuse limits in production.
+  if (process.env.NODE_ENV === "production" && !redisRateLimit) throw new Error("Posting is temporarily unavailable.");
+  try {
+    if (!(await rateLimiters[kind].limit(userId)).success) throw new Error("Too many requests. Please try again later.");
+  } catch (error) {
+    if (error instanceof Error && error.message === "Too many requests. Please try again later.") throw error;
+    throw new Error("Posting is temporarily unavailable.");
+  }
 }
 function body(form: FormData, limit: number) {
   const value = form.get("body");
@@ -29,13 +40,19 @@ export async function createPost(form: FormData) {
   const userId = await currentUser();
   const kind = form.get("kind");
   if (kind !== "thought" && kind !== "question") throw new Error("Invalid post type.");
-  await db.insert(posts).values({ authorId: userId, kind, body: body(form, 3000) });
+  const text = body(form, 3000);
+  await limit(userId, "feedPost");
+  await db.insert(posts).values({ authorId: userId, kind, body: text });
   revalidatePath("/home");
 }
 export async function reply(form: FormData) {
   const userId = await currentUser();
-  await db.insert(postReplies).values({ postId: await postId(form), authorId: userId, body: body(form, 1000) });
+  const text = body(form, 1000);
+  const id = await postId(form);
+  await limit(userId, "comment");
+  await db.insert(postReplies).values({ postId: id, authorId: userId, body: text });
   revalidatePath("/home");
+  revalidatePath(`/home/post/${id}`);
 }
 export async function toggleLike(form: FormData) {
   const userId = await currentUser(); const id = await postId(form);

@@ -3,8 +3,9 @@ import { db, withTransaction } from "@/lib/db/client";
 import { users, userInterests, tags, institutions, authUsers } from "@/lib/db/schema";
 import { eq, sql, inArray, and } from "drizzle-orm";
 import { requireAuth } from "@/lib/auth/auth";
-import { redis, KEYS } from "@/lib/redis/client";
+import { redis, redisRateLimit, rateLimiters, KEYS } from "@/lib/redis/client";
 import { inngest } from "@/lib/inngest/client";
+import { getRor, searchRor } from "@/lib/institutions/ror";
 import { actionSuccess, actionError, type ActionResult } from "@/lib/utils/api";
 import {
   onboardingStep1Schema,
@@ -24,16 +25,40 @@ export async function saveOnboardingStep1(
   await ensureUserProfile(userId);
 
   const skipped = formData.get("skip") === "yes";
-  const parsed = onboardingStep1Schema.safeParse({ institutionId: formData.get("institutionId") });
-  if (!skipped && !parsed.success) return actionError("Please select an institution or continue without one.");
-  const institutionId = !skipped && parsed.success ? parsed.data.institutionId : null;
-  if (institutionId) {
+  const rawId = formData.get("institutionId");
+  const rorId = typeof rawId === "string" && rawId.startsWith("ror:") ? rawId.slice(4) : null;
+  const parsed = onboardingStep1Schema.safeParse({ institutionId: rawId });
+  if (!skipped && !rorId && !parsed.success) return actionError("Please select an institution or continue without one.");
+  let institutionId = !skipped && parsed.success ? parsed.data.institutionId : null;
+  if (!skipped && rorId) {
+    // Fail closed in production if shared rate limiting is not configured.
+    if (process.env.NODE_ENV === "production" && !redisRateLimit) return actionError("The institution directory is temporarily unavailable. You can continue without one.");
+    if (!(await rateLimiters.search.limit(`onboarding:${userId}`)).success) return actionError("Too many searches. Please try again shortly.");
+    const profile = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { onboardingComplete: true } });
+    if (!profile || profile.onboardingComplete) return actionError("Setup has already been completed.");
+    let record;
+    try { record = await getRor(rorId); } catch { return actionError("The institution directory is unavailable. Please try again or continue without one."); }
+    if (!record) return actionError("That institution is no longer available. Please choose another.");
+    const slug = `ror-${record.id}`;
+    // Match an existing curated record first. A directory match is never affiliation verification.
+    const existing = await db.query.institutions.findFirst({ where: sql`${institutions.slug} = ${slug} OR (lower(${institutions.name}) = lower(${record.name}) AND ${institutions.countryCode} = ${record.countryCode})`, columns: { id: true, isActive: true } });
+    if (existing) {
+      if (!existing.isActive) return actionError("That institution is not currently available.");
+      institutionId = existing.id;
+    } else {
+      const inserted = await db.insert(institutions).values({ name: record.name, slug, country: record.country, countryCode: record.countryCode, type: "other", isVerified: false, emailDomains: [] }).onConflictDoNothing({ target: institutions.slug }).returning({ id: institutions.id });
+      const resolved = inserted[0] ?? await db.query.institutions.findFirst({ where: eq(institutions.slug, slug), columns: { id: true, isActive: true } });
+      if (!resolved || ("isActive" in resolved && !resolved.isActive)) return actionError("That institution is not currently available.");
+      institutionId = resolved.id;
+    }
+  } else if (institutionId) {
     const institution = await db.query.institutions.findFirst({
       where: and(eq(institutions.id, institutionId), eq(institutions.isActive, true)),
       columns: { id: true },
     });
     if (!institution) return actionError("That institution is no longer available. Please choose another.");
   }
+
   await db.update(users).set({
     institutionId,
     onboardingStep: sql`greatest(${users.onboardingStep}, 2)`,
@@ -133,18 +158,27 @@ export async function saveOnboardingStep3(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function searchInstitutions(query: string) {
-  await requireAuth();
-  const trimmed = query.trim();
-
-  if (trimmed.length < 2) return [];
-  // Literal substring search avoids interpreting punctuation as tsquery syntax.
-  const pattern = `%${trimmed.slice(0, 100).replace(/[\\%_]/g, "\\$&")}%`;
-  return db.select({ id: institutions.id, name: institutions.name, slug: institutions.slug,
-    country: institutions.country, countryCode: institutions.countryCode,
-    type: institutions.type, logoUrl: institutions.logoUrl, documentCount: institutions.documentCount })
+  const userId = await requireAuth();
+  if (typeof query !== "string") return { items: [], directoryAvailable: false };
+  const trimmed = query.trim().slice(0, 100);
+  if (trimmed.length < 2) return { items: [], directoryAvailable: true };
+  const pattern = `%${trimmed.replace(/[\\%_]/g, "\\$&")}%`;
+  const local = await db.select({ id: institutions.id, name: institutions.name,
+    country: institutions.country, countryCode: institutions.countryCode })
     .from(institutions)
     .where(and(eq(institutions.isActive, true), sql`${institutions.name} ILIKE ${pattern} ESCAPE '\\'`))
     .orderBy(institutions.name).limit(10);
+  const localItems = local.map(item => ({ ...item, source: "local" as const }));
+  if (trimmed.length < 3) return { items: localItems, directoryAvailable: true };
+  if (process.env.NODE_ENV === "production" && !redisRateLimit) return { items: localItems, directoryAvailable: false };
+  try {
+    if (!(await rateLimiters.search.limit(`onboarding:${userId}`)).success) return { items: localItems, directoryAvailable: false };
+    const remote = await searchRor(trimmed);
+    const keys = new Set(local.map(item => `${item.name.toLocaleLowerCase()}|${item.countryCode}`));
+    return { items: [...localItems, ...remote.filter(item => !keys.has(`${item.name.toLocaleLowerCase()}|${item.countryCode}`)).map(item => ({ ...item, id: `ror:${item.id}`, source: "ror" as const }))].slice(0, 12), directoryAvailable: true };
+  } catch {
+    return { items: localItems, directoryAvailable: false };
+  }
 }
 
 async function ensureUserProfile(userId: string) {

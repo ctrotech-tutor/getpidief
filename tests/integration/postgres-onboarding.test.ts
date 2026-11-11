@@ -4,13 +4,14 @@ import { sql } from "drizzle-orm";
 
 const url = process.env.TEST_DATABASE_URL;
 const enabled = !!url && process.env.TEST_DATABASE_WRITE === "yes";
-const mock = vi.hoisted(() => ({ id: "", send: vi.fn() }));
+const mock = vi.hoisted(() => ({ id: "", send: vi.fn(), searchRor: vi.fn(async () => []), getRor: vi.fn() }));
 vi.mock("@/lib/auth/auth", () => ({ requireAuth: async () => mock.id, auth: async () => ({ user: { id: mock.id } }) }));
-vi.mock("@/lib/redis/client", () => ({ redis: null, KEYS: { onboardingState: () => "state", recommended: () => "recommended" } }));
+vi.mock("@/lib/institutions/ror", () => ({ searchRor: mock.searchRor, getRor: mock.getRor }));
+vi.mock("@/lib/redis/client", () => ({ redis: null, redisRateLimit: null, rateLimiters: { search: { limit: async () => ({ success: true }) } }, KEYS: { onboardingState: () => "state", recommended: () => "recommended" } }));
 vi.mock("@/lib/inngest/client", () => ({ inngest: { send: mock.send } }));
 
 describe.skipIf(!enabled)("onboarding with disposable PostgreSQL", () => {
-  const ids = { empty: randomUUID(), learner: randomUUID(), inst: randomUUID(), inactive: randomUUID(), tags: [randomUUID(), randomUUID(), randomUUID()] };
+  const ids = { empty: randomUUID(), learner: randomUUID(), directory: randomUUID(), inst: randomUUID(), inactive: randomUUID(), tags: [randomUUID(), randomUUID(), randomUUID()] };
   let db: typeof import("@/lib/db/client").db;
   let actions: typeof import("@/lib/auth/onboardingActions");
   let resolve: typeof import("@/lib/auth/onboardingResume").resolveOnboardingStep;
@@ -22,7 +23,7 @@ describe.skipIf(!enabled)("onboarding with disposable PostgreSQL", () => {
     ({ db } = await import("@/lib/db/client"));
     actions = await import("@/lib/auth/onboardingActions");
     ({ resolveOnboardingStep: resolve } = await import("@/lib/auth/onboardingResume"));
-    for (const id of [ids.empty, ids.learner]) {
+    for (const id of [ids.empty, ids.learner, ids.directory]) {
       await db.execute(sql`INSERT INTO auth_users (id, email) VALUES (${id}::uuid, ${id + "@example.test"})`);
       await db.execute(sql`INSERT INTO users (id, username, display_name, role) VALUES (${id}::uuid, ${id}, 'Test learner', 'contributor')`);
     }
@@ -31,8 +32,9 @@ describe.skipIf(!enabled)("onboarding with disposable PostgreSQL", () => {
   afterAll(async () => {
     if (!db) return;
     try {
-      await db.execute(sql`DELETE FROM auth_users WHERE id IN (${ids.empty}::uuid, ${ids.learner}::uuid)`);
+      await db.execute(sql`DELETE FROM auth_users WHERE id IN (${ids.empty}::uuid, ${ids.learner}::uuid, ${ids.directory}::uuid)`);
       for (const id of ids.tags) await db.execute(sql`DELETE FROM tags WHERE id = ${id}::uuid`);
+      await db.execute(sql`DELETE FROM institutions WHERE slug = 'ror-03xrrjk67'`);
       await db.execute(sql`DELETE FROM institutions WHERE id IN (${ids.inst}::uuid, ${ids.inactive}::uuid)`);
     } finally { await db.$client.end(); }
   });
@@ -50,12 +52,33 @@ describe.skipIf(!enabled)("onboarding with disposable PostgreSQL", () => {
     expect(row).toMatchObject({ onboarding_complete: true, role: "contributor" });
     expect(mock.send).toHaveBeenCalledTimes(1);
   });
+  it("keeps local search useful when the global directory fails", async () => {
+    mock.id = ids.directory;
+    await db.execute(sql`INSERT INTO institutions (id, name, slug, country, country_code) VALUES (${ids.inst}::uuid, 'St. John''s College', ${ids.inst}, 'Nigeria', 'NG')`);
+    mock.searchRor.mockRejectedValueOnce(new Error("offline"));
+    const result = await actions.searchInstitutions("John's");
+    expect(result.directoryAvailable).toBe(false);
+    expect(result.items.some(item => item.id === ids.inst)).toBe(true);
+    await db.execute(sql`DELETE FROM institutions WHERE id = ${ids.inst}::uuid`);
+  });
+  it("creates a directory selection from server-validated data without verification privileges", async () => {
+    mock.id = ids.directory;
+    mock.getRor.mockResolvedValue({ id: "03xrrjk67", name: "Verified Directory Name", country: "Nigeria", countryCode: "NG" });
+    const selection = new FormData(); selection.set("institutionId", "ror:03xrrjk67");
+    selection.set("name", "Client-controlled name");
+    expect((await actions.saveOnboardingStep1(null, selection)).success).toBe(true);
+    expect((await actions.saveOnboardingStep1(null, selection)).success).toBe(true);
+    const records = (await db.execute<{ name: string; is_verified: boolean; email_domains: string[] }>(sql`SELECT name, is_verified, email_domains FROM institutions WHERE slug = 'ror-03xrrjk67'`)).rows;
+    expect(records).toEqual([{ name: "Verified Directory Name", is_verified: false, email_domains: [] }]);
+    const profile = (await db.execute<{ institution_id: string }>(sql`SELECT institution_id FROM users WHERE id = ${ids.directory}::uuid`)).rows[0];
+    expect(profile.institution_id).toBeTruthy();
+  });
   it("validates choices, searches punctuation safely, and persists selected interests", async () => {
     mock.id = ids.learner; mock.send.mockClear();
     await db.execute(sql`INSERT INTO institutions (id, name, slug, country, country_code, is_active) VALUES (${ids.inst}::uuid, 'St. John''s College', ${ids.inst}, 'Nigeria', 'NG', true), (${ids.inactive}::uuid, 'Unavailable School', ${ids.inactive}, 'Nigeria', 'NG', false)`);
     const result = await actions.searchInstitutions("John's");
-    expect(result.some(x => x.id === ids.inst)).toBe(true);
-    expect(await actions.searchInstitutions("%_")).toEqual([]);
+    expect(result.items.some(x => x.id === ids.inst)).toBe(true);
+    expect((await actions.searchInstitutions("%_")).items).toEqual([]);
     const choice = new FormData(); choice.set("institutionId", ids.inactive);
     expect((await actions.saveOnboardingStep1(null, choice)).success).toBe(false);
     choice.set("institutionId", ids.inst); expect((await actions.saveOnboardingStep1(null, choice)).success).toBe(true);

@@ -8,7 +8,7 @@ vi.mock("next-auth/react", () => ({ useSession: () => ({ update: vi.fn() }) }));
 describe("onboarding for an empty database", () => {
   it("offers a real institution skip when there are no institutions", () => {
     render(<InstitutionSearchStep popularInstitutions={[]} initialInstitution={null} />);
-    expect(screen.getByText(/No institutions are available/)).toBeInTheDocument();
+    expect(screen.getByText(/Search the global directory above/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue without an institution" })).toHaveAttribute("name", "skip");
   });
   it("offers a skip that bypasses academic form validation", () => {

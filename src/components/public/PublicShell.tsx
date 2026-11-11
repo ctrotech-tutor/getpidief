@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight } from "lucide-react";
 import { Brand } from "@/components/brand/Brand";
+import { PageContainer } from "@/components/layouts/PageContainer/PageContainer";
 import styles from "./public.module.css";
 
 const links = [
@@ -10,8 +11,8 @@ const links = [
 ];
 
 export function PublicHeader() {
-  return <header className={styles.headerWrap}>
-    <div className={styles.header}>
+  return <header>
+    <PageContainer className={styles.headerWrap}><div className={styles.header}>
       <Brand />
       <nav className={styles.desktopNav} aria-label="Main navigation">{links.map(link => <Link key={link.href} href={link.href}>{link.label}</Link>)}</nav>
       <div className={styles.actions}><Link href="/login" className={styles.login}>Log in</Link><Link href="/register" className={styles.join}>Join <span>getpidief</span><span className={styles.joinArrow}><ArrowUpRight size={16} /></span></Link></div>
@@ -19,7 +20,7 @@ export function PublicHeader() {
         <summary aria-label="Navigation menu"><span></span><span></span></summary>
         <nav aria-label="Mobile navigation">{links.map((link, i) => <Link key={link.href} href={link.href}><span>0{i + 1}</span>{link.label}<ArrowUpRight size={17} /></Link>)}<Link href="/login"><span>04</span>Log in<ArrowUpRight size={17} /></Link><Link href="/register"><span>05</span>Create account<ArrowUpRight size={17} /></Link></nav>
       </details>
-    </div>
+    </div></PageContainer>
   </header>;
 }
 

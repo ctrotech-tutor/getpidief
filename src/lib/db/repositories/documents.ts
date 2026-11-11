@@ -12,9 +12,20 @@ import type { SearchFilters } from "@/lib/search/search";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type DocumentWithRelations = typeof documents.$inferSelect & {
-  author: Pick<typeof users.$inferSelect, "id" | "username" | "displayName" | "avatarUrl" | "verificationStatus" | "reputationScore">;
-  institution: Pick<typeof institutions.$inferSelect, "id" | "name" | "slug" | "logoUrl"> | null;
-  category: Pick<typeof categories.$inferSelect, "id" | "name" | "slug" | "color" | "icon"> | null;
+  author: Pick<typeof users.$inferSelect, "id" | "username" | "displayName" | "avatarUrl" | "verificationStatus"> & {
+    reputationScore?: number;
+  };
+  institution:
+    | (Pick<typeof institutions.$inferSelect, "id" | "name" | "logoUrl"> & {
+        slug?: string;
+      })
+    | null;
+  category:
+    | (Pick<typeof categories.$inferSelect, "id" | "name" | "color"> & {
+        slug?: string;
+        icon?: string | null;
+      })
+    | null;
   documentTags: Array<{ tag: Pick<typeof tags.$inferSelect, "id" | "name" | "slug"> }>;
   userReaction?: "like" | "dislike" | null;
   isBookmarked?: boolean;
@@ -34,6 +45,8 @@ export type DocumentCard = {
   commentCount: number;
   viewCount: number;
   publishedAt: Date | null;
+  createdAt: Date;
+  status: string;
   trendingScore: number;
   institution: { id: string; name: string; logoUrl: string | null } | null;
   category: { id: string; name: string; color: string } | null;
@@ -42,6 +55,48 @@ export type DocumentCard = {
   userReaction?: "like" | "dislike" | null;
   isBookmarked?: boolean;
 };
+
+// Helper function to transform DocumentWithRelations to DocumentCard
+export function transformToDocumentCard(doc: DocumentWithRelations): DocumentCard {
+  return {
+    id: doc.id,
+    slug: doc.slug,
+    title: doc.title,
+    description: doc.description,
+    thumbnailUrl: doc.thumbnailUrl,
+    resourceType: doc.resourceType,
+    academicYear: doc.academicYear,
+    pageCount: doc.pageCount,
+    downloadCount: doc.downloadCount,
+    likeCount: doc.likeCount,
+    commentCount: doc.commentCount,
+    viewCount: doc.viewCount,
+    publishedAt: doc.publishedAt,
+    createdAt: doc.createdAt,
+    status: doc.status,
+    trendingScore: doc.trendingScore,
+    institution: doc.institution ? {
+      id: doc.institution.id,
+      name: doc.institution.name,
+      logoUrl: doc.institution.logoUrl,
+    } : null,
+    category: doc.category ? {
+      id: doc.category.id,
+      name: doc.category.name,
+      color: doc.category.color,
+    } : null,
+    author: {
+      id: doc.author.id,
+      username: doc.author.username,
+      displayName: doc.author.displayName,
+      avatarUrl: doc.author.avatarUrl,
+      verificationStatus: doc.author.verificationStatus,
+    },
+    tags: doc.documentTags.map(dt => dt.tag),
+    userReaction: doc.userReaction,
+    isBookmarked: doc.isBookmarked,
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DOCUMENT REPOSITORY
@@ -59,7 +114,8 @@ export const documentsRepository = {
     const cached = await getCache<DocumentWithRelations>(cacheKey);
     if (cached) return cached;
 
-    const doc = await db.query.documents.findFirst({
+    const doc = await withDbRetry(() =>
+      db.query.documents.findFirst({
       where: and(
         eq(documents.slug, slug),
         not(eq(documents.status, "deleted")),
@@ -84,7 +140,7 @@ export const documentsRepository = {
           },
         },
       },
-    });
+    }));
 
     if (!doc) return null;
 
@@ -180,7 +236,8 @@ export const documentsRepository = {
     if (categoryId) conditions.push(eq(documents.categoryId, categoryId));
     if (institutionId) conditions.push(eq(documents.institutionId, institutionId));
 
-    const rows = await db.query.documents.findMany({
+    const rows = await withDbRetry(() =>
+      db.query.documents.findMany({
       where: and(...conditions),
       orderBy: [desc(documents.publishedAt)],
       limit,
@@ -192,7 +249,7 @@ export const documentsRepository = {
         category: { columns: { id: true, name: true, color: true } },
         documentTags: { with: { tag: { columns: { id: true, name: true, slug: true } } } },
       },
-    });
+    }));
 
     return rows.map(toDocumentCard);
   },
@@ -208,7 +265,8 @@ export const documentsRepository = {
     if (cached) return cached;
 
     // Query based on user's interest tags + institution
-    const results = await db.execute<{
+    const results = await withDbRetry(() =>
+      db.execute<{
       id: string; slug: string; title: string; description: string | null;
       thumbnail_url: string | null; resource_type: string; academic_year: number | null;
       page_count: number | null; download_count: number; like_count: number;
@@ -241,7 +299,7 @@ export const documentsRepository = {
       GROUP BY d.id
       ORDER BY d.id, relevance DESC
       LIMIT ${limit}
-    `);
+    `));
 
     if (results.rows.length === 0) {
       return documentsRepository.getTrending({ limit, requestingUserId: userId });
@@ -262,7 +320,8 @@ export const documentsRepository = {
   ): Promise<DocumentCard[]> {
     if (ids.length === 0) return [];
 
-    const rows = await db.query.documents.findMany({
+    const rows = await withDbRetry(() =>
+      db.query.documents.findMany({
       where: and(
         inArray(documents.id, ids),
         eq(documents.status, "approved"),
@@ -276,7 +335,7 @@ export const documentsRepository = {
         category: { columns: { id: true, name: true, color: true } },
         documentTags: { with: { tag: { columns: { id: true, name: true, slug: true } } } },
       },
-    });
+    }));
 
     // Preserve Redis sorted set order
     const ordered = ids
@@ -302,7 +361,8 @@ export const documentsRepository = {
 
     if (categoryId) conditions.push(eq(documents.categoryId, categoryId));
 
-    const rows = await db.query.documents.findMany({
+    const rows = await withDbRetry(() =>
+      db.query.documents.findMany({
       where: and(...conditions),
       orderBy: [desc(documents.downloadCount)],
       limit,
@@ -312,7 +372,7 @@ export const documentsRepository = {
         category: { columns: { id: true, name: true, color: true } },
         documentTags: { with: { tag: { columns: { id: true, name: true, slug: true } } } },
       },
-    });
+    }));
 
     return rows.map(toDocumentCard);
   },
@@ -337,24 +397,47 @@ export const documentsRepository = {
     if (status) conditions.push(eq(documents.status, status));
 
     const [rows, countResult] = await Promise.all([
-      db.query.documents.findMany({
+      withDbRetry(() => db.query.documents.findMany({
         where: and(...conditions),
         orderBy: [desc(documents.createdAt)],
         limit,
         offset,
         with: {
+          author: {
+            columns: { id: true, username: true, displayName: true, avatarUrl: true, verificationStatus: true },
+          },
           category: { columns: { id: true, name: true, color: true } },
-          institution: { columns: { id: true, name: true } },
+          institution: { columns: { id: true, name: true, logoUrl: true } },
+          documentTags: { with: { tag: { columns: { id: true, name: true, slug: true } } } },
         },
-      }),
-      db
+      })),
+      withDbRetry(() => db
         .select({ count: sql<number>`count(*)` })
         .from(documents)
-        .where(and(...conditions)),
+        .where(and(...conditions))),
     ]);
 
+    // Transform rows to DocumentCard format
+    const transformedDocs = rows.map(row => ({
+      ...row,
+      author: row.author,
+      institution: row.institution ? {
+        id: row.institution.id,
+        name: row.institution.name,
+        logoUrl: row.institution.logoUrl || null,
+      } : null,
+      category: row.category ? {
+        id: row.category.id,
+        name: row.category.name,
+        color: row.category.color,
+      } : null,
+      tags: row.documentTags?.map(dt => dt.tag) || [],
+      status: row.status,
+      createdAt: row.createdAt,
+    })) as DocumentCard[];
+
     return {
-      documents: rows,
+      documents: transformedDocs,
       total: countResult[0]?.count ?? 0,
       page,
       totalPages: Math.ceil((countResult[0]?.count ?? 0) / limit),
@@ -372,7 +455,7 @@ export const documentsRepository = {
 // MAPPER: DB row → DocumentCard
 // ─────────────────────────────────────────────────────────────────────────────
 
-function toDocumentCard(row: any): DocumentCard {
+function toDocumentCard(row: DocumentWithRelations): DocumentCard {
   return {
     id: row.id,
     slug: row.slug,
@@ -387,12 +470,44 @@ function toDocumentCard(row: any): DocumentCard {
     commentCount: row.commentCount,
     viewCount: row.viewCount,
     publishedAt: row.publishedAt,
+    createdAt: row.createdAt,
+    status: row.status,
     trendingScore: row.trendingScore,
     institution: row.institution ?? null,
     category: row.category ?? null,
     author: row.author,
-    tags: (row.documentTags ?? []).map((dt: any) => dt.tag),
+    tags: (row.documentTags ?? []).map((dt) => dt.tag),
     userReaction: row.userReaction ?? null,
     isBookmarked: row.isBookmarked ?? false,
   };
+}
+
+async function withDbRetry<T>(
+  operation: () => Promise<T>,
+  attempts: number = 3
+): Promise<T> {
+  let lastError: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await operation();
+    } catch (error: unknown) {
+      lastError = error;
+      const e = error as { message?: string; cause?: { message?: string } | string };
+      const message = String(e?.message ?? "");
+      const cause = String(
+        typeof e?.cause === "string" ? e.cause : (e?.cause?.message ?? "")
+      );
+      const combined = `${message} ${cause}`.toLowerCase();
+      const isTransient =
+        combined.includes("fetch failed") ||
+        combined.includes("error connecting to database") ||
+        combined.includes("econnreset") ||
+        combined.includes("etimedout") ||
+        combined.includes("econnrefused") ||
+        combined.includes("enotfound");
+      if (!isTransient || i === attempts - 1) break;
+      await new Promise((resolve) => setTimeout(resolve, 250 * (i + 1)));
+    }
+  }
+  throw lastError;
 }

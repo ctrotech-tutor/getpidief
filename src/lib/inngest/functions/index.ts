@@ -24,6 +24,9 @@ export {
 // Notification workers
 export {
   sendNotification,
+  handleUserFollowed,
+  handleCommentPosted,
+  handleDocumentLiked,
   sendWeeklyDigest,
   processWeeklyDigest,
 } from "./notifications/notificationWorker";
@@ -35,6 +38,19 @@ export {
   updateInstitutionLeaderboard,
   cleanupExpiredData,
 } from "./analytics/analyticsWorker";
+
+// User / email workers
+export {
+  handleUserRegistered,
+  sendPasswordResetEmail,
+  handleOnboardingCompleted,
+  handleUserDeleted,
+} from "./users/userWorker";
+
+// Email workers
+export {
+  sendEmailVerification,
+} from "./emails/emailVerificationWorker";
 
 // ─── Collect all functions into a single array for serve() ───────────────────
 
@@ -55,6 +71,9 @@ import {
 
 import {
   sendNotification,
+  handleUserFollowed,
+  handleCommentPosted,
+  handleDocumentLiked,
   sendWeeklyDigest,
   processWeeklyDigest,
 } from "./notifications/notificationWorker";
@@ -65,6 +84,17 @@ import {
   updateInstitutionLeaderboard,
   cleanupExpiredData,
 } from "./analytics/analyticsWorker";
+
+import {
+  handleUserRegistered,
+  sendPasswordResetEmail,
+  handleOnboardingCompleted,
+  handleUserDeleted,
+} from "./users/userWorker";
+
+import {
+  sendEmailVerification,
+} from "./emails/emailVerificationWorker";
 
 export const functions = [
   // Documents
@@ -82,6 +112,9 @@ export const functions = [
 
   // Notifications
   sendNotification,
+  handleUserFollowed,
+  handleCommentPosted,
+  handleDocumentLiked,
   sendWeeklyDigest,
   processWeeklyDigest,
 
@@ -90,4 +123,10 @@ export const functions = [
   aggregatePopularSearches,
   updateInstitutionLeaderboard,
   cleanupExpiredData,
+
+  // Users / emails
+  handleUserRegistered,
+  sendPasswordResetEmail,
+  handleOnboardingCompleted,
+  handleUserDeleted,
 ];

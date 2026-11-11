@@ -2,10 +2,33 @@
 
 import { useActionState, useState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import Link from "next/link";
 import { requestPasswordReset } from "@/lib/auth/actions";
 import { cn } from "@/lib/utils/cn";
 import type { ActionResult } from "@/lib/utils/api";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Mail, Loader2 } from "lucide-react";
+
+// Form schema
+const forgotPasswordSchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+});
+
+type ForgotPasswordValues = z.infer<typeof forgotPasswordSchema>;
 
 const initialState: ActionResult<{ message: string }> = {
   success: false,
@@ -16,17 +39,25 @@ export function ForgotPasswordForm() {
   const [state, action] = useActionState(requestPasswordReset, initialState);
   const [cooldown, setCooldown] = useState(0);
 
+  const form = useForm<ForgotPasswordValues>({
+    resolver: zodResolver(forgotPasswordSchema),
+    defaultValues: { email: "" },
+  });
+
   // Start 60s cooldown after successful submission
   useEffect(() => {
     if (state.success) {
-      setCooldown(60);
+      const startTimer = setTimeout(() => setCooldown(60), 0);
       const interval = setInterval(() => {
         setCooldown((c) => {
           if (c <= 1) { clearInterval(interval); return 0; }
           return c - 1;
         });
       }, 1000);
-      return () => clearInterval(interval);
+      return () => {
+        clearTimeout(startTimer);
+        clearInterval(interval);
+      };
     }
   }, [state.success]);
 
@@ -37,12 +68,7 @@ export function ForgotPasswordForm() {
         {/* Animated envelope */}
         <div className="mx-auto w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20
                         flex items-center justify-center">
-          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden>
-            <rect x="3" y="6" width="22" height="16" rx="2" stroke="currentColor"
-                  strokeWidth="1.6" className="text-primary"/>
-            <path d="M3 9l11 8 11-8" stroke="currentColor" strokeWidth="1.6"
-                  strokeLinejoin="round" className="text-primary"/>
-          </svg>
+          <Mail className="w-7 h-7 text-primary" />
         </div>
 
         <div className="space-y-2">
@@ -54,24 +80,25 @@ export function ForgotPasswordForm() {
             <span className="text-foreground font-medium">15 minutes</span>.
           </p>
           <p className="text-xs text-muted-foreground">
-            Didn't receive it? Check your spam folder.
+            Didn&apos;t receive it? Check your spam folder.
           </p>
         </div>
 
         {/* Resend with cooldown */}
         <form action={action}>
-          <button
+          <Button
             type="submit"
+            variant="ghost"
             disabled={cooldown > 0}
             className={cn(
-              "text-sm font-medium transition-colors",
+              "text-sm font-medium",
               cooldown > 0
                 ? "text-muted-foreground cursor-not-allowed"
                 : "text-primary hover:text-primary/80"
             )}
           >
             {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend email →"}
-          </button>
+          </Button>
         </form>
 
         <BackLink />
@@ -81,55 +108,64 @@ export function ForgotPasswordForm() {
 
   // ── Request form ──────────────────────────────────────────────────────────
   return (
-    <form action={action} className="space-y-5" noValidate>
-      {!state.success && state.error && (
-        <div role="alert" className="text-sm text-destructive bg-destructive/10
-                                      border border-destructive/20 rounded-lg px-3 py-2.5">
-          {state.error}
-        </div>
-      )}
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit((data) => {
+        // Convert to FormData for server action
+        const formData = new FormData();
+        formData.append("email", data.email);
+        action(formData);
+      })} className="space-y-5" noValidate>
+        {!state.success && state.error && (
+          <Alert variant="destructive">
+            <AlertDescription>
+              {state.error}
+            </AlertDescription>
+          </Alert>
+        )}
 
-      <div className="space-y-1.5">
-        <label htmlFor="email" className="text-sm font-medium text-foreground">
-          Institutional Email
-        </label>
-        <input
-          id="email"
+        <FormField
+          control={form.control}
           name="email"
-          type="email"
-          autoComplete="email"
-          required
-          placeholder="you@university.edu"
-          className={cn(
-            "w-full h-11 px-3.5 rounded-xl bg-secondary border border-border",
-            "text-sm placeholder:text-muted-foreground",
-            "transition-all hover:border-ring/40",
-            "focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Institutional Email</FormLabel>
+              <FormControl>
+                <Input
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@university.edu"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
           )}
         />
-      </div>
 
-      <SubmitButton />
-      <BackLink />
-    </form>
+        <SubmitButton />
+        <BackLink />
+      </form>
+    </Form>
   );
 }
 
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <button
+    <Button
       type="submit"
       disabled={pending}
-      className={cn(
-        "w-full h-11 rounded-xl font-medium text-sm",
-        "bg-primary text-primary-foreground",
-        "transition-all hover:bg-primary/90 active:scale-[0.98]",
-        "disabled:opacity-60 disabled:cursor-not-allowed"
-      )}
+      className="w-full"
     >
-      {pending ? "Sending…" : "Send Reset Link"}
-    </button>
+      {pending ? (
+        <>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Sending…
+        </>
+      ) : (
+        "Send Reset Link"
+      )}
+    </Button>
   );
 }
 

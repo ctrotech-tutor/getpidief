@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
 import { documentReactions, documents } from "@/lib/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { apiSuccess, apiUnauthorized, apiError, handleApiError } from "@/lib/utils/api";
 import { inngest } from "@/lib/inngest/client";
 import { pusherServer, CHANNELS, EVENTS } from "@/lib/pusher/server";

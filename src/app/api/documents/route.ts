@@ -2,10 +2,10 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
 import { documents, documentTags, tags } from "@/lib/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { uploadDocumentSchema } from "@/lib/validations/schemas";
 import { inngest } from "@/lib/inngest/client";
-import { apiSuccess, apiCreated, apiUnauthorized, apiZodError, handleApiError } from "@/lib/utils/api";
+import { apiCreated, apiUnauthorized, apiZodError, handleApiError } from "@/lib/utils/api";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { slugify } from "@/lib/utils/format";
 import { nanoid } from "nanoid";
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
         institutionId: data.institutionId,
         authorId:      userId,
         academicYear:  data.academicYear,
-        semester:      data.semester as any,
+        semester:      data.semester as typeof documents.$inferInsert["semester"],
         language:      data.language,
         visibility:    data.visibility,
         license:       data.license,

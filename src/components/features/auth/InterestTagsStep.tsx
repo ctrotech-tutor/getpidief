@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { saveOnboardingStep3 } from "@/lib/auth/onboardingActions";
 import { cn } from "@/lib/utils/cn";
 import type { ActionResult } from "@/lib/utils/api";
@@ -17,20 +18,43 @@ interface Props {
 
 const MIN_TAGS = 3;
 const MAX_TAGS = 20;
-const initialState: ActionResult<{ next: string }> = { success: false, error: "" } as any;
+const initialState: ActionResult<{ next: string }> = { success: false, error: "" };
 
 export function InterestTagsStep({ allTags, trendingTags, institutionName }: Props) {
   const router = useRouter();
+  const { update } = useSession();
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const [state, action] = useActionState(
     async (prev: ActionResult<{ next: string }>, formData: FormData) => {
       const result = await saveOnboardingStep3(prev, formData);
-      if (result.success) router.push((result as any).data.next);
+      if (result.success) {
+        // Keep middleware token in sync with DB onboarding completion.
+        await update({ onboardingComplete: true });
+        router.replace(result.data.next);
+      }
       return result;
     },
     initialState
   );
+
+  async function handleSkip() {
+    // Skip onboarding and mark as complete
+    try {
+      const response = await fetch("/api/auth/skip-onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      
+      if (response.ok) {
+        // Update session and redirect
+        await update({ onboardingComplete: true });
+        router.replace("/explore");
+      }
+    } catch (error) {
+      console.error("Skip onboarding failed:", error);
+    }
+  }
 
   function toggleTag(id: string) {
     setSelected((prev) => {
@@ -126,12 +150,23 @@ export function InterestTagsStep({ allTags, trendingTags, institutionName }: Pro
         <a
           href="/onboarding/step-2"
           className={cn(
-            "flex-1 h-11 rounded-xl text-sm font-medium text-center leading-[44px]",
+            "flex-1 h-11 rounded-xl text-sm font-medium text-center leading-11",
             "bg-secondary border border-border text-foreground hover:bg-secondary/80 transition-colors"
           )}
         >
           ← Back
         </a>
+        <button
+          type="button"
+          onClick={handleSkip}
+          className={cn(
+            "flex-1 h-11 rounded-xl text-sm font-medium",
+            "bg-secondary border border-border text-foreground",
+            "hover:bg-secondary/80 transition-colors"
+          )}
+        >
+          Skip for now
+        </button>
         <SubmitButton disabled={!meetsMin} />
       </div>
     </form>

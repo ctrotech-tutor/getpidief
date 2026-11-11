@@ -59,7 +59,7 @@ export function PasswordResetEmail({ name, token, ipAddress }: PasswordResetEmai
       </Text>
 
       <EmailNote>
-        If you didn't request this reset, you can safely ignore this email.
+        If you didn&apos;t request this reset, you can safely ignore this email.
         Your password will not be changed.
       </EmailNote>
     </BaseEmailLayout>

@@ -40,8 +40,6 @@ export function SearchBar({
   // Fetch autocomplete
   useEffect(() => {
     if (debouncedQ.length < 2) {
-      setSuggestions([]);
-      setShowDrop(false);
       return;
     }
     startTransition(async () => {
@@ -139,7 +137,15 @@ export function SearchBar({
           ref={inputRef}
           type="search"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value;
+            setQuery(value);
+            if (value.length < 2) {
+              setSuggestions([]);
+              setShowDrop(false);
+              setCursor(-1);
+            }
+          }}
           onKeyDown={handleKeyDown}
           onFocus={() => suggestions.length > 0 && setShowDrop(true)}
           placeholder={placeholder}
@@ -152,7 +158,6 @@ export function SearchBar({
           spellCheck={false}
           aria-label="Search"
           aria-autocomplete="list"
-          aria-expanded={showDrop}
         />
 
         {/* Clear button */}

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { AcademicFocusStep } from "@/components/features/auth/AcademicFocusStep";
+import { resolveOnboardingStep } from "@/lib/auth/onboardingResume";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = { title: "Step 2 — Academic Focus" };
 
@@ -26,7 +28,10 @@ const LEVELS = [
   { value: "professional",   label: "Professional"  },
 ] as const;
 
-export default function OnboardingStep2Page() {
+export default async function OnboardingStep2Page() {
+  const step = await resolveOnboardingStep();
+  if (step !== 2) redirect(`/onboarding/step-${step}`);
+
   return (
     <div className="space-y-6">
       <div className="space-y-1">

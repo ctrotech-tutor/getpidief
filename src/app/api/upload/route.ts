@@ -3,14 +3,12 @@ import {
   createUploadthing,
   type FileRouter,
 } from "uploadthing/next";
-import { auth } from "@/lib/auth/config";
+import { auth } from "@/lib/auth/auth";
 import { rateLimiters } from "@/lib/redis/client";
-import { inngest } from "@/lib/inngest/client";
 import { db } from "@/lib/db/client";
-import { documents } from "@/lib/db/schema";
-import { storage, STORAGE_KEYS } from "@/lib/storage/client";
 
 const f = createUploadthing();
+type SessionUserWithInstitution = { institutionId?: string | null };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FILE ROUTER
@@ -19,7 +17,7 @@ const f = createUploadthing();
 export const ourFileRouter = {
   // ── Document PDF upload ───────────────────────────────────────────────────
   documentPdf: f({ pdf: { maxFileSize: "64MB", maxFileCount: 1 } })
-    .middleware(async ({ req }) => {
+    .middleware(async () => {
       const session = await auth();
       if (!session?.user?.id) throw new Error("UNAUTHORIZED");
 
@@ -29,7 +27,7 @@ export const ourFileRouter = {
 
       return {
         userId: session.user.id,
-        institutionId: (session.user as any).institutionId,
+        institutionId: (session.user as SessionUserWithInstitution).institutionId,
       };
     })
     .onUploadComplete(async ({ metadata, file }) => {

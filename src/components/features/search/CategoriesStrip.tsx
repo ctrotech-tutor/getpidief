@@ -3,6 +3,9 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils/cn";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { motion } from "framer-motion";
 
 interface Category {
   id:           string;
@@ -99,23 +102,33 @@ function CategoryChip({
   onSelect: () => void;
 }) {
   return (
-    <button
-      type="button"
-      role="option"
-      aria-selected={isActive}
-      onClick={onSelect}
-      className={cn(
-        "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium",
-        "whitespace-nowrap shrink-0 transition-all duration-150",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        isActive
-          ? "text-white"
-          : "bg-secondary border border-border text-muted-foreground hover:text-foreground hover:border-ring/30"
-      )}
-      style={isActive ? { background: color } : undefined}
+    <motion.div
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      transition={{ type: "spring", stiffness: 400, damping: 17 }}
     >
-      {label}
-    </button>
+      <Badge
+        variant={isActive ? "default" : "secondary"}
+        className={cn(
+          "cursor-pointer px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-all duration-200",
+          "hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+          isActive 
+            ? "text-white border-0 shadow-lg" 
+            : "bg-background/80 backdrop-blur-sm border-border/50 hover:bg-background hover:border-primary/30"
+        )}
+        style={isActive ? { backgroundColor: color } : undefined}
+        onClick={onSelect}
+        role="option"
+        aria-selected={isActive}
+      >
+        {label}
+        {count > 0 && (
+          <span className="ml-1.5 text-xs opacity-75">
+            ({new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 0 }).format(count)})
+          </span>
+        )}
+      </Badge>
+    </motion.div>
   );
 }
 

@@ -22,12 +22,13 @@ export function usePusherChannel(channelName: string) {
   }, [channelName]);
 
   function bind<T>(event: string, callback: (data: T) => void) {
-    useEffect(() => {
-      const channel = channelRef.current;
-      if (!channel) return;
-      channel.bind(event, callback);
-      return () => { channel.unbind(event, callback); };
-    }, [event, callback]);
+    const channel = channelRef.current;
+    if (!channel) return () => {};
+    const handler = callback as (data: unknown) => void;
+    channel.bind(event, handler);
+    return () => {
+      channel.unbind(event, handler);
+    };
   }
 
   return { channel: channelRef, bind };

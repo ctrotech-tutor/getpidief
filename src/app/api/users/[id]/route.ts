@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { usersRepository } from "@/lib/db/repositories/users";
-import { apiSuccess, apiNotFound, apiUnauthorized, handleApiError } from "@/lib/utils/api";
+import { apiSuccess, apiNotFound, handleApiError } from "@/lib/utils/api";
 import { db } from "@/lib/db/client";
-import { users, authUsers } from "@/lib/db/schema";
+import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
 interface Params { params: Promise<{ id: string }> }

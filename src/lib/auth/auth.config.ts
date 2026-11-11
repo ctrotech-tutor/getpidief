@@ -1,7 +1,20 @@
 import type { NextAuthConfig } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
-import { z } from "zod";
+
+type AuthTokenExtras = {
+  id?: string;
+  role?: string;
+  onboardingComplete?: boolean;
+  username?: string;
+  displayName?: string;
+  avatarUrl?: string | null;
+  status?: string;
+  institutionId?: string | null;
+  verificationStatus?: string;
+  reputationScore?: number;
+  reputationLevel?: string;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EDGE-SAFE AUTH CONFIG
@@ -58,12 +71,11 @@ export const authConfig: NextAuthConfig = {
     // Keep this FAST and SIMPLE — no DB calls, only token inspection.
     authorized({ auth, request: { nextUrl } }) {
       const { pathname } = nextUrl;
-      const user = auth?.user as any;
+      const user = (auth?.user ?? null) as (AuthTokenExtras & { role?: string }) | null;
       const isLoggedIn = !!user;
 
       // ── Public routes: always allow ───────────────────────────────────────
       const publicPrefixes = [
-        "/",
         "/login",
         "/register",
         "/forgot-password",
@@ -89,7 +101,7 @@ export const authConfig: NextAuthConfig = {
       const isPublic =
         pathname === "/" ||
         publicPrefixes.some(
-          (p) => pathname === p || pathname.startsWith(p + "/") || pathname.startsWith(p)
+          (p) => pathname === p || pathname.startsWith(p + "/")
         );
 
       if (isPublic) return true;
@@ -108,20 +120,21 @@ export const authConfig: NextAuthConfig = {
     },
 
     // ── jwt() — attach profile data to token on sign-in ──────────────────
-    async jwt({ token, user, trigger }) {
+    async jwt({ token, user }) {
       if (user) {
+        const u = user as AuthTokenExtras & { id?: string; name?: string | null };
         // Minimal data only — this is edge-safe
-        token.id   = user.id;
-        token.role = (user as any).role ?? "student";
-        token.onboardingComplete = (user as any).onboardingComplete ?? false;
-        token.username   = (user as any).username ?? "";
-        token.avatarUrl  = (user as any).avatarUrl ?? null;
-        token.status     = (user as any).status ?? "active";
-        token.institutionId = (user as any).institutionId ?? null;
-        token.verificationStatus = (user as any).verificationStatus ?? "unverified";
-        token.reputationScore = (user as any).reputationScore ?? 0;
-        token.reputationLevel = (user as any).reputationLevel ?? "scholar";
-        token.displayName     = (user as any).displayName ?? user.name ?? "";
+        token.id = u.id;
+        token.role = u.role ?? "student";
+        token.onboardingComplete = u.onboardingComplete ?? false;
+        token.username = u.username ?? "";
+        token.avatarUrl = u.avatarUrl ?? null;
+        token.status = u.status ?? "active";
+        token.institutionId = u.institutionId ?? null;
+        token.verificationStatus = u.verificationStatus ?? "unverified";
+        token.reputationScore = u.reputationScore ?? 0;
+        token.reputationLevel = u.reputationLevel ?? "scholar";
+        token.displayName = u.displayName ?? u.name ?? "";
       }
       return token;
     },
@@ -129,17 +142,18 @@ export const authConfig: NextAuthConfig = {
     // ── session() — shape the session object from the JWT token ──────────
     async session({ session, token }) {
       if (token && session.user) {
-        (session.user as any).id           = token.id as string;
-        (session.user as any).role         = token.role as string;
-        (session.user as any).onboardingComplete = token.onboardingComplete as boolean;
-        (session.user as any).username     = token.username as string;
-        (session.user as any).displayName  = token.displayName as string;
-        (session.user as any).avatarUrl    = token.avatarUrl as string | null;
-        (session.user as any).status       = token.status as string;
-        (session.user as any).institutionId = token.institutionId as string | null;
-        (session.user as any).verificationStatus = token.verificationStatus as string;
-        (session.user as any).reputationScore    = token.reputationScore as number;
-        (session.user as any).reputationLevel    = token.reputationLevel as string;
+        const target = session.user as AuthTokenExtras;
+        target.id = token.id as string;
+        target.role = token.role as string;
+        target.onboardingComplete = token.onboardingComplete as boolean;
+        target.username = token.username as string;
+        target.displayName = token.displayName as string;
+        target.avatarUrl = token.avatarUrl as string | null;
+        target.status = token.status as string;
+        target.institutionId = token.institutionId as string | null;
+        target.verificationStatus = token.verificationStatus as string;
+        target.reputationScore = token.reputationScore as number;
+        target.reputationLevel = token.reputationLevel as string;
       }
       return session;
     },

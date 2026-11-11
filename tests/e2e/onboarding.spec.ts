@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { STUDENT_AUTH_FILE } from "./auth.setup";
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ONBOARDING E2E TESTS

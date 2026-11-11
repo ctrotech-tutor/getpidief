@@ -2,11 +2,11 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
-import { auth } from "@/lib/auth/config";
-import { ThemeProvider } from "next-themes";
+import { auth } from "@/lib/auth/auth";
+import { ThemeProvider, ThemeScript } from "@/components/providers/theme-provider";
 import { Toaster } from "sonner";
 import { TanstackQueryProvider } from "@/components/layouts/TanstackQueryProvider";
-import { PostHogProvider } from "@/components/layouts/PostHogProvider";
+import { PostHogProvider } from "@/components/providers/PostHogProvider";
 
 // ── Fonts ─────────────────────────────────────────────────────────────────────
 
@@ -115,14 +115,12 @@ export default async function RootLayout({
       suppressHydrationWarning
       className={`${geist.variable} ${inter.variable} ${geistMono.variable}`}
     >
+      <head>
+        <ThemeScript />
+      </head>
       <body className="bg-void text-primary antialiased">
         <SessionProvider session={session}>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="dark"
-            enableSystem={false}
-            disableTransitionOnChange
-          >
+          <ThemeProvider>
             <TanstackQueryProvider>
               <PostHogProvider>
                 {children}

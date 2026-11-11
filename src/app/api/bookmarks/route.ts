@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
-import { documentBookmarks, documents } from "@/lib/db/schema";
+import { documentBookmarks } from "@/lib/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { apiSuccess, apiError, apiUnauthorized, handleApiError } from "@/lib/utils/api";

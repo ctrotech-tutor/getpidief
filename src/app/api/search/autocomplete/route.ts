@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth/config";
+import { auth } from "@/lib/auth/auth";
 import { getAutocomplete } from "@/lib/search/search";
 
 export async function GET(req: NextRequest) {

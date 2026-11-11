@@ -28,12 +28,13 @@ const envSchema = z.object({
   UPSTASH_REDIS_RATE_LIMIT_REST_URL: z.string().url(),
   UPSTASH_REDIS_RATE_LIMIT_REST_TOKEN: z.string().min(1),
 
-  // ── Cloudflare R2 ─────────────────────────────────────────────────────────
-  CLOUDFLARE_ACCOUNT_ID: z.string().min(1),
-  R2_ACCESS_KEY_ID: z.string().min(1),
-  R2_SECRET_ACCESS_KEY: z.string().min(1),
-  R2_BUCKET_NAME: z.string().min(1),
-  R2_PUBLIC_URL: z.string().url(),
+  // ── Backblaze B2 (S3-compatible) ──────────────────────────────────────────
+  B2_KEY_ID: z.string().min(1),
+  B2_APPLICATION_KEY: z.string().min(1),
+  B2_BUCKET_NAME: z.string().min(1),
+  B2_ENDPOINT: z.string().url(),
+  B2_PUBLIC_URL: z.string().url().optional(),
+  B2_REGION: z.string().min(1).default("us-west-000"),
 
   // ── Uploadthing ───────────────────────────────────────────────────────────
   UPLOADTHING_SECRET: z.string().min(1),

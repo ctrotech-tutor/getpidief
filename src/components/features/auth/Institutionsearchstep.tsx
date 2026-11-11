@@ -3,6 +3,7 @@
 import { useActionState, useState, useRef, useEffect, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { saveOnboardingStep1, searchInstitutions } from "@/lib/auth/onboardingActions";
 import { useDebounce } from "@/hooks/useDebounce";
 import { cn } from "@/lib/utils/cn";
@@ -23,14 +24,14 @@ interface Props {
   popularInstitutions: Institution[];
 }
 
-const initialState: ActionResult<{ next: string }> = { success: false, error: "" } as any;
+const initialState: ActionResult<{ next: string }> = { success: false, error: "" };
 
 export function InstitutionSearchStep({ popularInstitutions }: Props) {
   const router  = useRouter();
   const [state, action] = useActionState(
     async (prev: ActionResult<{ next: string }>, formData: FormData) => {
       const result = await saveOnboardingStep1(prev, formData);
-      if (result.success) router.push((result as any).data.next);
+      if (result.success && result.data?.next) router.push(result.data.next);
       return result;
     },
     initialState
@@ -46,8 +47,6 @@ export function InstitutionSearchStep({ popularInstitutions }: Props) {
 
   useEffect(() => {
     if (debouncedQuery.length < 2) {
-      setResults([]);
-      setShowDropdown(false);
       return;
     }
     startSearch(async () => {
@@ -105,7 +104,15 @@ export function InstitutionSearchStep({ popularInstitutions }: Props) {
             id="institution-search"
             type="text"
             value={query}
-            onChange={(e) => { setQuery(e.target.value); setSelected(null); }}
+            onChange={(e) => {
+              const value = e.target.value;
+              setQuery(value);
+              setSelected(null);
+              if (value.length < 2) {
+                setResults([]);
+                setShowDropdown(false);
+              }
+            }}
             onFocus={() => results.length > 0 && setShowDropdown(true)}
             placeholder="Search your university or college…"
             autoComplete="off"
@@ -149,7 +156,14 @@ export function InstitutionSearchStep({ popularInstitutions }: Props) {
                 <div className="w-8 h-8 rounded-lg bg-secondary border border-border
                                 flex items-center justify-center shrink-0 overflow-hidden">
                   {inst.logoUrl ? (
-                    <img src={inst.logoUrl} alt="" className="w-full h-full object-contain p-1"/>
+                    <Image
+                      src={inst.logoUrl}
+                      alt={`${inst.name} logo`}
+                      width={32}
+                      height={32}
+                      className="w-full h-full object-contain p-1"
+                      unoptimized
+                    />
                   ) : (
                     <span className="text-xs font-bold text-muted-foreground">
                       {inst.name.slice(0, 2).toUpperCase()}
@@ -180,7 +194,14 @@ export function InstitutionSearchStep({ popularInstitutions }: Props) {
         <div className="flex items-center gap-2 p-3 rounded-xl bg-primary/5 border border-primary/20">
           <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center">
             {selected.logoUrl ? (
-              <img src={selected.logoUrl} alt="" className="w-5 h-5 object-contain"/>
+              <Image
+                src={selected.logoUrl}
+                alt={`${selected.name} logo`}
+                width={20}
+                height={20}
+                className="w-5 h-5 object-contain"
+                unoptimized
+              />
             ) : (
               <span className="text-xs font-bold text-primary">{selected.name.slice(0, 1)}</span>
             )}
@@ -217,7 +238,7 @@ export function InstitutionSearchStep({ popularInstitutions }: Props) {
 
       {/* Can't find it */}
       <p className="text-xs text-muted-foreground">
-        Can't find your institution?{" "}
+        Can&apos;t find your institution?{" "}
         <button type="button" className="text-primary hover:underline">
           Request it be added →
         </button>

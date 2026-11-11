@@ -2,17 +2,17 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
 import { documents } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { documentsRepository } from "@/lib/db/repositories/documents";
 import { apiSuccess, apiNotFound, apiForbidden, apiUnauthorized, handleApiError } from "@/lib/utils/api";
 import { inngest } from "@/lib/inngest/client";
 
 interface Params { params: Promise<{ id: string }> }
+type SessionUserWithRole = { role?: string };
 
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const { id } = await params;
-    const session = await auth();
 
     // Try to find by slug first, then by ID
     const doc = await db.query.documents.findFirst({
@@ -34,7 +34,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const { id }  = await params;
     const body    = await req.json();
     const userId  = session.user.id;
-    const userRole= (session.user as any).role;
+    const userRole = (session.user as SessionUserWithRole).role ?? "";
 
     const existing = await db.query.documents.findFirst({
       where: eq(documents.id, id),
@@ -77,7 +77,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
 
     const { id }   = await params;
     const userId   = session.user.id;
-    const userRole = (session.user as any).role;
+    const userRole = (session.user as SessionUserWithRole).role ?? "";
 
     const existing = await db.query.documents.findFirst({
       where: eq(documents.id, id),

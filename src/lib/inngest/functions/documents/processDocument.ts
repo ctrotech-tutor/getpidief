@@ -134,7 +134,7 @@ export const processUploadedDocument = inngest.createFunction(
       if (!doc) return;
 
       const tagNames = doc.documentTags
-        .map((dt: any) => dt.tag.name)
+        .map((dt) => dt.tag.name)
         .join(" ");
 
       // Update with weighted tsvector including tags
@@ -318,6 +318,11 @@ export const handleDocumentApproved = inngest.createFunction(
 
     // ── Step 9: Broadcast to Pulse feed ──────────────────────────────────────
     await step.run("broadcast-to-pulse", async () => {
+      const author = await db.query.users.findFirst({
+        where: (u, { eq }) => eq(u.id, authorId),
+        columns: { displayName: true },
+      });
+
       await pusherServer.trigger(CHANNELS.EXPLORE, EVENTS.DOCUMENT_PUBLISHED, {
         documentId,
         slug: doc.slug,
@@ -327,6 +332,17 @@ export const handleDocumentApproved = inngest.createFunction(
         thumbnailUrl: doc.thumbnailUrl,
         categoryId: doc.categoryId,
         publishedAt: new Date().toISOString(),
+      });
+
+      await pusherServer.trigger(CHANNELS.EXPLORE, EVENTS.PULSE_ACTIVITY, {
+        type: "upload",
+        actorId: authorId,
+        actorName: author?.displayName ?? "Scholar",
+        actorAvatarUrl: null,
+        institutionId: doc.institutionId,
+        description: "Published a new document",
+        entityId: documentId,
+        createdAt: new Date().toISOString(),
       });
     });
 
@@ -403,11 +419,20 @@ export const recalculateTrending = inngest.createFunction(
   async ({ step }) => {
     // Acquire lock to prevent duplicate runs
     const locked = await step.run("acquire-lock", async () => {
-      const result = await redis.set(KEYS.trendingLock(), "1", {
-        ex: 900,  // 15 min TTL
-        nx: true, // Only set if not exists
-      });
-      return result === "OK";
+      if (!redis) {
+        console.warn("[Inngest] Redis not available, skipping lock acquisition");
+        return true; // Proceed without lock if Redis is unavailable
+      }
+      try {
+        const result = await redis.set(KEYS.trendingLock(), "1", {
+          ex: 900,  // 15 min TTL
+          nx: true, // Only set if not exists
+        });
+        return result === "OK";
+      } catch (error) {
+        console.warn("[Inngest] Redis lock acquisition failed, proceeding without lock:", error);
+        return true; // Proceed without lock if Redis fails
+      }
     });
 
     if (!locked) {
@@ -460,10 +485,16 @@ export const recalculateTrending = inngest.createFunction(
     });
 
     await step.run("update-redis-sorted-sets", async () => {
-      // Clear and rebuild sorted sets
-      await redis.del(KEYS.trendingGlobal());
+      if (!redis) {
+        console.warn("[Inngest] Redis not available, skipping sorted set updates");
+        return;
+      }
+      
+      try {
+        // Clear and rebuild sorted sets
+        await redis.del(KEYS.trendingGlobal());
 
-      const pipeline = redis.pipeline();
+        const pipeline = redis.pipeline();
 
       for (const doc of scored) {
         pipeline.zadd(KEYS.trendingGlobal(), {
@@ -487,6 +518,9 @@ export const recalculateTrending = inngest.createFunction(
       }
 
       await pipeline.exec();
+      } catch (error) {
+        console.warn("[Inngest] Redis pipeline execution failed:", error);
+      }
     });
 
     await step.run("update-db-scores", async () => {
@@ -500,7 +534,15 @@ export const recalculateTrending = inngest.createFunction(
     });
 
     await step.run("release-lock", async () => {
-      await redis.del(KEYS.trendingLock());
+      if (!redis) {
+        console.warn("[Inngest] Redis not available, skipping lock release");
+        return;
+      }
+      try {
+        await redis.del(KEYS.trendingLock());
+      } catch (error) {
+        console.warn("[Inngest] Failed to release lock:", error);
+      }
     });
 
     return { processed: scored.length };
@@ -524,38 +566,57 @@ export const flushEngagementCounters = inngest.createFunction(
   },
   async ({ step }) => {
     const pendingIds = await step.run("get-pending", async () => {
-      const members = await redis.smembers(KEYS.pendingCounterFlush());
-      return members as string[];
+      if (!redis) {
+        console.warn("[Inngest] Redis not available, skipping counter flush");
+        return [];
+      }
+      try {
+        const members = await redis.smembers(KEYS.pendingCounterFlush());
+        return members as string[];
+      } catch (error) {
+        console.warn("[Inngest] Redis smembers failed, skipping counter flush:", error);
+        return [];
+      }
     });
 
     if (pendingIds.length === 0) return { flushed: 0 };
 
     await step.run("flush-to-db", async () => {
+      if (!redis) {
+        console.warn("[Inngest] Redis not available, skipping flush-to-db");
+        return;
+      }
+      
       for (const documentId of pendingIds) {
-        const [views, downloads, likes] = await Promise.all([
-          redis.getdel(KEYS.viewCountBuffer(documentId)),
-          redis.getdel(KEYS.downloadCountBuffer(documentId)),
-          redis.getdel(KEYS.likeCountBuffer(documentId)),
-        ]);
+        try {
+          const [views, downloads, likes] = await Promise.all([
+            redis.getdel(KEYS.viewCountBuffer(documentId)),
+            redis.getdel(KEYS.downloadCountBuffer(documentId)),
+            redis.getdel(KEYS.likeCountBuffer(documentId)),
+          ]);
 
-        const updates: Record<string, any> = { updatedAt: new Date() };
-        if (views) updates.viewCount = sql`view_count + ${Number(views)}`;
-        if (downloads) updates.downloadCount = sql`download_count + ${Number(downloads)}`;
-        if (likes) updates.likeCount = sql`like_count + ${Number(likes)}`;
+        const updates: Record<string, unknown> = { updatedAt: new Date() };
+          if (views) updates.viewCount = sql`view_count + ${Number(views)}`;
+          if (downloads) updates.downloadCount = sql`download_count + ${Number(downloads)}`;
+          if (likes) updates.likeCount = sql`like_count + ${Number(likes)}`;
 
-        if (Object.keys(updates).length > 1) {
-          await db.update(documents).set(updates).where(eq(documents.id, documentId));
+          if (Object.keys(updates).length > 1) {
+            await db.update(documents).set(updates).where(eq(documents.id, documentId));
+          }
+        } catch (error) {
+          console.warn("[Inngest] Redis getdel failed for document:", documentId, error);
+          // Continue with next document even if one fails
         }
       }
-    });
-
-    await step.run("clear-pending-set", async () => {
-      for (const id of pendingIds) {
-        await redis.srem(KEYS.pendingCounterFlush(), id);
+      
+      // Clear the pending set
+      try {
+        await redis.del(KEYS.pendingCounterFlush());
+      } catch (error) {
+        console.warn("[Inngest] Failed to clear pending counter flush set:", error);
       }
-    });
-
     return { flushed: pendingIds.length };
+    });
   }
 );
 
@@ -582,7 +643,7 @@ export const rebuildSearchVectors = inngest.createFunction(
 
         if (!doc) continue;
 
-        const tagNames = doc.documentTags.map((dt: any) => dt.tag.name).join(" ");
+        const tagNames = doc.documentTags.map((dt) => dt.tag.name).join(" ");
 
         await db.execute(sql`
           UPDATE documents SET search_vector = (

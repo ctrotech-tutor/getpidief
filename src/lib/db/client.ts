@@ -2,6 +2,7 @@ import { neon, neonConfig, Pool } from "@neondatabase/serverless";
 import { drizzle as drizzleNeon } from "drizzle-orm/neon-http";
 import { drizzle as drizzlePool } from "drizzle-orm/neon-serverless";
 import { drizzle as drizzleNode } from "drizzle-orm/node-postgres";
+import { Pool as PgPool } from "pg";
 import ws from "ws";
 import * as schema from "./schema";
 
@@ -62,7 +63,6 @@ export function getPooledDb() {
 // ── 3. Node client (for scripts / Inngest workers) ────────────────────────────
 
 export function getNodeDb() {
-  const { Pool: PgPool } = require("pg");
   const pool = new PgPool({ connectionString: DATABASE_URL });
   return drizzleNode(pool, { schema, logger: false });
 }
@@ -75,7 +75,7 @@ export async function withTransaction<T>(
   callback: (tx: ReturnType<typeof getPooledDb>) => Promise<T>
 ): Promise<T> {
   const pooledDb = getPooledDb();
-  return pooledDb.transaction(callback as any);
+  return pooledDb.transaction(callback as never);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
-import { institutions } from "@/lib/db/schema";
+import { institutions, documents } from "@/lib/db/schema";
 import { sql, eq, desc } from "drizzle-orm";
-import { redis, KEYS, TTL, getCache, setCache } from "@/lib/redis/client";
+import { KEYS, TTL, getCache, setCache } from "@/lib/redis/client";
 
 export const runtime = "nodejs"; // needs DB access
 
@@ -28,11 +28,29 @@ export async function GET(req: NextRequest) {
         countryCode:  institutions.countryCode,
         type:         institutions.type,
         logoUrl:      institutions.logoUrl,
-        documentCount:institutions.documentCount,
+        documentCount: sql<number>`
+          coalesce((
+            select count(*)::int
+            from ${documents} d
+            where d.institution_id = ${institutions.id}
+              and d.status = 'approved'
+              and d.visibility = 'public'
+              and d.deleted_at is null
+          ), 0)
+        `,
       })
       .from(institutions)
       .where(eq(institutions.isActive, true))
-      .orderBy(desc(institutions.documentCount))
+      .orderBy(desc(sql<number>`
+        coalesce((
+          select count(*)::int
+          from ${documents} d
+          where d.institution_id = ${institutions.id}
+            and d.status = 'approved'
+            and d.visibility = 'public'
+            and d.deleted_at is null
+        ), 0)
+      `))
       .limit(8);
 
     await setCache(cacheKey, rows, TTL.institutionsPopular);

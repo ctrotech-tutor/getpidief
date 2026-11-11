@@ -16,6 +16,20 @@ import {
 } from "@/lib/db/schema";
 import { inngest } from "@/lib/inngest/client";
 
+type AuthSessionUser = {
+  id?: string;
+  role?: string;
+  status?: string;
+  username?: string;
+  displayName?: string;
+  avatarUrl?: string | null;
+  onboardingComplete?: boolean;
+  institutionId?: string | null;
+  verificationStatus?: string;
+  reputationScore?: number;
+  reputationLevel?: string;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // FULL SERVER AUTH CONFIG
 //
@@ -30,7 +44,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   // ── Database adapter ─────────────────────────────────────────────────────
   adapter: DrizzleAdapter(db, {
     usersTable:              authUsers,
-    accountsTable:           authAccounts as any,
+    // @ts-expect-error -- project auth_accounts schema intentionally differs from Auth.js default account columns
+    accountsTable:           authAccounts,
     sessionsTable:           authSessions,
     verificationTokensTable: authVerificationTokens,
   }),
@@ -124,15 +139,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           verificationStatus:  profile?.verificationStatus ?? "unverified",
           reputationScore:     profile?.reputationScore ?? 0,
           reputationLevel:     profile?.reputationLevel ?? "scholar",
-        } as any;
+        } as AuthSessionUser;
       },
     }),
   ],
 
   callbacks: {
     // Extend the edge-safe callbacks with DB-aware sign-in check
-    async signIn({ user, account }) {
+    async signIn({ user }) {
       if (!user.id) return true;
+
+      // Check auth user for email verification
+      const authUser = await db.query.authUsers.findFirst({
+        where: eq(authUsers.id, user.id),
+        columns: { emailVerified: true },
+      });
+
+      if (!authUser?.emailVerified) {
+        // User needs to verify email first
+        return "/verify-email";
+      }
 
       const profile = await db.query.users.findFirst({
         where: eq(users.id, user.id),
@@ -151,17 +177,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user, trigger, session: updateSession }) {
       // On sign-in: attach profile fields from user object
       if (user) {
+        const u = user as AuthSessionUser;
         token.id                  = user.id!;
-        token.role                = (user as any).role                ?? "student";
-        token.status              = (user as any).status              ?? "active";
-        token.username            = (user as any).username            ?? "";
-        token.displayName         = (user as any).displayName         ?? user.name ?? "";
-        token.avatarUrl           = (user as any).avatarUrl           ?? null;
-        token.onboardingComplete  = (user as any).onboardingComplete  ?? false;
-        token.institutionId       = (user as any).institutionId       ?? null;
-        token.verificationStatus  = (user as any).verificationStatus  ?? "unverified";
-        token.reputationScore     = (user as any).reputationScore     ?? 0;
-        token.reputationLevel     = (user as any).reputationLevel     ?? "scholar";
+        token.role                = u.role                ?? "student";
+        token.status              = u.status              ?? "active";
+        token.username            = u.username            ?? "";
+        token.displayName         = u.displayName         ?? user.name ?? "";
+        token.avatarUrl           = u.avatarUrl           ?? null;
+        token.onboardingComplete  = u.onboardingComplete  ?? false;
+        token.institutionId       = u.institutionId       ?? null;
+        token.verificationStatus  = u.verificationStatus  ?? "unverified";
+        token.reputationScore     = u.reputationScore     ?? 0;
+        token.reputationLevel     = u.reputationLevel     ?? "scholar";
       }
 
       // On update trigger (e.g. after onboarding completes)
@@ -189,14 +216,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         onboardingStep:     1,
       }).onConflictDoNothing();
 
-      await inngest.send({
-        name: "user/registered",
-        data: {
-          userId:   user.id!,
-          email:    user.email!,
-          name:     user.name ?? username,
-          provider: "google",
-        },
+      void dispatchInngestEvent("user/registered", {
+        userId: user.id!,
+        email: user.email!,
+        name: user.name ?? username,
+        provider: "google",
       });
     },
 
@@ -213,13 +237,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         })
         .where(eq(users.id, user.id));
 
-      await inngest.send({
-        name: "user/streak-update",
-        data: { userId: user.id },
-      });
+      void dispatchInngestEvent("user/streak-update", { userId: user.id });
     },
   },
 });
+
+/**
+ * Auth events should never fail user login/signup flow.
+ * If Inngest is unavailable (e.g. local dev server down), log and continue.
+ */
+async function dispatchInngestEvent(name: string, data: Record<string, unknown>) {
+  try {
+    await inngest.send({ name, data } as never);
+  } catch (error) {
+    console.warn(`[Auth] Failed to dispatch Inngest event "${name}"`, error);
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SERVER HELPERS
@@ -227,7 +260,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
 export async function getCurrentUser() {
   const session = await auth();
-  return (session?.user as any) ?? null;
+  return (session?.user as AuthSessionUser) ?? null;
 }
 
 export async function requireAuth(): Promise<string> {

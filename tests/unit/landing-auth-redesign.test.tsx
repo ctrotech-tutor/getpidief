@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 
 const actions = vi.hoisted(() => ({ request: vi.fn(), google: vi.fn() }));
 vi.mock("@/lib/auth/actions", () => ({ requestPasswordReset: actions.request, signInWithGoogle: actions.google }));
-import HomePage from "@/app/page";
+import HomePage from "@/app/LandingPage";
 import AuthLayout from "@/app/(auth)/layout";
 import { ForgotPasswordForm } from "@/components/features/auth/ForgotPasswordForm";
 import { GoogleOAuthButton } from "@/components/features/auth/GoogleOAuthButton";

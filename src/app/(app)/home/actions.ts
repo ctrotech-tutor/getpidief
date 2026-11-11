@@ -1,8 +1,9 @@
 "use server";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
-import { users, posts, postReplies, postLikes, postSaves } from "@/lib/db/schema";
+import { users, posts, postReplies, postLikes, postSaves, feedReports } from "@/lib/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { rateLimiters, redisRateLimit } from "@/lib/redis/client";
 
@@ -14,7 +15,7 @@ async function currentUser() {
   if (!user || user.status !== "active" || !user.onboardingComplete) throw new Error("Account unavailable.");
   return id;
 }
-async function limit(userId: string, kind: "feedPost" | "comment") {
+async function limit(userId: string, kind: "feedPost" | "comment" | "report") {
   // Never silently disable abuse limits in production.
   if (process.env.NODE_ENV === "production" && !redisRateLimit) throw new Error("Posting is temporarily unavailable.");
   try {
@@ -43,6 +44,7 @@ export async function createPost(form: FormData) {
   const text = body(form, 3000);
   await limit(userId, "feedPost");
   await db.insert(posts).values({ authorId: userId, kind, body: text });
+  revalidatePath("/");
   revalidatePath("/home");
 }
 export async function reply(form: FormData) {
@@ -51,6 +53,7 @@ export async function reply(form: FormData) {
   const id = await postId(form);
   await limit(userId, "comment");
   await db.insert(postReplies).values({ postId: id, authorId: userId, body: text });
+  revalidatePath("/");
   revalidatePath("/home");
   revalidatePath(`/home/post/${id}`);
 }
@@ -58,16 +61,43 @@ export async function toggleLike(form: FormData) {
   const userId = await currentUser(); const id = await postId(form);
   if (form.get("active") === "true") await db.delete(postLikes).where(and(eq(postLikes.postId, id), eq(postLikes.userId, userId)));
   else await db.insert(postLikes).values({ postId: id, userId }).onConflictDoNothing();
+  revalidatePath("/");
   revalidatePath("/home");
 }
 export async function toggleSave(form: FormData) {
   const userId = await currentUser(); const id = await postId(form);
   if (form.get("active") === "true") await db.delete(postSaves).where(and(eq(postSaves.postId, id), eq(postSaves.userId, userId)));
   else await db.insert(postSaves).values({ postId: id, userId }).onConflictDoNothing();
+  revalidatePath("/");
   revalidatePath("/home");
 }
 export async function deletePost(form: FormData) {
   const userId = await currentUser(); const id = await postId(form);
   await db.update(posts).set({ deletedAt: new Date() }).where(and(eq(posts.id, id), eq(posts.authorId, userId)));
+  revalidatePath("/");
   revalidatePath("/home");
+}
+
+export async function reportFeedContent(form: FormData) {
+  const userId = await currentUser();
+  const reason = form.get("reason");
+  if (typeof reason !== "string" || !["spam", "harassment", "misinformation", "other"].includes(reason)) throw new Error("Choose a report reason.");
+  const id = await postId(form);
+  const replyId = form.get("replyId");
+  if (replyId !== null && (typeof replyId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(replyId))) throw new Error("Invalid reply.");
+  await limit(userId, "report");
+  await db.transaction(async tx => {
+    const [post] = await tx.select({ authorId: posts.authorId }).from(posts).where(and(eq(posts.id, id), isNull(posts.deletedAt))).for("update");
+    if (!post) throw new Error("Post unavailable.");
+    let authorId = post.authorId;
+    if (typeof replyId === "string") {
+      const [target] = await tx.select({ authorId: postReplies.authorId }).from(postReplies).where(and(eq(postReplies.id, replyId), eq(postReplies.postId, id), isNull(postReplies.deletedAt))).for("update");
+      if (!target) throw new Error("Reply unavailable.");
+      authorId = target.authorId;
+    }
+    if (authorId === userId) throw new Error("You cannot report your own content.");
+    await tx.insert(feedReports).values({ reporterId: userId, postId: id, replyId: typeof replyId === "string" ? replyId : null, reason }).onConflictDoNothing();
+  });
+  revalidatePath("/admin/feed-reports");
+  redirect(`/home/post/${id}?reported=1`);
 }

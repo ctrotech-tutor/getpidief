@@ -18,7 +18,7 @@ import { headers } from "next/headers";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function signInWithGoogle() {
-  await signIn("google", { redirectTo: "/explore" });
+  await signIn("google", { redirectTo: "/" });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,7 +43,7 @@ export async function signInWithCredentials(
       password,
       redirect:   false,
     });
-    return actionSuccess({ redirectTo: "/explore" });
+    return actionSuccess({ redirectTo: "/" });
   } catch (error: unknown) {
     const authError = error as { type?: string };
     if (authError.type === "CredentialsSignin") {

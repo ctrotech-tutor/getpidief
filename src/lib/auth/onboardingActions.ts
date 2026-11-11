@@ -206,7 +206,7 @@ export async function saveOnboardingStep3(
     },
   });
 
-  return actionSuccess({ next: "/explore" });
+  return actionSuccess({ next: "/" });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

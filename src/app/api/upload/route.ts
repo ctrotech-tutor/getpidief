@@ -97,31 +97,19 @@ export const ourFileRouter = {
       return { url: file.url };
     }),
 
-  // ── Verification document ─────────────────────────────────────────────────
+  // Identity documents must not enter a provider with unverified public access.
+  // This also refuses callbacks from uploads started before this safeguard.
   verificationDocument: f({
     pdf: { maxFileSize: "16MB", maxFileCount: 1 },
     image: { maxFileSize: "16MB", maxFileCount: 1 },
   })
     .middleware(async () => {
-      const session = await auth();
-      if (!session?.user?.id) throw new Error("UNAUTHORIZED");
-      return { userId: session.user.id };
+      throw new Error("Verification document uploads are temporarily unavailable while private storage is being configured.");
     })
-    .onUploadComplete(async ({ metadata, file }) => {
-      const { users } = await import("@/lib/db/schema");
-      const { eq } = await import("drizzle-orm");
-
-      await db
-        .update(users)
-        .set({
-          verificationDocumentUrl: file.url,
-          verificationStatus: "pending",
-          verificationRequestedAt: new Date(),
-        })
-        .where(eq(users.id, metadata.userId));
-
-      return { url: file.url };
+    .onUploadComplete(async () => {
+      throw new Error("Verification document uploads are unavailable.");
     }),
+
 } satisfies FileRouter;
 
 export type OurFileRouter = typeof ourFileRouter;

@@ -27,6 +27,11 @@ This guide is for a separate development database. It does not reset or migrate 
    AUTH_SECRET=replace-with-a-long-random-local-secret
    NEXTAUTH_SECRET=replace-with-the-same-long-random-local-secret
    NEXTAUTH_URL=http://localhost:3000
+   NEXT_PUBLIC_APP_URL=http://localhost:3000
+   EMAIL_PROVIDER=local
+   INNGEST_DEV=1
+   UPSTASH_REDIS_REST_URL=your-development-upstash-rest-url
+   UPSTASH_REDIS_REST_TOKEN=your-development-upstash-rest-token
    ```
 
    Generate a local secret with `openssl rand -base64 32`, then paste it into both secret fields. The example Docker password is for local development only. Environment variables already exported in your shell take precedence over `.env.local`; verify that they do not point to a hosted database before any database command.
@@ -49,3 +54,11 @@ This guide is for a separate development database. It does not reset or migrate 
    ```
 
 Email, authentication providers, uploads, storage, background processing, rate limiting and realtime need their own development service configuration. See `env.example` and [PHASE-1-PROGRESS.md](PHASE-1-PROGRESS.md) for limitations. In particular, current file storage may be public, including before moderation. Do not upload sensitive materials. Production readiness and hosted integrations have not been established.
+
+## Local signup email
+
+`EMAIL_PROVIDER=local` prints complete message HTML, including one-time verification and reset links, in the Next.js server console. It sends no email and is rejected outside `NODE_ENV=development`. Never use real users or shared logs for this mode. Follow the verification link from the console; it must start with `http://localhost:3000` when the app URL is set above.
+
+Registration still requires a reachable development Upstash REST Redis, and the email worker still requires an Inngest development server connected to `http://localhost:3000/api/inngest`. Inngest processes the message asynchronously; the email appears in the app server's console, not necessarily immediately after registration. Running `npm ci --ignore-scripts` may leave the bundled Inngest CLI unavailable; install the Inngest CLI separately, then run `inngest dev -u http://localhost:3000/api/inngest`. Check the Inngest dashboard for worker failures. These services have not been verified against a real account in this environment.
+
+Other provider settings and sender verification are documented in [EMAIL.md](EMAIL.md). With an empty database, the current onboarding requires reference institutions and interests, and the visible skip link does not complete onboarding; no seed is automatically installed.

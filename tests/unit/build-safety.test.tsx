@@ -12,19 +12,19 @@ describe("build and diagnostics safety", () => {
     expect(result.status).toBe(404);
     expect(mocks.send).not.toHaveBeenCalled();
   });
-  it("imports email configuration safely but fails at send setup when missing", () => {
-    const previous = process.env.SENDGRID_API_KEY;
+  it("imports email configuration safely but fails on send when missing", async () => {
+    vi.stubEnv("EMAIL_PROVIDER", "sendgrid");
+    vi.stubEnv("SENDGRID_API_KEY", "");
+    const message = { from: "sender@example.test", to: "recipient@example.test", subject: "Test", html: "test" };
     try {
-      delete process.env.SENDGRID_API_KEY;
-      expect(() => getEmailClient()).toThrow("SENDGRID_API_KEY environment variable is not set");
+      expect(() => getEmailClient()).not.toThrow();
+      await expect(getEmailClient().send(message)).rejects.toThrow("SENDGRID_API_KEY");
       expect(mocks.setApiKey).not.toHaveBeenCalled();
-      process.env.SENDGRID_API_KEY = "test-only";
-      expect(getEmailClient()).toBe(mocks);
+      vi.stubEnv("SENDGRID_API_KEY", "test-only");
+      await getEmailClient().send(message);
       expect(mocks.setApiKey).toHaveBeenCalledWith("test-only");
-    } finally {
-      if (previous === undefined) delete process.env.SENDGRID_API_KEY;
-      else process.env.SENDGRID_API_KEY = previous;
-    }
+      expect(mocks.send).toHaveBeenCalledWith(message);
+    } finally { vi.unstubAllEnvs(); }
   });
   it("renders network status without reading browser APIs during SSR", () => {
     vi.stubGlobal("navigator", undefined);

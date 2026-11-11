@@ -50,9 +50,15 @@ const envSchema = z.object({
   INNGEST_EVENT_KEY: z.string().min(1),
   INNGEST_SIGNING_KEY: z.string().min(1),
 
-  // ── Resend (email) ────────────────────────────────────────────────────────
-  RESEND_API_KEY: z.string().min(1),
-  RESEND_FROM_EMAIL: z.string().email().default("noreply@getpidief.me"),
+  // Selected provider validates its credentials at send time.
+  EMAIL_PROVIDER: z.enum(["local", "console", "resend", "sendgrid", "gmail", "brevo"]).default("sendgrid"),
+  EMAIL_FROM: z.string().optional(),
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_FROM_EMAIL: z.string().optional(),
+  SENDGRID_API_KEY: z.string().optional(),
+  GMAIL_USER: z.string().optional(),
+  GMAIL_APP_PASSWORD: z.string().optional(),
+  BREVO_API_KEY: z.string().optional(),
 
   // ── Web Push ──────────────────────────────────────────────────────────────
   VAPID_PUBLIC_KEY: z.string().min(1),

@@ -110,15 +110,15 @@ export const documentsRepository = {
     slug: string,
     requestingUserId?: string
   ): Promise<DocumentWithRelations | null> {
-    const cacheKey = KEYS.document(slug);
-    const cached = await getCache<DocumentWithRelations>(cacheKey);
-    if (cached) return cached;
+    // Do not use the legacy shared document cache: it may contain private
+    // documents or another user's reaction and bookmark state.
 
     const doc = await withDbRetry(() =>
       db.query.documents.findFirst({
       where: and(
         eq(documents.slug, slug),
-        not(eq(documents.status, "deleted")),
+        eq(documents.status, "approved"),
+        eq(documents.visibility, "public"),
         isNull(documents.deletedAt)
       ),
       with: {
@@ -177,11 +177,6 @@ export const documentsRepository = {
     }
 
     const result = { ...doc, userReaction, isBookmarked } as DocumentWithRelations;
-
-    // Only cache approved public documents
-    if (doc.status === "approved" && doc.visibility === "public") {
-      await setCache(cacheKey, result, TTL.document);
-    }
 
     return result;
   },

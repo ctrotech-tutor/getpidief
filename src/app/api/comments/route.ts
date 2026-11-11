@@ -4,7 +4,7 @@ import { db } from "@/lib/db/client";
 import { comments, documents, users } from "@/lib/db/schema";
 import { eq, and, isNull, desc, sql } from "drizzle-orm";
 import { createCommentSchema } from "@/lib/validations/schemas";
-import { apiSuccess, apiCreated, apiUnauthorized, apiZodError, handleApiError } from "@/lib/utils/api";
+import { apiSuccess, apiCreated, apiUnauthorized, apiZodError, apiNotFound, apiError, apiRateLimited, handleApiError } from "@/lib/utils/api";
 import { rateLimiters } from "@/lib/redis/client";
 import { sanitizeComment } from "@/lib/utils/sanitize";
 import { inngest } from "@/lib/inngest/client";
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     // Rate limit: 10 comments per 5 minutes
     const { success } = await rateLimiters.comment.limit(userId);
     if (!success) {
-      return apiUnauthorized(); // reuse 429 pattern
+      return apiRateLimited();
     }
 
     const body   = await req.json();
@@ -37,21 +37,24 @@ export async function POST(req: NextRequest) {
 
     // Fetch document for denorm + notification
     const doc = await db.query.documents.findFirst({
-      where: eq(documents.id, documentId),
+      where: and(eq(documents.id, documentId), eq(documents.status, "approved"),
+        eq(documents.visibility, "public"), isNull(documents.deletedAt)),
       columns: { authorId: true, title: true, slug: true, commentCount: true },
     });
 
-    if (!doc) return apiUnauthorized();
+    if (!doc) return apiNotFound("Document");
 
     // Find parent comment author for reply notification
     let parentComment = null;
     let rootId: string | null = null;
     if (parentId) {
       parentComment = await db.query.comments.findFirst({
-        where: eq(comments.id, parentId),
+        where: and(eq(comments.id, parentId), eq(comments.documentId, documentId),
+          eq(comments.isDeleted, false)),
         columns: { userId: true, rootId: true },
       });
-      rootId = parentComment?.rootId ?? parentId;
+      if (!parentComment) return apiNotFound("Comment");
+      rootId = parentComment.rootId ?? parentId;
     }
 
     // Insert comment
@@ -129,10 +132,25 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     const documentId = req.nextUrl.searchParams.get("documentId");
-    if (!documentId) return apiUnauthorized();
+    if (!documentId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(documentId))
+      return apiError("INVALID_PARAMS", "Invalid document ID");
 
-    const page   = parseInt(req.nextUrl.searchParams.get("page")  ?? "1",  10);
-    const limit  = parseInt(req.nextUrl.searchParams.get("limit") ?? "20", 10);
+    // Match the public document endpoint. Private access is not yet implemented.
+    const doc = await db.query.documents.findFirst({
+      where: and(eq(documents.id, documentId), eq(documents.status, "approved"),
+        eq(documents.visibility, "public"), isNull(documents.deletedAt)),
+      columns: { id: true },
+    });
+    if (!doc) return apiNotFound("Document");
+
+    const pageText = req.nextUrl.searchParams.get("page") ?? "1";
+    const limitText = req.nextUrl.searchParams.get("limit") ?? "20";
+    if (!/^[1-9]\d*$/.test(pageText) || !/^[1-9]\d*$/.test(limitText))
+      return apiError("INVALID_PARAMS", "Invalid pagination");
+    const page = Number(pageText);
+    const limit = Number(limitText);
+    if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(limit) || limit < 1 || limit > 50 || !Number.isSafeInteger((page - 1) * limit))
+      return apiError("INVALID_PARAMS", "Invalid pagination");
     const offset = (page - 1) * limit;
 
     const rows = await db.query.comments.findMany({

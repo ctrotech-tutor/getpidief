@@ -17,7 +17,8 @@
     "inngest:dev": "inngest dev",
     "test": "vitest",
     "test:e2e": "playwright test",
-    "test:coverage": "vitest --coverage"
+    "test:coverage": "vitest --coverage",
+    "build:preview": "next build preview-app"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.1",

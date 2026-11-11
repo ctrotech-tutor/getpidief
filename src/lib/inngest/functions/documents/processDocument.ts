@@ -4,6 +4,7 @@ import { documents, documentTags, tags } from "@/lib/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { redis, KEYS, invalidateCache, zincrby, zaddScore } from "@/lib/redis/client";
 import { pusherServer, CHANNELS, EVENTS } from "@/lib/pusher/server";
+import { getPrivatePdfUrl, isPrivatePdfReference } from "@/lib/storage/private-pdf";
 import { storage } from "@/lib/storage/client";
 import { sql } from "drizzle-orm";
 import { cron } from "inngest";
@@ -41,7 +42,7 @@ export const processUploadedDocument = inngest.createFunction(
 
     // ── Step 2: Extract PDF metadata ─────────────────────────────────────────
     const pdfMetadata = await step.run("extract-pdf-metadata", async () => {
-      const response = await fetch(fileUrl);
+      const response = await fetch(isPrivatePdfReference(fileUrl) ? await getPrivatePdfUrl(fileUrl) : fileUrl);
       if (!response.ok) throw new Error(`Failed to fetch PDF: ${response.status}`);
 
       const buffer = await response.arrayBuffer();
@@ -79,6 +80,8 @@ export const processUploadedDocument = inngest.createFunction(
     // ── Step 4: Generate thumbnail ───────────────────────────────────────────
     const thumbnailUrl = await step.run("generate-thumbnail", async () => {
       try {
+        // Do not publish derivatives of private objects before moderation.
+        if (isPrivatePdfReference(fileUrl)) return null;
         // Fetch PDF as buffer
         const response = await fetch(fileUrl);
         const buffer = await response.arrayBuffer();

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isPrivatePdfReference } from "@/lib/storage/private-pdf";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
 import { documentDownloads, documents } from "@/lib/db/schema";
@@ -73,6 +74,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (!result.tracked || !result.doc?.fileUrl) {
       return NextResponse.redirect(new URL("/404", req.url));
     }
+    if (isPrivatePdfReference(result.doc.fileUrl)) return NextResponse.redirect(new URL(`/api/documents/${id}/file`, req.url), { headers: { "Cache-Control": "private, no-store" } });
     return NextResponse.redirect(result.doc.fileUrl);
   } catch (e) {
     return handleApiError(e);

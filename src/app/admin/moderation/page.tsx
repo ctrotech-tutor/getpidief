@@ -1,3 +1,4 @@
+import { isPrivatePdfReference } from "@/lib/storage/private-pdf";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
 import { documents, users } from "@/lib/db/schema";
@@ -182,7 +183,7 @@ export default async function ModerationPage({ searchParams }: PageProps) {
 
                   {/* Preview link */}
                   <a
-                    href={doc.fileUrl}
+                    href={isPrivatePdfReference(doc.fileUrl) ? `/api/documents/${doc.id}/file` : doc.fileUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="px-3 py-1.5 text-xs border border-border rounded-lg text-muted-foreground

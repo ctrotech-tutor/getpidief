@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { isPrivatePdfReference } from "@/lib/storage/private-pdf";
 import { auth } from "@/lib/auth/auth";
 import { documentsRepository } from "@/lib/db/repositories/documents";
 import { CommentStream } from "@/components/features/comments/CommentStream";
@@ -122,7 +123,7 @@ export default async function DocumentWorkspacePage({ params }: PageProps) {
           <Suspense fallback={<PDFLoadingPlaceholder />}>
             <PDFViewerWrapper
               documentId={doc.id}
-              fileUrl={doc.fileUrl}
+              fileUrl={isPrivatePdfReference(doc.fileUrl) ? `/api/documents/${doc.id}/file` : doc.fileUrl}
               title={doc.title}
               className="h-full"
             />

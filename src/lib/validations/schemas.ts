@@ -14,14 +14,15 @@ export const loginSchema = z.object({
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")
-    .max(72, "Password cannot exceed 72 characters"),
+    .max(72, "Password cannot exceed 72 characters")
+    .refine((value) => new TextEncoder().encode(value).length <= 72, "Password must be at most 72 UTF-8 bytes"),
   rememberMe: z.boolean().optional(),
 });
 
 export const registerSchema = z
   .object({
-    firstName: z.string().min(1, "First name is required").max(50).trim(),
-    lastName: z.string().min(1, "Last name is required").max(50).trim(),
+    firstName: z.string().trim().min(1, "First name is required").max(50),
+    lastName: z.string().trim().min(1, "Last name is required").max(50),
     email: z.string().email("Invalid email").max(255).toLowerCase().trim(),
     password: z
       .string()
@@ -29,7 +30,8 @@ export const registerSchema = z
       .max(72)
       .regex(/[A-Z]/, "Must include an uppercase letter")
       .regex(/[0-9]/, "Must include a number")
-      .regex(/[^A-Za-z0-9]/, "Must include a special character"),
+      .regex(/[^A-Za-z0-9]/, "Must include a special character")
+      .refine((value) => new TextEncoder().encode(value).length <= 72, "Password must be at most 72 UTF-8 bytes"),
     confirmPassword: z.string(),
     acceptTerms: z
       .boolean()
@@ -53,7 +55,9 @@ export const resetPasswordSchema = z
       .min(8, "Minimum 8 characters")
       .max(72)
       .regex(/[A-Z]/, "Must include an uppercase letter")
-      .regex(/[0-9]/, "Must include a number"),
+      .regex(/[0-9]/, "Must include a number")
+      .regex(/[^A-Za-z0-9]/, "Must include a special character")
+      .refine((value) => new TextEncoder().encode(value).length <= 72, "Password must be at most 72 UTF-8 bytes"),
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {

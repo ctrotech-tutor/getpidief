@@ -20,7 +20,7 @@ export const sendEmailVerification = inngest.createFunction(
     triggers: [{ event: "email/send-verification" }],
   },
   async ({ event, step }) => {
-    const { userId, email, name, token: providedToken } = event.data;
+    const { userId, name, token: providedToken } = event.data;
 
     // ── Step 1: Find user ─────────────────────────────────────
     const user = await step.run("find-user", async () => {
@@ -36,7 +36,7 @@ export const sendEmailVerification = inngest.createFunction(
     }
 
     // ── Step 2: Generate new token if not provided ─────────────────────────────
-    const token = providedToken || nanoid(32);
+    const token = await step.run("generate-token", () => typeof providedToken === "string" ? providedToken : nanoid(32));
     const tokenData = JSON.stringify({
       userId: user.id,
       email: user.email,
@@ -44,13 +44,8 @@ export const sendEmailVerification = inngest.createFunction(
 
     // ── Step 3: Store token in Redis ─────────────────────────────────────
     await step.run("store-token", async () => {
-      if (redis) {
-        try {
-          await redis.setex(KEYS.emailVerifyToken(token), 86400, tokenData); // 24 hours
-        } catch (error) {
-          console.warn("[EmailVerification] Failed to store token:", error);
-        }
-      }
+      if (!redis) throw new Error("Verification token store is unavailable");
+      await redis.setex(KEYS.emailVerifyToken(token), 86400, tokenData);
     });
 
     // ── Step 4: Send verification email ─────────────────────────────────────

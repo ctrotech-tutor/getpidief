@@ -63,6 +63,12 @@ jobs:
           AUTH_SECRET: ci-build-only-not-a-production-secret-0123456789
           NEXTAUTH_SECRET: ci-build-only-not-a-production-secret-0123456789
           NEXT_TELEMETRY_DISABLED: '1'
+      - name: PostgreSQL credential registration
+        run: npm test -- --run tests/integration/postgres-auth-registration.test.ts
+        env:
+          DATABASE_URL: postgresql://test:test@127.0.0.1:5432/getpidief_test
+          TEST_DATABASE_URL: postgresql://test:test@127.0.0.1:5432/getpidief_test
+          TEST_DATABASE_WRITE: 'yes'
       - name: PostgreSQL social concurrency
         run: npm run test:db:social
         env:

@@ -2,13 +2,13 @@
 
 import { signIn, signOut } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
-import { authUsers, authAccounts } from "@/lib/db/schema";
+import { authUsers, authAccounts, users, accountAgreements } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { registerSchema, forgotPasswordSchema, resetPasswordSchema } from "@/lib/validations/schemas";
 import { rateLimiters } from "@/lib/redis/client";
-import { redis, KEYS, TTL } from "@/lib/redis/client";
+import { redis, redisRateLimit, KEYS, TTL } from "@/lib/redis/client";
 import { inngest } from "@/lib/inngest/client";
 import { actionSuccess, actionError, type ActionResult } from "@/lib/utils/api";
 import { headers } from "next/headers";
@@ -61,7 +61,8 @@ export async function registerWithCredentials(
   _: ActionResult<{ message: string }>,
   formData: FormData
 ): Promise<ActionResult<{ message: string }>> {
-  const ip = (await headers()).get("x-forwarded-for") ?? "unknown";
+  if (process.env.NODE_ENV === "production" && !redisRateLimit) return actionError("Account creation is temporarily unavailable. Please try again later.");
+  const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const { success: ok } = await rateLimiters.register.limit(ip);
   if (!ok) return actionError("Too many registration attempts. Please wait.");
 
@@ -81,48 +82,43 @@ export async function registerWithCredentials(
     return actionError(firstError ?? "Invalid form data.");
   }
 
-  const { firstName, lastName, email, password } = parsed.data;
+  const { firstName, lastName, email, password, isAcademicResearcher } = parsed.data;
   const fullName = `${firstName.trim()} ${lastName.trim()}`;
+  if (!redis) return actionError("Account creation is temporarily unavailable. Please try again later.");
 
-  // Check if email already exists
-  const existing = await db.query.authUsers.findFirst({
-    where: eq(authUsers.email, email),
-    columns: { id: true },
-  });
-  if (existing) return actionError("An account with this email already exists.", "email");
-
-  // Hash password
+  // A single transaction prevents half-created accounts and records the actual
+  // agreement and optional self-description alongside the credential profile.
   const passwordHash = await bcrypt.hash(password, 12);
+  let userId: string;
+  try {
+    userId = await db.transaction(async (tx) => {
+      const [authUser] = await tx.insert(authUsers).values({ name: fullName, email }).returning({ id: authUsers.id });
+      await tx.insert(authAccounts).values({ userId: authUser.id, type: "credentials", provider: "credentials", providerAccountId: passwordHash });
+      await tx.insert(users).values({ id: authUser.id, username: `learner_${authUser.id.replaceAll("-", "").slice(0, 24)}`, displayName: fullName });
+      await tx.insert(accountAgreements).values({ userId: authUser.id, termsVersion: "legacy-2024", privacyVersion: "legacy-2024", isAcademicResearcherOrStudent: Boolean(isAcademicResearcher) });
+      return authUser.id;
+    });
+  } catch (error) {
+    const databaseError = (error as { cause?: { code?: string; constraint?: string } }).cause;
+    if (databaseError?.code === "23505" && ["auth_users_email_unique", "auth_users_email_idx"].includes(databaseError.constraint ?? "")) return actionError("An account with this email already exists.", "email");
+    // Drizzle errors may contain query parameters, including email and hashes.
+    console.error("[Auth] Account creation failed");
+    return actionError("Account creation is temporarily unavailable. Please try again.");
+  }
 
-  // Create auth user
-  const [authUser] = await db
-    .insert(authUsers)
-    .values({ name: fullName, email })
-    .returning({ id: authUsers.id });
+  // Delivery is asynchronous. If dispatch fails, the account remains usable via
+  // the resend flow rather than being incorrectly reported as not created.
+  let verificationRequested = false;
+  try {
+    await inngest.send({ name: "email/send-verification", data: { userId, email, name: fullName } });
+    verificationRequested = true;
+  } catch { console.error("[Auth] Verification dispatch failed"); }
+  try { await inngest.send({ name: "user/registered", data: { userId, email, name: fullName, provider: "email" } }); }
+  catch { console.error("[Auth] Welcome dispatch failed"); }
+  return actionSuccess({ message: verificationRequested
+    ? "Account created. If the verification email does not arrive, request another from the login page."
+    : "Account created, but we could not request a verification email. Please request another from the login page." });
 
-  if (!authUser) return actionError("Failed to create account. Please try again.");
-
-  // Create credentials account (password stored in providerAccountId)
-  await db.insert(authAccounts).values({
-    userId:            authUser.id,
-    type:              "credentials",
-    provider:          "credentials",
-    providerAccountId: passwordHash,
-  });
-
-  // Trigger user/registered event (creates profile, sends welcome email)
-  await inngest.send({
-    name: "user/registered",
-    data: { userId: authUser.id, email, name: fullName, provider: "email" },
-  });
-
-  // Send email verification
-  await inngest.send({
-    name: "email/verification",
-    data: { email, name: fullName, token: await createEmailVerifyToken(authUser.id, email) },
-  });
-
-  return actionSuccess({ message: "Account created! Check your email to verify." });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -138,6 +134,7 @@ export async function requestPasswordReset(
   if (!parsed.success) return actionError("Please enter a valid email address.");
 
   const { email } = parsed.data;
+  if (!redis || (process.env.NODE_ENV === "production" && !redisRateLimit)) return actionError("Password reset is temporarily unavailable. Please try again later.");
 
   // Rate limit
   const { success: ok } = await rateLimiters.passwordReset.limit(email);
@@ -153,20 +150,13 @@ export async function requestPasswordReset(
     const rawToken = crypto.randomBytes(32).toString("hex");
     const token    = crypto.createHash("sha256").update(rawToken).digest("hex");
 
-    // Store token in Redis with 15-minute TTL
-    if (redis) {
-      try {
-        await redis.setex(
-          KEYS.passwordResetToken(token),
-          TTL.passwordResetToken,
-          authUser.id
-        );
-      } catch (error) {
-        console.warn("[Auth] Failed to store password reset token:", error);
-      }
+    try {
+      await redis.setex(KEYS.passwordResetToken(token), TTL.passwordResetToken, authUser.id);
+    } catch {
+      return actionError("Password reset is temporarily unavailable. Please try again later.");
     }
 
-    await inngest.send({
+    try { await inngest.send({
       name: "email/password-reset",
       data: {
         email,
@@ -174,7 +164,10 @@ export async function requestPasswordReset(
         name:      authUser.name ?? "Scholar",
         ipAddress: (await headers()).get("x-forwarded-for") ?? "unknown",
       },
-    });
+    }); } catch {
+      // Do not distinguish existing and non-existing accounts to the requester.
+      console.error("[Auth] Password reset dispatch failed");
+    }
   }
 
   return actionSuccess({
@@ -203,31 +196,21 @@ export async function resetPassword(
 
   const { token: rawToken, password } = parsed.data;
 
-  // Hash token to look up in Redis
+  if (!redis) return actionError("Password reset is temporarily unavailable. Please request a new link later.");
   const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
-  const userId    = redis ? await redis.get<string>(KEYS.passwordResetToken(tokenHash)) : null;
-
+  let userId: string | null;
+  try { userId = await redis.getdel<string>(KEYS.passwordResetToken(tokenHash)); }
+  catch { return actionError("Password reset is temporarily unavailable. Please request a new link later."); }
   if (!userId) return actionError("This reset link has expired or already been used.");
 
-  // Update password
-  const newHash = await bcrypt.hash(password, 12);
-  await db
-    .update(authAccounts)
-    .set({ providerAccountId: newHash })
-    .where(
-      and(
-        eq(authAccounts.userId, userId),
-        eq(authAccounts.provider, "credentials")
-      )
-    );
-
-  // Invalidate token
-  if (redis) {
-    try {
-      await redis.del(KEYS.passwordResetToken(tokenHash));
-    } catch (error) {
-      console.warn("[Auth] Failed to delete password reset token:", error);
-    }
+  try {
+    const newHash = await bcrypt.hash(password, 12);
+    const updated = await db.update(authAccounts).set({ providerAccountId: newHash })
+      .where(and(eq(authAccounts.userId, userId), eq(authAccounts.provider, "credentials")))
+      .returning({ userId: authAccounts.userId });
+    if (!updated.length) return actionError("This account does not have a password. Please use your original sign-in method.");
+  } catch {
+    return actionError("We could not update your password. Please request a new link.");
   }
 
   return actionSuccess({ message: "Password updated successfully. You can now sign in." });
@@ -241,22 +224,29 @@ export async function signOutAction() {
   await signOut({ redirectTo: "/login" });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
 
-async function createEmailVerifyToken(userId: string, email: string): Promise<string> {
-  const token = crypto.randomBytes(32).toString("hex");
-  if (redis) {
-    try {
-      await redis.setex(
-        KEYS.emailVerifyToken(token),
-        TTL.emailVerifyToken,
-        JSON.stringify({ userId, email })
-      );
-    } catch (error) {
-      console.warn("[Auth] Failed to store email verification token:", error);
-    }
+export async function verifyEmailAddress(
+  _: ActionResult<{ message: string }>,
+  formData: FormData
+): Promise<ActionResult<{ message: string }>> {
+  const token = formData.get("token");
+  if (typeof token !== "string" || !/^[A-Za-z0-9_-]{20,128}$/.test(token)) return actionError("This verification link is invalid.");
+  if (!redis) return actionError("Verification is temporarily unavailable. Please try again later.");
+  let stored: unknown;
+  try { stored = await redis.getdel(KEYS.emailVerifyToken(token)); }
+  catch { return actionError("Verification is temporarily unavailable. Please try again later."); }
+  if (!stored) return actionError("This link has expired or already been used. Request a new one from the sign-in page.");
+  let data: { userId?: string; email?: string };
+  try { data = typeof stored === "string" ? JSON.parse(stored) : stored as typeof data; }
+  catch { return actionError("This verification link is invalid."); }
+  if (!data?.userId || !data.email) return actionError("This verification link is invalid.");
+  try {
+    const updated = await db.update(authUsers).set({ emailVerified: new Date() })
+      .where(and(eq(authUsers.id, data.userId), eq(authUsers.email, data.email)))
+      .returning({ id: authUsers.id });
+    if (!updated.length) return actionError("This verification link is invalid.");
+  } catch {
+    return actionError("We could not verify this account. Please request a new link.");
   }
-  return token;
+  return actionSuccess({ message: "Your email is verified. You can now sign in." });
 }

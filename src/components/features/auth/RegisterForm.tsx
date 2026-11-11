@@ -3,10 +3,8 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { z } from "zod";
-import { GoogleOAuthButton } from "./GoogleOAuthButton";
 import { PasswordStrengthMeter } from "./PasswordStrengthMeter";
 import { registerWithCredentials } from "@/lib/auth/actions";
 import { cn } from "@/lib/utils/cn";
@@ -22,13 +20,13 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Eye, EyeOff, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
+import { Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
 
 // ── Client form schema (matches server registerSchema) ────────────────────────
 const registerFormSchema = z
   .object({
-    firstName:            z.string().min(1, "First name is required").max(50).trim(),
-    lastName:             z.string().min(1, "Last name is required").max(50).trim(),
+    firstName:            z.string().trim().min(1, "First name is required").max(50),
+    lastName:             z.string().trim().min(1, "Last name is required").max(50),
     email:                z.string().email("Please enter a valid email").max(255),
     password: z
       .string()
@@ -36,7 +34,8 @@ const registerFormSchema = z
       .max(72, "Maximum 72 characters")
       .regex(/[A-Z]/,        "Must include an uppercase letter")
       .regex(/[0-9]/,        "Must include a number")
-      .regex(/[^A-Za-z0-9]/, "Must include a special character"),
+      .regex(/[^A-Za-z0-9]/, "Must include a special character")
+      .refine((value) => new TextEncoder().encode(value).length <= 72, "Password must be at most 72 UTF-8 bytes"),
     confirmPassword:      z.string(),
     acceptTerms:          z.boolean().refine((v) => v, "You must accept the terms"),
     isAcademicResearcher: z.boolean().optional(),
@@ -49,8 +48,8 @@ const registerFormSchema = z
 type RegisterFormValues = z.infer<typeof registerFormSchema>;
 
 export function RegisterForm() {
-  const router     = useRouter();
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
   const [isPending, startTransition]    = useTransition();
   const [serverError, setServerError]   = useState<string | null>(null);
   const [successMsg, setSuccessMsg]     = useState<string | null>(null);
@@ -101,12 +100,14 @@ export function RegisterForm() {
       }
 
       setSuccessMsg(result.data.message ?? "Account created! Check your email.");
-      setTimeout(() => router.push("/login?registered=1"), 1800);
+
     });
   }
 
+  if (successMsg) return <div className="space-y-5"><h1 className="font-heading text-2xl font-bold">Your account is created.</h1><p role="status" className="text-sm text-muted-foreground leading-relaxed">{successMsg}</p><Link href="/login" className="inline-block text-sm font-medium text-primary underline">Go to sign in</Link></div>;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
       <div className="space-y-1">
         <h1
@@ -117,24 +118,6 @@ export function RegisterForm() {
         </h1>
         <p className="text-muted-foreground text-sm">A little curiosity goes a long way. Create your account to get started.</p>
       </div>
-
-      <GoogleOAuthButton label="Sign up with Google" />
-
-      <div className="flex items-center gap-3">
-        <div className="flex-1 h-px bg-border" />
-        <span className="text-xs text-muted-foreground select-none">or continue with email</span>
-        <div className="flex-1 h-px bg-border" />
-      </div>
-
-      {/* Success */}
-      {successMsg && (
-        <Alert className="border-emerald-200/50 bg-emerald-50/80 text-emerald-900">
-          <CheckCircle className="h-4 w-4" />
-          <AlertDescription>
-            {successMsg}
-          </AlertDescription>
-        </Alert>
-      )}
 
       {/* Server error */}
       {serverError && (
@@ -147,7 +130,7 @@ export function RegisterForm() {
       )}
 
       <Form {...form}>
-        <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-3">
           {/* Name row */}
           <div className="grid grid-cols-2 gap-3">
             <FormField
@@ -213,27 +196,28 @@ export function RegisterForm() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Password</FormLabel>
-                <FormControl>
-                  <div className="relative">
+                <div className="relative">
+                  <FormControl>
                     <Input
                       type={showPassword ? "text" : "password"}
                       autoComplete="new-password"
                       placeholder="Create a strong password"
                       {...field}
-                      className={cn("pr-10")}
+                      className={cn("pr-12")}
                     />
+                  </FormControl>
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
                       onClick={() => setShowPassword((v) => !v)}
-                      className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                      className="absolute right-0 top-1/2 -translate-y-1/2 h-11 w-11"
                       aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-pressed={showPassword}
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                   </div>
-                </FormControl>
                 <FormMessage />
                 {passwordValue && <PasswordStrengthMeter password={passwordValue} />}
               </FormItem>
@@ -246,15 +230,15 @@ export function RegisterForm() {
             name="confirmPassword"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Confirm Password</FormLabel>
-                <FormControl>
-                  <Input
-                    type={showPassword ? "text" : "password"}
-                    autoComplete="new-password"
-                    placeholder="Confirm your password"
-                    {...field}
-                  />
-                </FormControl>
+                <FormLabel>Confirm password</FormLabel>
+                <div className="relative">
+                  <FormControl>
+                    <Input type={showConfirmation ? "text" : "password"} autoComplete="new-password" placeholder="Repeat your password" className="pr-12" {...field} />
+                  </FormControl>
+                  <Button type="button" variant="ghost" size="icon" onClick={() => setShowConfirmation(v => !v)} className="absolute right-0 top-1/2 -translate-y-1/2 h-11 w-11" aria-label={showConfirmation ? "Hide confirmation password" : "Show confirmation password"} aria-pressed={showConfirmation}>
+                    {showConfirmation ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
                 <FormMessage />
               </FormItem>
             )}
@@ -276,14 +260,15 @@ export function RegisterForm() {
                   <div className="space-y-1 leading-none">
                     <FormLabel className="text-sm font-normal">
                       I agree to the{" "}
-                      <Link href="/terms" className="text-primary hover:underline">
+                      <Link href="/terms" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
                         Terms of Service
                       </Link>{" "}
                       and{" "}
-                      <Link href="/privacy" className="text-primary hover:underline">
+                      <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
                         Privacy Policy
                       </Link>
                     </FormLabel>
+                    <FormMessage />
                   </div>
                 </FormItem>
               )}
@@ -301,7 +286,7 @@ export function RegisterForm() {
                   </FormControl>
                   <div className="space-y-1 leading-none">
                     <FormLabel className="text-sm font-normal">
-                      I am an academic researcher or student
+                      I am a student or academic researcher (optional)
                     </FormLabel>
                   </div>
                 </FormItem>
@@ -329,7 +314,7 @@ export function RegisterForm() {
       <p className="text-center text-sm text-muted-foreground">
         Already have an account?{" "}
         <Link href="/login" className="font-medium text-primary hover:text-primary/80 transition-colors">
-          Sign In →
+          Sign in
         </Link>
       </p>
     </div>

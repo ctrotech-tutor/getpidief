@@ -14,10 +14,16 @@ The study-area picker uses a small locally maintained set of familiar broad labe
 
 We evaluated external taxonomies: [ISCED-F](https://ec.europa.eu/eurostat/statistics-explained/index.php?title=International_Standard_Classification_of_Education_%28ISCED%29) is an international classification of educational programmes, while [OpenAlex](https://help.openalex.org/api/endpoints/) focuses on research fields and topics. OpenAlex's [current API documentation](https://openalex.mintlify.app/api-reference/introduction) describes API-key use. Neither automatically represents every learner's programme or institution's faculties. A network dependency for a small list would add failure and privacy concerns without solving coverage, so the current selection does not call an external study-area API. If a standardized taxonomy becomes useful for recommendations or reporting, evaluate its licensing, scope, localization, versioning and a locally cached dataset before mapping free-text choices to it; never overwrite the learner's own wording.
 
+## Interests
+
+An optional, searchable local starter vocabulary works on a fresh database without seeding. Selecting a starter creates its tag on demand in the same transaction as the saved selection; existing active tags can also be selected. Learners can choose zero to twenty and edit them under Settings. The existing Explore resource recommendations use matching document tags as one relevance signal, but this requires real approved, tagged resources. The home social feed remains chronological: social posts do not yet have topics. Topic-aware posts, ranking, diversity, feedback and pagination require separate design and evaluation before claiming feed personalization.
+
+This approach follows the principle in [TikTok's explanation of recommendations](https://newsroom.tiktok.com/how-tiktok-recommends-videos-for-you?lang=en): initial interests are optional, a general feed is available without them, and ongoing interaction and feedback matter. A fixed starter list is not a complete taxonomy, and inactive or ambiguous colliding records are not silently revived.
+
 ## Important limitations and product follow-through
 
 - Interest choices are stored, but the current home feed is chronological and does not yet use them to rank posts. Do not promise personalization until that is implemented and evaluated.
-- Institution and topic editing after completion is incomplete. Academic details can be edited under settings, but the existing institution settings do not yet offer an institution selector. Avoid promising that every choice can already be changed later.
+- Institution editing after completion is incomplete. Academic details and interests can be edited under settings, but the existing institution settings do not yet offer an institution selector. Avoid promising that every choice can already be changed later.
 - A meaningful first feed should offer useful conversations, people and resources without inventing activity. Future work should build real follow and recommendation signals, transparent controls, and a good empty state before adding more onboarding questions.
 - Verify complete signup, verification, navigation, keyboard use, error recovery, browser zoom and mobile viewport behavior in real browsers. A short viewport may require normal document scrolling; avoid clipping controls to force a no-scroll layout.
 - Track aggregate completion and drop-off by step only after a privacy review. Do not log search text, selected institutions, tokens or account identifiers in analytics by default.

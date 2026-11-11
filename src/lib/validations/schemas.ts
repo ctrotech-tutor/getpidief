@@ -90,7 +90,6 @@ export const onboardingStep2Schema = z.object({
 export const onboardingStep3Schema = z.object({
   tagIds: z
     .array(z.string().uuid())
-    .min(3, "Please select at least 3 interests")
     .max(20),
 });
 

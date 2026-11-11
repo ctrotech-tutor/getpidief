@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm";
 const url = process.env.TEST_DATABASE_URL;
 const enabled = !!url && process.env.TEST_DATABASE_WRITE === "yes";
 const mock = vi.hoisted(() => ({ id: "", send: vi.fn(), searchRor: vi.fn(async () => []), getRor: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth/auth", () => ({ requireAuth: async () => mock.id, auth: async () => ({ user: { id: mock.id } }) }));
 vi.mock("@/lib/institutions/ror", () => ({ searchRor: mock.searchRor, getRor: mock.getRor }));
 vi.mock("@/lib/redis/client", () => ({ redis: null, redisRateLimit: null, rateLimiters: { search: { limit: async () => ({ success: true }) } }, KEYS: { onboardingState: () => "state", recommended: () => "recommended" } }));
@@ -91,4 +92,22 @@ describe.skipIf(!enabled)("onboarding with disposable PostgreSQL", () => {
     expect(row.n).toBe(3);
     expect(mock.send).toHaveBeenCalledTimes(1);
   });
+  it("creates starter topics on demand and lets learners replace and clear them", async () => {
+    mock.id = ids.empty;
+    const { getInterestChoices } = await import("@/lib/interests/server");
+    const before = await getInterestChoices(ids.empty);
+    expect(before.choices.some(t => t.id === "starter:technology")).toBe(true);
+    const selection = new FormData(); selection.append("starterSlugs", "technology");
+    expect((await actions.saveInterestSettings(null, selection)).success).toBe(true);
+    const after = await getInterestChoices(ids.empty);
+    const technology = after.choices.find(t => t.slug === "technology")!;
+    expect(after.selected).toEqual([technology.id]);
+    expect(technology.id).not.toContain("starter:");
+    const bad = new FormData(); bad.append("starterSlugs", "not-a-topic");
+    expect((await actions.saveInterestSettings(null, bad)).success).toBe(false);
+    expect((await getInterestChoices(ids.empty)).selected).toEqual([technology.id]);
+    expect((await actions.saveInterestSettings(null, new FormData())).success).toBe(true);
+    expect((await getInterestChoices(ids.empty)).selected).toEqual([]);
+  });
+
 });

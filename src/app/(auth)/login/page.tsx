@@ -12,10 +12,10 @@ export default function LoginPage() {
           className="font-heading font-bold text-foreground"
           style={{ fontSize: "clamp(26px, 4vw, 32px)", letterSpacing: "-0.03em" }}
         >
-          Welcome back, Scholar.
+          Good to see you again.
         </h1>
         <p className="text-muted-foreground text-sm leading-relaxed">
-          Access your institutional archive and continue your research.
+          Pick up where your curiosity left off.
         </p>
       </div>
 

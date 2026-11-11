@@ -8,7 +8,7 @@ import { AlertCircle } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Reset Password - getpidief",
-  description: "Create a new password for your getpidief account. Secure your academic archive access with a strong password.",
+  description: "Create a new password for your getpidief account. Secure your account with a strong password.",
   keywords: ["reset password", "new password", "account security", "getpidief"],
   openGraph: {
     title: "Reset Password - getpidief",
@@ -34,8 +34,11 @@ export default async function ResetPasswordPage({ searchParams }: ResetPasswordP
     return <InvalidToken reason="missing" />;
   }
 
+  if (!redis) return <UnavailableState />;
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-  const userId    = redis ? await redis.get<string>(KEYS.passwordResetToken(tokenHash)) : null;
+  let userId: string | null;
+  try { userId = await redis.get<string>(KEYS.passwordResetToken(tokenHash)); }
+  catch { return <UnavailableState />; }
 
   if (!userId) {
     return <InvalidToken reason="expired" />;
@@ -51,7 +54,7 @@ export default async function ResetPasswordPage({ searchParams }: ResetPasswordP
           Reset your password.
         </h1>
         <p className="text-muted-foreground text-base leading-relaxed">
-          Create a new strong password for your getpidief account to secure your academic archive access.
+          Choose a new password to get back to your account.
         </p>
       </div>
       <ResetPasswordForm token={token} />
@@ -86,4 +89,8 @@ function InvalidToken({ reason }: { reason: "missing" | "expired" }) {
       </Link>
     </div>
   );
+}
+
+function UnavailableState() {
+  return <div className="space-y-5"><h1 className="font-heading text-2xl font-semibold">We can&apos;t check this link right now.</h1><p className="text-sm text-muted-foreground">Please try again later.</p><Link href="/login" className="text-sm text-primary underline">Back to log in</Link></div>;
 }

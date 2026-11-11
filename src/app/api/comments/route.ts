@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
 
     // Sanitize markdown content
     const cleanContent  = sanitizeComment(content);
+    if (!cleanContent.trim()) return apiError("INVALID_PARAMS", "Comment cannot be empty");
     const contentHtml   = DOMPurify.sanitize(await marked(cleanContent));
 
     // Fetch document for denorm + notification
@@ -50,45 +51,44 @@ export async function POST(req: NextRequest) {
     if (parentId) {
       parentComment = await db.query.comments.findFirst({
         where: and(eq(comments.id, parentId), eq(comments.documentId, documentId),
-          eq(comments.isDeleted, false)),
+          eq(comments.isDeleted, false), isNull(comments.parentId)),
         columns: { userId: true, rootId: true },
       });
       if (!parentComment) return apiNotFound("Comment");
       rootId = parentComment.rootId ?? parentId;
     }
 
-    // Insert comment
-    const [comment] = await db
-      .insert(comments)
-      .values({
-        documentId,
-        userId,
-        parentId:    parentId ?? null,
-        rootId:      rootId ?? null,
-        content:     cleanContent,
-        contentHtml,
-      })
-      .returning();
-
-    if (!comment) throw new Error("Failed to create comment");
-
-    // Update document comment count
-    await db.execute(
-      sql`UPDATE documents SET comment_count = comment_count + 1 WHERE id = ${documentId}`
-    );
-
-    // Update parent reply count
-    if (parentId) {
-      await db.execute(
-        sql`UPDATE comments SET reply_count = reply_count + 1 WHERE id = ${parentId}`
-      );
-    }
+    // A single statement makes the insert and counters atomic and rechecks the
+    // document and parent after taking row locks. No schema change is required.
+    const mutation = await db.execute<{ id: string; created_at: Date | string }>(sql`
+      WITH eligible AS MATERIALIZED (
+        SELECT id FROM documents WHERE id = ${documentId} AND status = 'approved'
+          AND visibility = 'public' AND deleted_at IS NULL FOR UPDATE
+      ), parent AS MATERIALIZED (
+        SELECT id FROM comments WHERE id = ${parentId ?? null}::uuid
+          AND document_id = ${documentId} AND is_deleted = false AND parent_id IS NULL FOR UPDATE
+      ), inserted AS (
+        INSERT INTO comments (document_id, user_id, parent_id, root_id, content, content_html)
+        SELECT id, ${userId}, ${parentId ?? null}::uuid, ${rootId}::uuid, ${cleanContent}, ${contentHtml}
+        FROM eligible WHERE ${parentId ?? null}::uuid IS NULL OR EXISTS (SELECT 1 FROM parent)
+        RETURNING id, created_at
+      ), document_count AS (
+        UPDATE documents SET comment_count = comment_count + 1
+        WHERE id IN (SELECT id FROM eligible) AND EXISTS (SELECT 1 FROM inserted) RETURNING id
+      ), reply_count AS (
+        UPDATE comments SET reply_count = reply_count + 1
+        WHERE id IN (SELECT id FROM parent) AND EXISTS (SELECT 1 FROM inserted) RETURNING id
+      )
+      SELECT id, created_at FROM inserted
+    `);
+    const comment = mutation.rows[0];
+    if (!comment) return apiNotFound(parentId ? "Comment" : "Document");
 
     // Fetch author info for real-time broadcast
     const author = await db.query.users.findFirst({
       where: eq(users.id, userId),
       columns: { username: true, displayName: true, avatarUrl: true },
-    });
+    }).catch(() => null);
 
     // Broadcast to document channel
     await pusherServer.trigger(
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
         content:     cleanContent,
         contentHtml,
         parentId:    parentId ?? null,
-        createdAt:   comment.createdAt.toISOString(),
+        createdAt:   new Date(comment.created_at).toISOString(),
       }
     ).catch(() => {});
 
@@ -121,9 +121,9 @@ export async function POST(req: NextRequest) {
         mentionedUserIds:[],
         excerpt,
       },
-    });
+    }).catch((error) => console.error("Comment notification failed", error));
 
-    return apiCreated({ comment });
+    return apiCreated({ comment: { id: comment.id, createdAt: comment.created_at } });
   } catch (e) {
     return handleApiError(e);
   }
@@ -143,30 +143,43 @@ export async function GET(req: NextRequest) {
     });
     if (!doc) return apiNotFound("Document");
 
+    const parentId = req.nextUrl.searchParams.get("parentId");
+    if (parentId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parentId))
+      return apiError("INVALID_PARAMS", "Invalid parent ID");
+    if (parentId) {
+      const parent = await db.query.comments.findFirst({
+        where: and(eq(comments.id, parentId), eq(comments.documentId, documentId),
+          eq(comments.isDeleted, false), isNull(comments.parentId)),
+        columns: { id: true },
+      });
+      if (!parent) return apiNotFound("Comment");
+    }
     const pageText = req.nextUrl.searchParams.get("page") ?? "1";
     const limitText = req.nextUrl.searchParams.get("limit") ?? "20";
     if (!/^[1-9]\d*$/.test(pageText) || !/^[1-9]\d*$/.test(limitText))
       return apiError("INVALID_PARAMS", "Invalid pagination");
     const page = Number(pageText);
     const limit = Number(limitText);
-    if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(limit) || limit < 1 || limit > 50 || !Number.isSafeInteger((page - 1) * limit))
+    if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(limit) || limit < 1 || limit > 50 || !Number.isSafeInteger((page - 1) * limit) || (page - 1) * limit > 2147483647)
       return apiError("INVALID_PARAMS", "Invalid pagination");
     const offset = (page - 1) * limit;
 
     const rows = await db.query.comments.findMany({
       where: and(
         eq(comments.documentId, documentId),
-        isNull(comments.parentId),   // top-level only
+        parentId ? eq(comments.parentId, parentId) : isNull(comments.parentId),
         eq(comments.isDeleted, false)
       ),
-      orderBy: [desc(comments.createdAt)],
-      limit,
+      orderBy: [desc(comments.createdAt), desc(comments.id)],
+      limit: limit + 1,
       offset,
+      columns: { id: true, userId: true, parentId: true, content: true, createdAt: true, isEdited: true, helpfulCount: true, replyCount: true },
       with: {
         user: { columns: { id: true, username: true, displayName: true, avatarUrl: true, verificationStatus: true } },
         replies: {
           where: eq(comments.isDeleted, false),
-          orderBy: [desc(comments.createdAt)],
+          columns: { id: true, userId: true, parentId: true, content: true, createdAt: true, isEdited: true, helpfulCount: true, replyCount: true },
+          orderBy: [desc(comments.createdAt), desc(comments.id)],
           limit: 3,
           with: {
             user: { columns: { id: true, username: true, displayName: true, avatarUrl: true } },
@@ -175,7 +188,9 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return apiSuccess({ comments: rows, page, hasMore: rows.length === limit });
+    const response = apiSuccess({ comments: rows.slice(0, limit), page, hasMore: rows.length > limit });
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
   } catch (e) {
     return handleApiError(e);
   }

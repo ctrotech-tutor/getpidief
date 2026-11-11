@@ -3,15 +3,17 @@ import { NextRequest } from "next/server";
 import { PgDialect } from "drizzle-orm/pg-core";
 
 vi.mock("@/lib/auth/auth", () => ({ auth: vi.fn() }));
-vi.mock("@/lib/db/client", () => ({ db: { query: { documents: { findFirst: vi.fn() }, comments: { findFirst: vi.fn(), findMany: vi.fn() } }, insert: vi.fn() } }));
+vi.mock("@/lib/db/client", () => ({ db: { query: { documents: { findFirst: vi.fn() }, comments: { findFirst: vi.fn(), findMany: vi.fn() }, users: { findFirst: vi.fn() } }, insert: vi.fn(), execute: vi.fn() } }));
 vi.mock("@/lib/redis/client", () => ({ rateLimiters: { comment: { limit: vi.fn() } } }));
 vi.mock("@/lib/inngest/client", () => ({ inngest: { send: vi.fn() } }));
-vi.mock("@/lib/pusher/server", () => ({ pusherServer: { trigger: vi.fn() }, CHANNELS: {}, EVENTS: {} }));
+vi.mock("@/lib/pusher/server", () => ({ pusherServer: { trigger: vi.fn().mockResolvedValue(undefined) }, CHANNELS: { privateDocument: (id: string) => id }, EVENTS: { COMMENT_POSTED: "comment" } }));
 
 import { GET, POST } from "@/app/api/comments/route";
 import { db } from "@/lib/db/client";
 import { auth } from "@/lib/auth/auth";
 import { rateLimiters } from "@/lib/redis/client";
+import { inngest } from "@/lib/inngest/client";
+import { pusherServer } from "@/lib/pusher/server";
 
 const id = "11111111-1111-4111-8111-111111111111";
 const parent = "22222222-2222-4222-8222-222222222222";
@@ -63,4 +65,38 @@ describe("comment access", () => {
     vi.mocked(rateLimiters.comment.limit).mockResolvedValue({ success: false } as never);
     expect((await POST(post())).status).toBe(429);
   });
+  it("writes a comment and counters atomically and preserves success if notifications fail", async () => {
+    vi.mocked(db.query.documents.findFirst).mockResolvedValue({ authorId: "owner" } as never);
+    vi.mocked(db.query.users.findFirst).mockResolvedValue({ username: "user" } as never);
+    vi.mocked(db.execute).mockResolvedValue({ rows: [{ id: parent, created_at: "2026-01-01T00:00:00Z" }] } as never);
+    vi.mocked(pusherServer.trigger).mockResolvedValue(undefined as never);
+    vi.mocked(inngest.send).mockRejectedValue(new Error("offline"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect((await POST(post())).status).toBe(201);
+    const sql = queryParts(vi.mocked(db.execute).mock.calls[0][0] as never).sql;
+    expect(sql).toContain("FOR UPDATE");
+    expect(sql).toContain("INSERT INTO comments");
+    expect(sql).toContain("comment_count = comment_count + 1");
+    expect(sql).toContain("reply_count = reply_count + 1");
+    log.mockRestore();
+  });
+
+  it("checks the parent belongs to the document when reading replies", async () => {
+    vi.mocked(db.query.documents.findFirst).mockResolvedValue({ id } as never);
+    vi.mocked(db.query.comments.findFirst).mockResolvedValue(undefined);
+    expect((await GET(get(`documentId=${id}&parentId=${parent}`))).status).toBe(404);
+    const query = queryParts(vi.mocked(db.query.comments.findFirst).mock.calls[0][0]!.where as never);
+    expect(query.params).toEqual([parent, id, false]);
+    expect(db.query.comments.findMany).not.toHaveBeenCalled();
+  });
+
+  it("uses a bounded page and returns accurate hasMore without caching", async () => {
+    vi.mocked(db.query.documents.findFirst).mockResolvedValue({ id } as never);
+    vi.mocked(db.query.comments.findMany).mockResolvedValue([{ id: "one" }, { id: "two" }] as never);
+    const result = await GET(get(`documentId=${id}&limit=1`));
+    expect(result.headers.get("cache-control")).toBe("private, no-store");
+    expect((await result.json()).data).toMatchObject({ comments: [{ id: "one" }], hasMore: true });
+    expect(vi.mocked(db.query.comments.findMany).mock.calls[0][0]!.limit).toBe(2);
+  });
+
 });

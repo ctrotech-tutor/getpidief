@@ -8,6 +8,12 @@ Local institutions are searched first. For queries of at least three characters,
 
 The client sends only a selected ROR identifier. The server re-fetches and validates the organization on selection, matches an existing local institution by canonical name and country where possible, or creates a local record with a deterministic `ror-` slug. Newly imported records are **not verified** and have no trusted email domains. Selecting an organization does not prove affiliation. Existing institutions are not automatically merged or overwritten. Name matching is best effort, so aliases, historical names or concurrent imports may still yield duplicates and require administration. The directory requires outbound HTTPS access to `api.ror.org`. Search is debounced, bounded, cached, and uses the existing per-user search rate limiter. In production, global lookup is disabled when the rate-limit Redis client is not configured. Local results and skipping still work.
 
+## Areas of study
+
+The study-area picker uses a small locally maintained set of familiar broad labels, plus a write-in option and the ability to skip the step. It is not an authoritative or complete classification. Existing custom values are preserved on return. The subject/programme remains free text.
+
+We evaluated external taxonomies: [ISCED-F](https://ec.europa.eu/eurostat/statistics-explained/index.php?title=International_Standard_Classification_of_Education_%28ISCED%29) is an international classification of educational programmes, while [OpenAlex](https://help.openalex.org/api/endpoints/) focuses on research fields and topics. OpenAlex's [current API documentation](https://openalex.mintlify.app/api-reference/introduction) describes API-key use. Neither automatically represents every learner's programme or institution's faculties. A network dependency for a small list would add failure and privacy concerns without solving coverage, so the current selection does not call an external study-area API. If a standardized taxonomy becomes useful for recommendations or reporting, evaluate its licensing, scope, localization, versioning and a locally cached dataset before mapping free-text choices to it; never overwrite the learner's own wording.
+
 ## Important limitations and product follow-through
 
 - Interest choices are stored, but the current home feed is chronological and does not yet use them to rank posts. Do not promise personalization until that is implemented and evaluated.

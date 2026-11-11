@@ -7,24 +7,9 @@ import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import styles from "../../onboarding.module.css";
+import { STUDY_AREAS } from "@/lib/onboarding/study-areas";
 
 export const metadata: Metadata = { title: "Step 2 — Academic Focus" };
-
-const FACULTIES = [
-  "Engineering & Technology",
-  "Computer Science & IT",
-  "Medicine & Health Sciences",
-  "Law",
-  "Business & Economics",
-  "Natural Sciences",
-  "Humanities & Social Sciences",
-  "Architecture & Design",
-  "Education",
-  "Agriculture & Environment",
-  "Pharmacy",
-  "Mathematics & Statistics",
-  "Other",
-] as const;
 
 const LEVELS = [
   { value: "undergraduate",  label: "Undergraduate" },
@@ -44,6 +29,6 @@ export default async function OnboardingStep2Page() {
     <p className={styles.eyebrow}>02 / YOUR PATH</p>
     <h2 className={styles.heading}>What brings you here?</h2>
     <p className={styles.intro}>Tell us a little about what you study. Your path doesn’t have to look like anyone else’s.</p>
-    <AcademicFocusStep faculties={FACULTIES} levels={LEVELS} profile={profile ?? null} />
+    <AcademicFocusStep faculties={STUDY_AREAS} levels={LEVELS} profile={profile ?? null} />
   </>;
 }

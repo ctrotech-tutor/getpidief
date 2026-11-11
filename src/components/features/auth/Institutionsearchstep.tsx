@@ -40,11 +40,11 @@ export function InstitutionSearchStep({ popularInstitutions, initialInstitution 
     <input id="institution-search" className={styles.input} placeholder="Search by name" value={query} autoComplete="off" onChange={(e) => { setQuery(e.target.value); setSelected(null); setResults([]); setStatus(""); }} />
     <p className={styles.hint}>{selected ? `Selected: ${selected.name}` : "Type at least 3 characters to search the global directory. This is optional."}</p>
     <p className={styles.hint} role="status">{status}</p>
-    {results.length > 0 && <div className={styles.results}>{results.map((item) => <button className={styles.result} type="button" key={item.id} onClick={() => choose(item)}>{item.name}<small>{item.country}{item.source === "ror" ? " · ROR directory" : " · getpidief"}</small></button>)}</div>}
+    {results.length > 0 && <div className={styles.results}>{results.map((item) => <button className={styles.result} type="button" key={item.id} onClick={() => choose(item)}>{item.name}<small>{item.country}</small></button>)}</div>}
     {!selected && popularInstitutions.length > 0 && <div className={styles.group}><p className={styles.label}>A few places to start</p><div className={styles.choices}>{popularInstitutions.map(item => <button type="button" key={item.id} className={styles.chip} onClick={() => choose(item)}>{item.name}</button>)}</div></div>}
     {!selected && !query && popularInstitutions.length === 0 && <div className={`${styles.group} ${styles.empty}`}><strong>Learning happens everywhere.</strong><br />Search the global directory above, or continue without an institution.</div>}
     <div className={styles.bottom}><SkipButton /><Submit disabled={!selected} /></div>
-    <p className={styles.directoryNote}>Search terms are sent to the <a href="https://ror.org/" target="_blank" rel="noreferrer">Research Organization Registry</a> for global results. Selecting a place does not verify affiliation.</p>
+    <p className={styles.directoryNote}>Search terms are shared with an external institution directory.</p>
   </form>;
 }
 function Submit({ disabled }: { disabled: boolean }) { const { pending } = useFormStatus(); return <button className={styles.primary} disabled={pending || disabled}>{pending ? "Saving…" : "Continue"}</button>; }

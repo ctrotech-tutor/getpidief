@@ -22,3 +22,4 @@
 @media(max-width:600px){ .headerWrap { padding-top:13px; } .header { min-height:62px; padding:6px 17px; } }
 @media(max-width:480px){ .layout { padding-top:20px; padding-bottom:24px; } .panel { padding:22px 20px; } .asideTitle { font-size:29px; } .intro { font-size:14px; margin-bottom:18px; } .stepper { margin-bottom:23px; } .bottom { margin-top:20px; } }
 @media(max-height:700px) and (min-width:801px){ .layout { padding-top:22px; } .panel { padding-top:24px; padding-bottom:24px; } .stepper { margin-bottom:20px; } .heading { font-size:32px; } .intro { margin-bottom:16px; } .group { margin-top:14px; } .bottom { margin-top:18px; padding-top:12px; } }
+.customArea { margin-top: 14px; }

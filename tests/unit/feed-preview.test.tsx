@@ -17,7 +17,7 @@ describe("study feed preview", () => {
   it("keeps sample posts local and updates the visible feed", () => {
     render(<FeedPreview />);
     fireEvent.change(screen.getByRole("textbox", { name: "Write a sample post" }), { target: { value: "What should I read next?" } });
-    fireEvent.click(screen.getByRole("button", { name: /Post/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
     expect(screen.getByText("What should I read next?")).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("preview only");
   });
@@ -49,6 +49,29 @@ describe("study feed preview", () => {
     expect(screen.getByRole("heading", { name: "Saved posts." })).toBeInTheDocument();
     expect(screen.getByText("Cell signalling, made a little clearer")).toBeInTheDocument();
     expect(screen.queryByText(/What finally made integration click/)).not.toBeInTheDocument();
+  });
+
+  it("follows and unfollows a sample author in the following feed", () => {
+    render(<FeedPreview />);
+    fireEvent.click(screen.getByRole("button", { name: "Amara Ellis" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Follow" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Following" }));
+    expect(screen.getByText("Reading between the lines")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Amara Ellis" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Following" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
+    expect(screen.queryByText("Reading between the lines")).not.toBeInTheDocument();
+  });
+
+  it("creates a sample question and labels it in the feed", () => {
+    render(<FeedPreview />);
+    fireEvent.click(screen.getByRole("button", { name: "Question" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Write a sample post" }), { target: { value: "How do you revise for exams?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    expect(screen.getByText("QUESTION")).toBeInTheDocument();
+    expect(screen.getByText("How do you revise for exams?")).toBeInTheDocument();
   });
 
 });

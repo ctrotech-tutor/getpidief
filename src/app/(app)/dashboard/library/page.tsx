@@ -2,9 +2,12 @@ import { auth } from "@/lib/auth/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db/client";
 import { documentBookmarks } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { publicBookmarksFor } from "@/lib/db/public-bookmarks";
+import { desc } from "drizzle-orm";
 import { ResourceCard } from "@/components/features/documents/ResourceCard";
 import type { DocumentCard } from "@/lib/db/repositories/documents";
+
+export const dynamic = "force-dynamic";
 
 export default async function LibraryPage({
   searchParams,
@@ -15,17 +18,22 @@ export default async function LibraryPage({
   if (!session?.user?.id) redirect("/login");
 
   const params = await searchParams;
-  const page   = parseInt(params.page ?? "1", 10);
+  const pageValue = params.page ?? "1";
+  const page = /^[1-9]\d*$/.test(pageValue) && Number.isSafeInteger(Number(pageValue)) && Number(pageValue) <= 100000 ? Number(pageValue) : 1;
   const limit  = 12;
   const offset = (page - 1) * limit;
 
   const saved = await db.query.documentBookmarks.findMany({
-    where: eq(documentBookmarks.userId, session.user.id),
-    orderBy: [desc(documentBookmarks.createdAt)],
+    where: publicBookmarksFor(session.user.id),
+    orderBy: [desc(documentBookmarks.createdAt), desc(documentBookmarks.id)],
     limit: limit + 1,
     offset,
     with: {
       document: {
+        columns: { id: true, slug: true, title: true, description: true, thumbnailUrl: true,
+          resourceType: true, academicYear: true, pageCount: true, downloadCount: true,
+          likeCount: true, commentCount: true, viewCount: true, publishedAt: true,
+          createdAt: true, status: true },
         with: {
           author:      { columns: { id: true, username: true, displayName: true, avatarUrl: true, verificationStatus: true } },
           institution: { columns: { id: true, name: true, logoUrl: true } },

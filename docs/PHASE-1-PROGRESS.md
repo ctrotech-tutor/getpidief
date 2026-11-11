@@ -16,3 +16,9 @@
 - Document status checks and comment writes are separate operations and can race with moderation. Transactional enforcement needs to be designed with the wider access model.
 
 No schema, production data, storage configuration or production environment settings were changed by this work.
+
+## Saved-resource work on PR #3
+
+The existing document reader and library now use the real bookmark API with an interim public-only access policy. Save and remove update the bookmark and count in a single database statement, are idempotent, and do not treat an event delivery failure as a failed save. The library and API list only approved, public, nondeleted resources and do not expose file URLs through their card projections. Reader save failures are shown rather than reported as success.
+
+These route and UI tests use mocks. The SQL and concurrency behavior still need testing against an isolated PostgreSQL/Neon database with two users, concurrent requests, moderation transitions, and existing records before production rollout. Existing count discrepancies are not automatically repaired. Other document listing/card surfaces and storage URLs require separate review, and private/institutional library access is not implemented. The social feed preview remains disconnected from these real bookmarks.

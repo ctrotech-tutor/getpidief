@@ -70,17 +70,19 @@ export function WorkstationActions({
     setBookmarked((v) => !v);
     start(async () => {
       try {
-        await fetch("/api/bookmarks", {
+        const res = await fetch("/api/bookmarks", {
           method:  prev ? "DELETE" : "POST",
           headers: { "Content-Type": "application/json" },
           body:    JSON.stringify({ documentId }),
         });
+        if (!res.ok) throw new Error("Bookmark update failed");
         addToast({
           type:  "success",
           title: prev ? "Removed from library" : "Saved to library",
         });
       } catch {
         setBookmarked(prev);
+        addToast({ type: "error", title: "Could not update your library" });
       }
     });
   }

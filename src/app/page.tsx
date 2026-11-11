@@ -2,37 +2,24 @@ export default function HomePage() {
   return (
     <main
       style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
         minHeight: "100dvh",
-        gap: "16px",
+        display: "grid",
+        placeItems: "center",
+        padding: "2rem",
+        background: "#fafaf8",
+        color: "#1a1a18",
+        fontFamily: "Arial, sans-serif",
         textAlign: "center",
-        padding: "24px",
       }}
     >
-      <h1
-        style={{
-          fontSize: "clamp(2rem, 6vw, 4rem)",
-          fontWeight: 900,
-          letterSpacing: "-0.04em",
-          lineHeight: 1.05,
-        }}
-      >
-        getpidief
-      </h1>
-      <p
-        style={{
-          fontSize: "1rem",
-          opacity: 0.5,
-          fontWeight: 500,
-          letterSpacing: "0.15em",
-          textTransform: "uppercase",
-        }}
-      >
-        The Academic Resource Network — Coming Soon
-      </p>
+      <div>
+        <h1 style={{ fontSize: "clamp(2rem, 6vw, 3.5rem)", fontWeight: 600, letterSpacing: "-0.05em", margin: 0 }}>
+          getpidief<span style={{ color: "#85857f" }}>.</span>
+        </h1>
+        <p style={{ margin: "0.75rem 0 0", color: "#777770", fontSize: "0.95rem" }}>
+          Something new is on the way.
+        </p>
+      </div>
     </main>
   );
 }

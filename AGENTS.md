@@ -33,8 +33,8 @@ A high-performance document sharing and PDF viewing platform designed for academ
 
 ### 🤖 Agent Guidelines (Antigravity & Cursor)
 
-- **Context is King**: Always check `ARCHITECTURE.md` and `package.json` before proposing major changes.
-- **Proactive Verification**: When fixing bugs, check `ts_errors.txt` or run `npm run typecheck` to ensure no regressions.
+- **Context is King**: Check `docs/PRODUCT.md` and `package.json` before proposing major changes. Legacy plans in `docs/archive/` are historical, not authoritative.
+- **Proactive Verification**: When fixing bugs, run `npm run typecheck` to ensure no regressions.
 - **Concise & Direct**: Provide code first, explanation second. Avoid fluff.
 - **Workflow**:
   1. Research (Read code/docs)

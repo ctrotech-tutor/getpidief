@@ -4,13 +4,17 @@
 
 - **Dev**: `next dev --turbo`
 - **Build**: `next build`
-- **Lint**: `next lint` (or `npx lint-staged` for pre-commit)
+- **Lint**: `npm run lint` (or `npx lint-staged` for pre-commit)
 - **Typecheck**: `npm run typecheck`
 - **Test**: `vitest` (Unit), `playwright test` (E2E)
 - **Database**:
   - `npm run db:push` (Push schema to Neon)
   - `npm run db:gen` (Generate migrations)
   - `npm run db:stu` (Open Drizzle Studio)
+
+## Product Direction
+
+- Read `docs/PRODUCT.md` for the current direction. Files in `docs/archive/` are historical and may be inaccurate.
 
 ## Coding Patterns
 

@@ -69,6 +69,11 @@ jobs:
           DATABASE_URL: postgresql://test:test@127.0.0.1:5432/getpidief_test
           TEST_DATABASE_URL: postgresql://test:test@127.0.0.1:5432/getpidief_test
           TEST_DATABASE_WRITE: 'yes'
+      - name: PostgreSQL feed and private PDF access
+        run: npm test -- --run tests/integration/postgres-feed.test.ts tests/integration/postgres-private-pdf.test.ts
+        env:
+          TEST_DATABASE_URL: postgresql://test:test@127.0.0.1:5432/getpidief_test
+          TEST_DATABASE_WRITE: 'yes'
       - name: PostgreSQL social concurrency
         run: npm run test:db:social
         env:

@@ -14,7 +14,7 @@ interface Props {
   levels:    readonly Level[];
 }
 
-const initialState: ActionResult<{ next: string }> = { success: false, error: "" } as any;
+const initialState: ActionResult<{ next: string }> = { success: false, error: "" };
 
 export function AcademicFocusStep({ faculties, levels }: Props) {
   const router = useRouter();
@@ -24,11 +24,16 @@ export function AcademicFocusStep({ faculties, levels }: Props) {
   const [state, action] = useActionState(
     async (prev: ActionResult<{ next: string }>, formData: FormData) => {
       const result = await saveOnboardingStep2(prev, formData);
-      if (result.success) router.push((result as any).data.next);
+      if (result.success) router.push(result.data.next);
       return result;
     },
     initialState
   );
+
+  async function handleSkip() {
+    // Skip to next step without saving
+    router.push("/onboarding/step-3");
+  }
 
   return (
     <form action={action} className="space-y-5">
@@ -153,13 +158,24 @@ export function AcademicFocusStep({ faculties, levels }: Props) {
         <a
           href="/onboarding/step-1"
           className={cn(
-            "flex-1 h-11 rounded-xl text-sm font-medium text-center leading-[44px]",
+            "flex-1 h-11 rounded-xl text-sm font-medium text-center leading-11",
             "bg-secondary border border-border text-foreground",
             "hover:bg-secondary/80 transition-colors"
           )}
         >
-          ← Back
+          &larr; Back
         </a>
+        <button
+          type="button"
+          onClick={handleSkip}
+          className={cn(
+            "flex-1 h-11 rounded-xl text-sm font-medium",
+            "bg-secondary border border-border text-foreground",
+            "hover:bg-secondary/80 transition-colors"
+          )}
+        >
+          Skip this step
+        </button>
         <SubmitButton />
       </div>
     </form>

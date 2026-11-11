@@ -8,15 +8,50 @@ import { Ratelimit } from "@upstash/ratelimit";
 //   REDIS_RATE_LIMIT_URL — rate limiting only (separate to avoid eviction conflicts)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-});
+// Check if Redis environment variables are available
+const hasRedisConfig = !!(
+  process.env.UPSTASH_REDIS_REST_URL && 
+  process.env.UPSTASH_REDIS_REST_TOKEN
+);
 
-export const redisRateLimit = new Redis({
-  url: process.env.UPSTASH_REDIS_RATE_LIMIT_REST_URL!,
-  token: process.env.UPSTASH_REDIS_RATE_LIMIT_REST_TOKEN!,
-});
+const hasRateLimitRedisConfig = !!(
+  process.env.UPSTASH_REDIS_RATE_LIMIT_REST_URL && 
+  process.env.UPSTASH_REDIS_RATE_LIMIT_REST_TOKEN
+);
+
+// Create Redis clients with error handling
+const createRedisClient = (url: string, token: string, name: string) => {
+  try {
+    return new Redis({
+      url,
+      token,
+    });
+  } catch (error) {
+    console.error(`[Redis] Failed to create ${name} client:`, error);
+    return null;
+  }
+};
+
+// Main Redis client with fallback
+export const redis = hasRedisConfig 
+  ? createRedisClient(
+      process.env.UPSTASH_REDIS_REST_URL!,
+      process.env.UPSTASH_REDIS_REST_TOKEN!,
+      "main"
+    )
+  : null;
+
+// Rate limit Redis client with fallback
+export const redisRateLimit = hasRateLimitRedisConfig
+  ? createRedisClient(
+      process.env.UPSTASH_REDIS_RATE_LIMIT_REST_URL!,
+      process.env.UPSTASH_REDIS_RATE_LIMIT_REST_TOKEN!,
+      "rate-limit"
+    )
+  : null;
+
+// Redis availability check
+export const isRedisAvailable = redis !== null && redisRateLimit !== null;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // REDIS KEY REGISTRY
@@ -209,56 +244,43 @@ export const TTL = {
 // ─────────────────────────────────────────────────────────────────────────────
 // RATE LIMITERS
 // ─────────────────────────────────────────────────────────────────────────────
+// RATE LIMITERS - with fallback to no-op when Redis is unavailable
+const createRateLimiter = (identifier: string, windowMs: number, max: number) => {
+  if (!redisRateLimit) {
+    // Return a no-op rate limiter that always succeeds
+    return {
+      limit: async () => ({ success: true, remaining: max, reset: Date.now() + 1000 }),
+    };
+  }
+  
+  return new Ratelimit({
+    redis: redisRateLimit,
+    limiter: Ratelimit.slidingWindow(max, `${windowMs} ms`),
+    prefix: `rl:${identifier}`,
+  });
+};
 
 export const rateLimiters = {
   /** Login: 5 requests per minute per IP */
-  login: new Ratelimit({
-    redis: redisRateLimit,
-    limiter: Ratelimit.slidingWindow(5, "1 m"),
-    prefix: "rl:login",
-  }),
+  login: createRateLimiter("login", 60 * 1000, 5),
 
   /** Register: 3 requests per 10 minutes per IP */
-  register: new Ratelimit({
-    redis: redisRateLimit,
-    limiter: Ratelimit.slidingWindow(3, "10 m"),
-    prefix: "rl:register",
-  }),
+  register: createRateLimiter("register", 10 * 60 * 1000, 3),
 
   /** Password reset: 3 per 15 minutes per email */
-  passwordReset: new Ratelimit({
-    redis: redisRateLimit,
-    limiter: Ratelimit.slidingWindow(3, "15 m"),
-    prefix: "rl:pwd_reset",
-  }),
+  passwordReset: createRateLimiter("pwd_reset", 15 * 60 * 1000, 3),
 
   /** Upload: 10 per hour per user */
-  upload: new Ratelimit({
-    redis: redisRateLimit,
-    limiter: Ratelimit.slidingWindow(10, "1 h"),
-    prefix: "rl:upload",
-  }),
+  upload: createRateLimiter("upload", 60 * 60 * 1000, 10),
 
   /** Search: 60 per minute per user */
-  search: new Ratelimit({
-    redis: redisRateLimit,
-    limiter: Ratelimit.slidingWindow(60, "1 m"),
-    prefix: "rl:search",
-  }),
+  search: createRateLimiter("search", 60 * 1000, 60),
 
   /** General API: 120 per minute per user */
-  api: new Ratelimit({
-    redis: redisRateLimit,
-    limiter: Ratelimit.slidingWindow(120, "1 m"),
-    prefix: "rl:api",
-  }),
+  api: createRateLimiter("api", 60 * 1000, 120),
 
   /** Comment post: 10 per 5 minutes per user */
-  comment: new Ratelimit({
-    redis: redisRateLimit,
-    limiter: Ratelimit.slidingWindow(10, "5 m"),
-    prefix: "rl:comment",
-  }),
+  comment: createRateLimiter("comment", 5 * 60 * 1000, 10),
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -267,6 +289,7 @@ export const rateLimiters = {
 
 /** Get cached JSON value with type safety */
 export async function getCache<T>(key: string): Promise<T | null> {
+  if (!redis) return null;
   try {
     const value = await redis.get<T>(key);
     return value;
@@ -281,6 +304,7 @@ export async function setCache<T>(
   value: T,
   ttlSeconds?: number
 ): Promise<void> {
+  if (!redis) return;
   try {
     if (ttlSeconds) {
       await redis.setex(key, ttlSeconds, value);
@@ -294,7 +318,7 @@ export async function setCache<T>(
 
 /** Delete cache key(s) */
 export async function invalidateCache(...keys: string[]): Promise<void> {
-  if (keys.length === 0) return;
+  if (keys.length === 0 || !redis) return;
   try {
     await redis.del(...keys);
   } catch (e) {
@@ -304,6 +328,7 @@ export async function invalidateCache(...keys: string[]): Promise<void> {
 
 /** Increment a counter, return new value */
 export async function incrCounter(key: string, by: number = 1): Promise<number> {
+  if (!redis) return 0;
   try {
     return await redis.incrby(key, by);
   } catch {
@@ -317,6 +342,7 @@ export async function zaddScore(
   score: number,
   member: string
 ): Promise<void> {
+  if (!redis) return;
   try {
     await redis.zadd(key, { score, member });
   } catch (e) {
@@ -329,6 +355,7 @@ export async function zgetTop(
   key: string,
   count: number = 10
 ): Promise<string[]> {
+  if (!redis) return [];
   try {
     const result = await redis.zrange(key, 0, count - 1, { rev: true });
     return result as string[];
@@ -343,6 +370,7 @@ export async function zincrby(
   increment: number,
   member: string
 ): Promise<void> {
+  if (!redis) return;
   try {
     await redis.zincrby(key, increment, member);
   } catch (e) {

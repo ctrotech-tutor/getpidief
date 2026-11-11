@@ -28,7 +28,7 @@ export function WelcomeEmail({ name, email }: WelcomeEmailProps) {
       <EmailDivider />
 
       <Text style={{ color: "#8B9CC4", fontSize: "13px", margin: "0 0 16px" }}>
-        Here's what you can do right now:
+        Here&apos;s what you can do right now:
       </Text>
 
       {[

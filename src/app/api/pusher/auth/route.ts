@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth/config";
+import { auth } from "@/lib/auth/auth";
 import { pusherServer } from "@/lib/pusher/server";
+
+type SessionUserWithPresence = {
+  displayName?: string | null;
+  name?: string | null;
+  avatarUrl?: string | null;
+  image?: string | null;
+  username?: string | null;
+};
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -18,7 +26,7 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = session.user.id;
-  const user = session.user as any;
+  const user = session.user as SessionUserWithPresence;
 
   // Private channels: user can only auth to their own channel
   if (channelName.startsWith("private-user-")) {

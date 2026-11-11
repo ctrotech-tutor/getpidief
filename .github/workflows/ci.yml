@@ -2,31 +2,165 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: "20"
+  PNPM_VERSION: "9"
 
 jobs:
-  build:
+  # ── Lint & Type-check ────────────────────────────────────────────────────────
+  lint:
+    name: Lint & Typecheck
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with: { version: "${{ env.PNPM_VERSION }}" }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "${{ env.NODE_VERSION }}"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type check
+        run: pnpm typecheck
+
+  # ── Unit + Integration Tests ─────────────────────────────────────────────────
+  test:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    needs: lint
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER:     test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB:       getpidief_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL:   postgresql://test:test@localhost:5432/getpidief_test
+      NEXTAUTH_SECRET: test-secret-at-least-32-chars-for-ci
+      NEXTAUTH_URL:   http://localhost:3000
 
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        cache: 'npm'
+      - uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: npm ci
+      - uses: pnpm/action-setup@v4
+        with: { version: "${{ env.PNPM_VERSION }}" }
 
-    - name: Lint
-      run: npm run lint
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "${{ env.NODE_VERSION }}"
+          cache: pnpm
 
-    - name: Typecheck
-      run: npm run typecheck
+      - run: pnpm install --frozen-lockfile
 
-    - name: Test
-      run: npm run test
+      - name: Run migrations
+        run: pnpm db:migrate
+
+      - name: Run tests
+        run: pnpm test --reporter=verbose
+
+  # ── Create Neon branch for PR preview ───────────────────────────────────────
+  neon-branch:
+    name: Create Neon DB Branch
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    outputs:
+      branch_url: ${{ steps.neon.outputs.db_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create Neon branch
+        id: neon
+        uses: neondatabase/create-branch-action@v5
+        with:
+          project_id:  ${{ secrets.NEON_PROJECT_ID }}
+          api_key:     ${{ secrets.NEON_API_KEY }}
+          branch_name: "pr-${{ github.event.pull_request.number }}"
+
+      - name: Run migrations on branch
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.db_url }}
+        run: pnpm db:migrate
+
+      - name: Comment branch URL
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner:        context.repo.owner,
+              repo:         context.repo.repo,
+              body:         `🌿 **Neon DB branch created** for this PR.\n\`\`\`\n${{ steps.neon.outputs.db_url }}\n\`\`\``
+            })
+
+  # ── Build ────────────────────────────────────────────────────────────────────
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with: { version: "${{ env.PNPM_VERSION }}" }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "${{ env.NODE_VERSION }}"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build Next.js
+        env:
+          # Minimal env for build — real secrets on Vercel
+          NEXTAUTH_SECRET:      ${{ secrets.NEXTAUTH_SECRET }}
+          NEXTAUTH_URL:         ${{ secrets.NEXTAUTH_URL }}
+          DATABASE_URL:         ${{ secrets.DATABASE_URL }}
+          NEXT_PUBLIC_APP_URL:  ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          NEXT_PUBLIC_PUSHER_KEY:     ${{ secrets.NEXT_PUBLIC_PUSHER_KEY }}
+          NEXT_PUBLIC_PUSHER_CLUSTER: ${{ secrets.NEXT_PUBLIC_PUSHER_CLUSTER }}
+          UPSTASH_REDIS_REST_URL:     ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN:   ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          UPSTASH_REDIS_RATE_LIMIT_REST_URL:   ${{ secrets.UPSTASH_REDIS_RATE_LIMIT_REST_URL }}
+          UPSTASH_REDIS_RATE_LIMIT_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_RATE_LIMIT_REST_TOKEN }}
+          GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          INNGEST_EVENT_KEY:    ${{ secrets.INNGEST_EVENT_KEY }}
+          INNGEST_SIGNING_KEY:  ${{ secrets.INNGEST_SIGNING_KEY }}
+          RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME:       ${{ secrets.R2_BUCKET_NAME }}
+          R2_PUBLIC_URL:        ${{ secrets.R2_PUBLIC_URL }}
+          PUSHER_APP_ID:        ${{ secrets.PUSHER_APP_ID }}
+          PUSHER_SECRET:        ${{ secrets.PUSHER_SECRET }}
+          UPLOADTHING_SECRET:   ${{ secrets.UPLOADTHING_SECRET }}
+          UPLOADTHING_APP_ID:   ${{ secrets.UPLOADTHING_APP_ID }}
+          VAPID_PUBLIC_KEY:     ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY:    ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT:        ${{ secrets.VAPID_SUBJECT }}
+        run: pnpm build

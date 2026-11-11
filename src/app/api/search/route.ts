@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth/config";
+import { auth } from "@/lib/auth/auth";
 import { searchDocuments } from "@/lib/search/search";
 import { searchQuerySchema } from "@/lib/validations/schemas";
 import { rateLimiters } from "@/lib/redis/client";
 import { inngest } from "@/lib/inngest/client";
+
+type SessionUserWithInstitution = { institutionId?: string | null };
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -43,7 +45,7 @@ export async function GET(req: NextRequest) {
       sort,
       page,
       limit,
-      institutionScoped: (session?.user as any)?.institutionId ?? undefined,
+      institutionScoped: (session?.user as SessionUserWithInstitution | undefined)?.institutionId ?? undefined,
     },
     session?.user?.id
   );

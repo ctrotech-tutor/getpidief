@@ -1,15 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Logo } from "@/components/layout/Logo";
 
 export const metadata: Metadata = {
   title: { template: "%s — getpidief", default: "Sign In" },
 };
-
-interface AuthLayoutProps {
-  children: React.ReactNode;
-  /** Right panel visual slot — optional, passed from each auth page */
-  panel?: React.ReactNode;
-}
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -22,6 +17,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             href="/"
             className="inline-flex items-center gap-2 group"
           >
+            <Logo className="w-8 h-8 group-hover:scale-105 transition-transform duration-200" />
             <span
               className="font-heading font-black text-xl tracking-tight text-foreground
                          group-hover:text-primary transition-colors duration-200"
@@ -91,8 +87,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           {/* Bottom: Testimonial */}
           <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-5">
             <p className="text-[oklch(0.85_0.01_265)] text-sm leading-relaxed italic mb-3">
-              "getpidief saved me weeks of searching. Every past paper for my
-              entire course, organised and searchable."
+              &quot;getpidief saved me weeks of searching. Every past paper for my
+              entire course, organised and searchable.&quot;
             </p>
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-primary/30 flex items-center justify-center text-xs font-bold text-primary">

@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
 
     if (countOnly) {
       // Fast path: check Redis first
-      const cached = await redis.get<number>(KEYS.unreadNotifCount(userId));
+      const cached = redis ? await redis.get<number>(KEYS.unreadNotifCount(userId)) : null;
       if (cached != null) return apiSuccess({ unreadCount: cached });
 
       const result = await db
@@ -25,7 +25,13 @@ export async function GET(req: NextRequest) {
         .where(and(eq(notifications.recipientId, userId), eq(notifications.isRead, false)));
 
       const count = result[0]?.count ?? 0;
-      await redis.setex(KEYS.unreadNotifCount(userId), 30, count);
+      if (redis) {
+        try {
+          await redis.setex(KEYS.unreadNotifCount(userId), 30, count);
+        } catch (error) {
+          console.warn("[Notifications] Failed to set unread count:", error);
+        }
+      }
       return apiSuccess({ unreadCount: count });
     }
 
@@ -36,7 +42,7 @@ export async function GET(req: NextRequest) {
 
     const conditions = [eq(notifications.recipientId, userId)];
     if (type && type !== "all") {
-      conditions.push(eq(notifications.type, type as any));
+      conditions.push(eq(notifications.type, type as typeof notifications.$inferSelect["type"]));
     }
 
     const [rows, countResult] = await Promise.all([
@@ -96,9 +102,15 @@ export async function PATCH(req: NextRequest) {
         );
 
       // Decrement Redis counter
-      const current = await redis.get<number>(KEYS.unreadNotifCount(userId));
+      const current = redis ? await redis.get<number>(KEYS.unreadNotifCount(userId)) : null;
       if (current != null && current > 0) {
-        await redis.setex(KEYS.unreadNotifCount(userId), 30, current - 1);
+        if (redis) {
+          try {
+            await redis.setex(KEYS.unreadNotifCount(userId), 30, current - 1);
+          } catch (error) {
+            console.warn("[Notifications] Failed to decrement unread count:", error);
+          }
+        }
       }
 
       return apiSuccess({ marked: true });

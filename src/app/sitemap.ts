@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { db } from "@/lib/db/client";
 import { documents, users } from "@/lib/db/schema";
-import { eq, desc, isNull } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://getpidief.me";
 

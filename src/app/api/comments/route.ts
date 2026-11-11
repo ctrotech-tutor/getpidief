@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
-import { comments, documents } from "@/lib/db/schema";
+import { comments, documents, users } from "@/lib/db/schema";
 import { eq, and, isNull, desc, sql } from "drizzle-orm";
 import { createCommentSchema } from "@/lib/validations/schemas";
 import { apiSuccess, apiCreated, apiUnauthorized, apiZodError, handleApiError } from "@/lib/utils/api";
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
 
     // Fetch author info for real-time broadcast
     const author = await db.query.users.findFirst({
-      where: eq(db.query.users as any, userId),
+      where: eq(users.id, userId),
       columns: { username: true, displayName: true, avatarUrl: true },
     });
 
@@ -95,8 +95,8 @@ export async function POST(req: NextRequest) {
         commentId:   comment.id,
         documentId,
         userId,
-        username:    (author as any)?.username ?? "",
-        avatarUrl:   (author as any)?.avatarUrl ?? null,
+        username:    author?.username ?? "",
+        avatarUrl:   author?.avatarUrl ?? null,
         content:     cleanContent,
         contentHtml,
         parentId:    parentId ?? null,

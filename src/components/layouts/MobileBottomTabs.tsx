@@ -2,10 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
 import { useNotificationStore } from "@/stores/index";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 
-const TABS = [
+type Tab = {
+  href: string;
+  label: string;
+  icon: (active: boolean) => ReactNode;
+  highlight?: boolean;
+  showBadge?: boolean;
+};
+
+const TABS: Tab[] = [
   {
     href:  "/explore",
     label: "Home",
@@ -31,7 +41,7 @@ const TABS = [
   {
     href:  "/dashboard/uploads",
     label: "Upload",
-    icon:  (_active: boolean) => (
+    icon:  () => (
       <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden>
         <circle cx="11" cy="11" r="9" stroke="currentColor" strokeWidth="1.6"/>
         <path d="M11 7v8M8 10l3-3 3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
@@ -69,6 +79,10 @@ const TABS = [
 export function MobileBottomTabs() {
   const pathname    = usePathname();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
+  const isMobile    = useMediaQuery("(max-width: 1023px)"); // lg breakpoint
+
+  // Don't render on desktop screens
+  if (!isMobile) return null;
 
   return (
     <nav
@@ -91,13 +105,13 @@ export function MobileBottomTabs() {
                 isActive
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground",
-                (tab as any).highlight && !isActive && "text-primary"
+                tab.highlight && !isActive && "text-primary"
               )}
               aria-current={isActive ? "page" : undefined}
               aria-label={tab.label}
             >
               {/* Icon */}
-              <span className={cn((tab as any).highlight && "rounded-full bg-primary/10 p-1")}>
+              <span className={cn(tab.highlight && "rounded-full bg-primary/10 p-1")}>
                 {tab.icon(isActive)}
               </span>
 
@@ -105,7 +119,7 @@ export function MobileBottomTabs() {
               <span className="text-[10px] font-medium leading-none">{tab.label}</span>
 
               {/* Notification badge */}
-              {(tab as any).showBadge && unreadCount > 0 && (
+              {tab.showBadge && unreadCount > 0 && (
                 <span className="absolute top-1 right-2 min-w-[16px] h-4 px-1 rounded-full
                                  bg-primary text-primary-foreground text-[9px] font-bold
                                  flex items-center justify-center">

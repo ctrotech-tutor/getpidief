@@ -8,23 +8,49 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// R2 CLIENT  (S3-compatible)
+// B2 CLIENT  (S3-compatible)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const r2Client = new S3Client({
-  region: "auto",
-  endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+const usingB2 = !!(
+  process.env.B2_ENDPOINT &&
+  process.env.B2_BUCKET_NAME &&
+  process.env.B2_KEY_ID &&
+  process.env.B2_APPLICATION_KEY
+);
+
+const endpoint =
+  process.env.B2_ENDPOINT ??
+  (process.env.CLOUDFLARE_ACCOUNT_ID
+    ? `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`
+    : undefined);
+
+const BUCKET = process.env.B2_BUCKET_NAME ?? process.env.R2_BUCKET_NAME ?? "";
+const PUBLIC_URL = (
+  process.env.B2_PUBLIC_URL ??
+  process.env.R2_PUBLIC_URL ??
+  (endpoint && BUCKET ? `${endpoint.replace(/\/$/, "")}/${BUCKET}` : "")
+).replace(/\/$/, "");
+
+const storageClient = new S3Client({
+  region: usingB2 ? process.env.B2_REGION ?? "us-west-000" : "auto",
+  endpoint,
+  forcePathStyle: usingB2,
   credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    accessKeyId: process.env.B2_KEY_ID ?? process.env.R2_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.B2_APPLICATION_KEY ?? process.env.R2_SECRET_ACCESS_KEY ?? "",
   },
 });
 
-const BUCKET = process.env.R2_BUCKET_NAME!;
-const PUBLIC_URL = process.env.R2_PUBLIC_URL!; // e.g. https://assets.getpidief.com
+function assertStorageConfigured() {
+  if (!endpoint || !BUCKET) {
+    throw new Error(
+      "Storage is not configured. Set B2_ENDPOINT/B2_BUCKET_NAME (or legacy R2 env vars)."
+    );
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
-// KEY PATTERNS  — all R2 object keys follow these patterns
+// KEY PATTERNS  — all object keys follow these patterns
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const STORAGE_KEYS = {
@@ -56,7 +82,7 @@ export const STORAGE_KEYS = {
 
 export const storage = {
   /**
-   * Upload a file to R2
+   * Upload a file to B2
    * Returns the public CDN URL of the uploaded file
    */
   async upload(
@@ -68,7 +94,8 @@ export const storage = {
       metadata?: Record<string, string>;
     }
   ): Promise<string> {
-    await r2Client.send(
+    assertStorageConfigured();
+    await storageClient.send(
       new PutObjectCommand({
         Bucket: BUCKET,
         Key: key,
@@ -79,7 +106,7 @@ export const storage = {
       })
     );
 
-    return `${PUBLIC_URL}/${key}`;
+    return PUBLIC_URL ? `${PUBLIC_URL}/${key}` : key;
   },
 
   /**
@@ -91,13 +118,14 @@ export const storage = {
     contentType: string,
     expiresInSeconds: number = 3600
   ): Promise<string> {
+    assertStorageConfigured();
     const command = new PutObjectCommand({
       Bucket: BUCKET,
       Key: key,
       ContentType: contentType,
     });
 
-    return getSignedUrl(r2Client, command, { expiresIn: expiresInSeconds });
+    return getSignedUrl(storageClient, command, { expiresIn: expiresInSeconds });
   },
 
   /**
@@ -107,19 +135,21 @@ export const storage = {
     key: string,
     expiresInSeconds: number = 3600
   ): Promise<string> {
+    assertStorageConfigured();
     const command = new GetObjectCommand({
       Bucket: BUCKET,
       Key: key,
     });
 
-    return getSignedUrl(r2Client, command, { expiresIn: expiresInSeconds });
+    return getSignedUrl(storageClient, command, { expiresIn: expiresInSeconds });
   },
 
   /**
-   * Delete a file from R2
+   * Delete a file from storage
    */
   async delete(key: string): Promise<void> {
-    await r2Client.send(
+    assertStorageConfigured();
+    await storageClient.send(
       new DeleteObjectCommand({
         Bucket: BUCKET,
         Key: key,
@@ -128,18 +158,19 @@ export const storage = {
   },
 
   /**
-   * Delete multiple files from R2 (used by cleanup worker)
+   * Delete multiple files (used by cleanup worker)
    */
   async deleteMany(keys: string[]): Promise<void> {
     await Promise.allSettled(keys.map((key) => storage.delete(key)));
   },
 
   /**
-   * Check if a file exists in R2
+   * Check if a file exists in storage
    */
   async exists(key: string): Promise<boolean> {
     try {
-      await r2Client.send(
+      assertStorageConfigured();
+      await storageClient.send(
         new HeadObjectCommand({ Bucket: BUCKET, Key: key })
       );
       return true;
@@ -149,17 +180,18 @@ export const storage = {
   },
 
   /**
-   * Convert a full public URL back to an R2 key
+   * Convert a full public URL back to an object key
    */
   urlToKey(url: string): string {
+    if (!PUBLIC_URL) return url;
     return url.replace(`${PUBLIC_URL}/`, "");
   },
 
   /**
-   * Build the public CDN URL for a given R2 key
+   * Build the public URL for a given object key
    */
   keyToUrl(key: string): string {
-    return `${PUBLIC_URL}/${key}`;
+    return PUBLIC_URL ? `${PUBLIC_URL}/${key}` : key;
   },
 };
 
@@ -224,7 +256,7 @@ export function validateFile(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// INNGEST WORKER: Delete files from R2 (called after soft-delete grace period)
+// INNGEST WORKER: Delete files from storage (called after soft-delete grace period)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function deleteDocumentFiles(

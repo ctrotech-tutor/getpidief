@@ -1,12 +1,35 @@
 import { inngest } from "../../client";
 import { db } from "@/lib/db/client";
-import { notifications, users, pushSubscriptions } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { notifications, users, pushSubscriptions, documents, comments, userActivityLog } from "@/lib/db/schema";
+import { eq, and, sql } from "drizzle-orm";
 import { redis, KEYS, incrCounter, invalidateCache } from "@/lib/redis/client";
 import { pusherServer, CHANNELS, EVENTS } from "@/lib/pusher/server";
-import { resend } from "@/lib/email/client";
+import { sgMail } from "@/lib/email/client";
 import webpush from "web-push";
 import { cron } from "inngest";
+import type { ReactElement } from "react";
+import { render } from "@react-email/render";
+import { getEmailTemplate } from "./emailTemplates";
+
+// Import email components
+import { DocumentApprovedEmail } from "@/components/emails/DocumentApprovedEmail";
+import { DocumentRejectedEmail } from "@/components/emails/DocumentRejectedEmail";
+import { BadgeEarnedEmail } from "@/components/emails/BadgeEarnedEmail";
+import { NewFollowerEmail } from "@/components/emails/NewFollowerEmail";
+
+interface DigestDocument {
+  title:        string;
+  slug:         string;
+  resourceType: string;
+  authorName:   string;
+  downloadCount:number;
+}
+
+interface DigestContributor {
+  displayName: string;
+  username:    string;
+  documents:   DigestDocument[];
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WORKER: Create and deliver notification
@@ -64,8 +87,8 @@ export const sendNotification = inngest.createFunction(
         .values({
           recipientId,
           senderId: senderId ?? null,
-          type: type as any,
-          entityType: entityType as any ?? null,
+          type: type as typeof notifications.$inferInsert["type"],
+          entityType: (entityType ?? null) as typeof notifications.$inferInsert["entityType"],
           entityId: entityId ?? null,
           title,
           message,
@@ -93,18 +116,24 @@ export const sendNotification = inngest.createFunction(
         );
 
         // Increment unread count in Redis
-        await incrCounter(KEYS.unreadNotifCount(recipientId));
+        if (redis) {
+          try {
+            await incrCounter(KEYS.unreadNotifCount(recipientId));
+          } catch (error) {
+            console.warn("[Inngest] Failed to increment unread count:", error);
+          }
+        }
       });
     }
 
-    // ── Step 4: Send email ────────────────────────────────────────────────────
+    // ── Step 4: Send email ────────────────────────────────────────────
     const shouldEmail = prefs[`${typeKey}_email`] === true;
-    const email = (recipient as any).authUser?.email;
+    const email = recipient.authUser?.email;
 
     if (shouldEmail && email) {
       await step.run("send-email", async () => {
-        const emailTemplate = getEmailTemplate(type, {
-          name: (recipient as any).authUser?.name ?? "Scholar",
+        const emailTemplate = await getEmailTemplate(type, {
+          name: recipient.authUser?.name ?? "Scholar",
           title,
           message,
           metadata,
@@ -112,11 +141,11 @@ export const sendNotification = inngest.createFunction(
 
         if (!emailTemplate) return;
 
-        await resend.emails.send({
+        await sgMail.send({
           from: "getpidief <notifications@getpidief.me>",
           to: email,
           subject: emailTemplate.subject,
-          react: emailTemplate.component,
+          html: emailTemplate.html,
         });
 
         await db
@@ -153,7 +182,7 @@ export const sendNotification = inngest.createFunction(
         });
 
         await Promise.allSettled(
-          subs.map(async (sub: any) => {
+          subs.map(async (sub) => {
             try {
               await webpush.sendNotification(
                 {
@@ -167,9 +196,10 @@ export const sendNotification = inngest.createFunction(
                 .update(notifications)
                 .set({ pushSent: true, pushSentAt: new Date() })
                 .where(eq(notifications.id, notifId));
-            } catch (err: any) {
+            } catch (err: unknown) {
+              const error = err as { statusCode?: number };
               // 410 Gone = subscription expired, deactivate it
-              if (err.statusCode === 410) {
+              if (error.statusCode === 410) {
                 await db
                   .update(pushSubscriptions)
                   .set({ isActive: false })
@@ -182,6 +212,290 @@ export const sendNotification = inngest.createFunction(
     }
 
     return { notifId, delivered: { inapp: true, email: shouldEmail, push: shouldPush } };
+  }
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WORKER: Handle new follow (notify + reputation + pulse)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const handleUserFollowed = inngest.createFunction(
+  {
+    id: "handle-user-followed",
+    name: "Handle User Followed",
+    retries: 2,
+    triggers: [{ event: "user/followed" }],
+  },
+  async ({ event, step }) => {
+    const { followerId, followingId } = event.data;
+
+    const [follower, following] = await Promise.all([
+      step.run("fetch-follower", async () =>
+        db.query.users.findFirst({
+          where: eq(users.id, followerId),
+          columns: { id: true, username: true, displayName: true, avatarUrl: true },
+        })
+      ),
+      step.run("fetch-following", async () =>
+        db.query.users.findFirst({
+          where: eq(users.id, followingId),
+          columns: { id: true, username: true },
+        })
+      ),
+    ]);
+
+    if (!follower || !following) return { skipped: true };
+
+    await step.sendEvent("notify-followed-user", {
+      name: "notification/send",
+      data: {
+        recipientId: followingId,
+        senderId: followerId,
+        type: "follow",
+        entityType: "user",
+        entityId: followerId,
+        title: "You have a new follower",
+        message: `${follower.displayName ?? follower.username ?? "A scholar"} started following you.`,
+        metadata: {
+          username: follower.username,
+          followerId,
+        },
+      },
+    });
+
+    await step.sendEvent("reputation-follower-gained", {
+      name: "reputation/update",
+      data: {
+        userId: followingId,
+        eventType: "follower_gained",
+        pointsDelta: 1,
+        referenceType: "user",
+        referenceId: followerId,
+      },
+    });
+
+    await step.run("log-follow-activity", async () => {
+      await db.insert(userActivityLog).values({
+        userId: followerId,
+        action: "follow_created",
+        entityType: "user",
+        entityId: followingId,
+        metadata: { followingId },
+      });
+    });
+
+    await step.run("broadcast-follow-to-pulse", async () => {
+      await pusherServer.trigger(CHANNELS.EXPLORE, EVENTS.PULSE_ACTIVITY, {
+        type: "follow",
+        actorId: followerId,
+        actorName: follower.displayName ?? follower.username ?? "Scholar",
+        actorAvatarUrl: follower.avatarUrl ?? null,
+        institutionId: null,
+        description: "Started following a contributor",
+        entityId: followingId,
+        createdAt: new Date().toISOString(),
+      });
+    });
+
+    return { followerId, followingId, processed: true };
+  }
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WORKER: Handle comment posted (notify + reputation + pulse)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const handleCommentPosted = inngest.createFunction(
+  {
+    id: "handle-comment-posted",
+    name: "Handle Comment Posted",
+    retries: 2,
+    triggers: [{ event: "comment/posted" }],
+  },
+  async ({ event, step }) => {
+    const { commentId, documentId, authorId, documentAuthorId, parentAuthorId, excerpt, mentionedUserIds } = event.data;
+
+    const [author, doc] = await Promise.all([
+      step.run("fetch-comment-author", async () =>
+        db.query.users.findFirst({
+          where: eq(users.id, authorId),
+          columns: { username: true, displayName: true, avatarUrl: true },
+        })
+      ),
+      step.run("fetch-comment-document", async () =>
+        db.query.documents.findFirst({
+          where: eq(documents.id, documentId),
+          columns: { slug: true, title: true },
+        })
+      ),
+    ]);
+
+    if (!author || !doc) return { skipped: true };
+
+    await step.sendEvent("reputation-comment-author", {
+      name: "reputation/update",
+      data: {
+        userId: authorId,
+        eventType: "comment_posted",
+        pointsDelta: 1,
+        referenceType: "comment",
+        referenceId: commentId,
+      },
+    });
+
+    if (documentAuthorId !== authorId) {
+      await step.sendEvent("notify-document-author", {
+        name: "notification/send",
+        data: {
+          recipientId: documentAuthorId,
+          senderId: authorId,
+          type: "comment",
+          entityType: "document",
+          entityId: documentId,
+          title: "New comment on your document",
+          message: `${author.displayName ?? author.username ?? "Someone"} commented on "${doc.title}".`,
+          metadata: {
+            documentSlug: doc.slug,
+            excerpt,
+            commentId,
+          },
+        },
+      });
+    }
+
+    if (parentAuthorId && parentAuthorId !== authorId && parentAuthorId !== documentAuthorId) {
+      await step.sendEvent("notify-reply-target", {
+        name: "notification/send",
+        data: {
+          recipientId: parentAuthorId,
+          senderId: authorId,
+          type: "comment",
+          entityType: "comment",
+          entityId: commentId,
+          title: "New reply to your comment",
+          message: `${author.displayName ?? author.username ?? "Someone"} replied to your comment.`,
+          metadata: {
+            documentSlug: doc.slug,
+            excerpt,
+            commentId,
+          },
+        },
+      });
+    }
+
+    if (mentionedUserIds.length > 0) {
+      await step.sendEvent(
+        "notify-mentioned-users",
+        mentionedUserIds
+          .filter((userId: string) => userId !== authorId)
+          .map((userId: string) => ({
+            name: "notification/send" as const,
+            data: {
+              recipientId: userId,
+              senderId: authorId,
+              type: "comment",
+              entityType: "comment",
+              entityId: commentId,
+              title: "You were mentioned in a comment",
+              message: `${author.displayName ?? author.username ?? "Someone"} mentioned you in a discussion.`,
+              metadata: {
+                documentSlug: doc.slug,
+                excerpt,
+                commentId,
+              },
+            },
+          }))
+      );
+    }
+
+    await step.run("log-comment-activity", async () => {
+      await db.insert(userActivityLog).values({
+        userId: authorId,
+        action: "comment_posted",
+        entityType: "comment",
+        entityId: commentId,
+        metadata: { documentId, documentSlug: doc.slug },
+      });
+    });
+
+    await step.run("broadcast-comment-to-pulse", async () => {
+      await pusherServer.trigger(CHANNELS.EXPLORE, EVENTS.PULSE_ACTIVITY, {
+        type: "milestone",
+        actorId: authorId,
+        actorName: author.displayName ?? author.username ?? "Scholar",
+        actorAvatarUrl: author.avatarUrl ?? null,
+        institutionId: null,
+        description: "Started a new discussion",
+        entityId: commentId,
+        createdAt: new Date().toISOString(),
+      });
+    });
+
+    return { commentId, processed: true };
+  }
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WORKER: Handle document liked (notify + reputation)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const handleDocumentLiked = inngest.createFunction(
+  {
+    id: "handle-document-liked",
+    name: "Handle Document Liked",
+    retries: 2,
+    triggers: [{ event: "document/liked" }],
+  },
+  async ({ event, step }) => {
+    const { documentId, userId, authorId, type } = event.data;
+    if (type !== "like" || userId === authorId) return { skipped: true };
+
+    const [actor, doc] = await Promise.all([
+      step.run("fetch-like-actor", async () =>
+        db.query.users.findFirst({
+          where: eq(users.id, userId),
+          columns: { username: true, displayName: true },
+        })
+      ),
+      step.run("fetch-liked-document", async () =>
+        db.query.documents.findFirst({
+          where: eq(documents.id, documentId),
+          columns: { slug: true, title: true },
+        })
+      ),
+    ]);
+
+    if (!doc) return { skipped: true };
+
+    await step.sendEvent("notify-document-liked", {
+      name: "notification/send",
+      data: {
+        recipientId: authorId,
+        senderId: userId,
+        type: "like",
+        entityType: "document",
+        entityId: documentId,
+        title: "Someone liked your document",
+        message: `${actor?.displayName ?? actor?.username ?? "A scholar"} liked "${doc.title}".`,
+        metadata: {
+          documentSlug: doc.slug,
+          documentTitle: doc.title,
+        },
+      },
+    });
+
+    await step.sendEvent("reputation-liked-received", {
+      name: "reputation/update",
+      data: {
+        userId: authorId,
+        eventType: "document_liked_received",
+        pointsDelta: 2,
+        referenceType: "document",
+        referenceId: documentId,
+      },
+    });
+
+    return { documentId, authorId, processed: true };
   }
 );
 
@@ -202,7 +516,7 @@ export const sendWeeklyDigest = inngest.createFunction(
     // ── Step 1: Get users who want weekly digest ──────────────────────────────
     const eligibleUsers = await step.run("get-eligible-users", async () => {
       const result = await db.execute<{ id: string; email: string }>(
-        require("drizzle-orm").sql`
+        sql`
           SELECT u.id, au.email
           FROM users u
           JOIN auth_users au ON au.id = u.id
@@ -220,7 +534,7 @@ export const sendWeeklyDigest = inngest.createFunction(
     // ── Step 2: Fan out — send one email per user ─────────────────────────────
     await step.sendEvent(
       "fan-out-digests",
-      eligibleUsers.map((u: any) => ({
+      eligibleUsers.map((u) => ({
         name: "email/weekly-digest" as const,
         data: { userId: u.id, email: u.email },
       }))
@@ -299,11 +613,55 @@ export const processWeeklyDigest = inngest.createFunction(
 
     await step.run("send-digest-email", async () => {
       const { WeeklyDigestEmail } = await import("@/components/emails/WeeklyDigestEmail");
-      await resend.emails.send({
+      
+      // Get user info for recipient name
+      const userInfo = await db.query.users.findFirst({
+        where: eq(users.id, userId),
+        columns: { displayName: true, username: true }
+      });
+      
+      // Transform data to match interfaces
+      const fromFollowed: DigestContributor[] = [];
+      const contributorMap = new Map<string, DigestContributor>();
+      
+      digestData.followedDocs.forEach(doc => {
+        const key = doc.author_name;
+        if (!contributorMap.has(key)) {
+          contributorMap.set(key, {
+            displayName: doc.author_name,
+            username: doc.author_name.toLowerCase().replace(/\s+/g, ''),
+            documents: []
+          });
+        }
+        const contributor = contributorMap.get(key)!;
+        contributor.documents.push({
+          title: doc.title,
+          slug: doc.slug,
+          resourceType: 'document',
+          authorName: doc.author_name,
+          downloadCount: doc.download_count
+        });
+      });
+      
+      const trendingAtInstitution: DigestDocument[] = digestData.trendingDocs.map(doc => ({
+        title: doc.title,
+        slug: doc.slug,
+        resourceType: 'document',
+        authorName: 'Unknown Author', // trending docs query doesn't include author info
+        downloadCount: doc.download_count
+      }));
+      
+      const digestHtml = await render(WeeklyDigestEmail({
+          recipientName: userInfo?.displayName || userInfo?.username || "Scholar",
+          weekLabel: "This week",
+          fromFollowed: Array.from(contributorMap.values()),
+          trendingAtInstitution,
+        }));
+      await sgMail.send({
         from: "getpidief <digest@getpidief.me>",
         to: email,
         subject: "Your weekly academic digest 📚",
-        react: WeeklyDigestEmail({ ...digestData, userId }),
+        html: digestHtml,
       });
     });
 
@@ -339,29 +697,4 @@ function getNotificationUrl(
   }
 }
 
-function getEmailTemplate(
-  type: string,
-  data: { name: string; title: string; message: string; metadata: Record<string, unknown> }
-): { subject: string; component: any } | null {
-  // Email templates are React Email components
-  // Return null for types that don't have email templates
-  switch (type) {
-    case "document_approved":
-      return {
-        subject: `✅ Your document is approved — ${data.metadata.documentTitle}`,
-        component: null, // Populated in Phase 6
-      };
-    case "document_rejected":
-      return {
-        subject: `Document not approved — action required`,
-        component: null,
-      };
-    case "badge_earned":
-      return {
-        subject: `🏆 New badge: ${data.metadata.badgeName}`,
-        component: null,
-      };
-    default:
-      return null;
-  }
-}
+

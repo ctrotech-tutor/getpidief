@@ -11,31 +11,19 @@ import { authConfig } from "@/lib/auth/auth.config";
 
 const { auth } = NextAuth(authConfig);
 
-export default auth((req: any) => {
-  const { nextUrl, auth: session } = req;
-  const { pathname } = nextUrl;
-  const user = session?.user as any;
+type ProxyUser = {
+  onboardingComplete?: boolean;
+  status?: string;
+};
 
-  // Onboarding redirect guard
-  if (
-    user &&
-    !user.onboardingComplete &&
-    !pathname.startsWith("/onboarding") &&
-    !pathname.startsWith("/api") &&
-    !pathname.startsWith("/_next") &&
-    !pathname.includes(".") &&
-    !["/login", "/register", "/forgot-password", "/reset-password", "/verify-email"].includes(pathname)
-  ) {
-    return Response.redirect(new URL("/onboarding/step-1", req.url));
-  }
+export default auth((req) => {
+  const { nextUrl } = req;
+  const session = req.auth as { user?: ProxyUser } | null | undefined;
+  const { pathname } = nextUrl;
+  const user = session?.user;
 
   // Redirect logged-in users away from auth pages
   if (user?.onboardingComplete && ["/login", "/register"].includes(pathname)) {
-    return Response.redirect(new URL("/explore", req.url));
-  }
-
-  // Redirect completed users away from onboarding
-  if (user?.onboardingComplete && pathname.startsWith("/onboarding")) {
     return Response.redirect(new URL("/explore", req.url));
   }
 
@@ -53,6 +41,7 @@ export default auth((req: any) => {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff|woff2)).*)",
+    // Never run proxy on NextAuth endpoints; it can interfere with auth callbacks.
+    "/((?!api/auth|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff|woff2)).*)",
   ],
 };

@@ -1,12 +1,17 @@
 import { Metadata } from "next";
 import { InstitutionSearchStep } from "@/components/features/auth/Institutionsearchstep";
 import { db } from "@/lib/db/client";
-import { institutions } from "@/lib/db/schema";
-import { desc, eq } from "drizzle-orm";
+import { institutions, documents } from "@/lib/db/schema";
+import { desc, eq, sql } from "drizzle-orm";
+import { resolveOnboardingStep } from "@/lib/auth/onboardingResume";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = { title: "Step 1 — Your Institution" };
 
 export default async function OnboardingStep1Page() {
+  const step = await resolveOnboardingStep();
+  if (step !== 1) redirect(`/onboarding/step-${step}`);
+
   // Popular institutions for quick-pick chips
   const popular = await db
     .select({
@@ -17,11 +22,29 @@ export default async function OnboardingStep1Page() {
       countryCode: institutions.countryCode,
       type:        institutions.type,
       logoUrl:     institutions.logoUrl,
-      documentCount: institutions.documentCount,
+      documentCount: sql<number>`
+        coalesce((
+          select count(*)::int
+          from ${documents} d
+          where d.institution_id = ${institutions.id}
+            and d.status = 'approved'
+            and d.visibility = 'public'
+            and d.deleted_at is null
+        ), 0)
+      `,
     })
     .from(institutions)
     .where(eq(institutions.isActive, true))
-    .orderBy(desc(institutions.documentCount))
+    .orderBy(desc(sql<number>`
+      coalesce((
+        select count(*)::int
+        from ${documents} d
+        where d.institution_id = ${institutions.id}
+          and d.status = 'approved'
+          and d.visibility = 'public'
+          and d.deleted_at is null
+      ), 0)
+    `))
     .limit(6);
 
   return (
@@ -34,7 +57,7 @@ export default async function OnboardingStep1Page() {
           Where do you study?
         </h2>
         <p className="text-sm text-muted-foreground">
-          We'll personalize your archive based on your institution.
+          We&apos;ll personalize your archive based on your institution.
         </p>
       </div>
 

@@ -7,6 +7,42 @@ import { redis, KEYS, TTL, getCache, setCache, invalidateCache } from "@/lib/red
 // USERS REPOSITORY
 // ─────────────────────────────────────────────────────────────────────────────
 
+export interface PublicProfile {
+  id: string;
+  username: string;
+  displayName: string;
+  bio: string | null;
+  avatarUrl: string | null;
+  coverUrl: string | null;
+  role: string;
+  verificationStatus: string;
+  institutionId: string | null;
+  faculty: string | null;
+  major: string | null;
+  academicLevel: string | null;
+  reputationScore: number;
+  reputationLevel: string;
+  followerCount: number;
+  followingCount: number;
+  documentCount: number;
+  totalDownloads: number;
+  totalLikes: number;
+  externalLinks: Record<string, string | null>;
+  createdAt: Date;
+  currentStreakDays: number;
+  longestStreakDays: number;
+  privacySettings: Record<string, any>;
+  isFollowing: boolean;
+  isFollowedBy: boolean;
+  institution?: {
+    id: string;
+    name: string;
+    slug: string;
+    logoUrl: string | null;
+    country: string | null;
+  } | null;
+}
+
 export const usersRepository = {
 
   // ── Get public profile by username ────────────────────────────────────────

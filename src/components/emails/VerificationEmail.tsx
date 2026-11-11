@@ -5,14 +5,16 @@ import {
 } from "./layouts/BaseLayout";
 
 interface VerificationEmailProps {
-  name:  string;
+  name: string;
   token: string;
+  recipientName?: string;
+  verificationLink?: string;
 }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://getpidief.me";
 
-export function VerificationEmail({ name, token }: VerificationEmailProps) {
-  const verifyUrl = `${APP_URL}/verify-email?token=${token}`;
+export function VerificationEmail({ name, token, recipientName, verificationLink }: VerificationEmailProps) {
+  const verifyUrl = verificationLink ?? `${APP_URL}/verify-email?token=${token}`;
   const firstName = name.split(" ")[0];
 
   return (
@@ -49,7 +51,7 @@ export function VerificationEmail({ name, token }: VerificationEmailProps) {
       </Text>
 
       <EmailNote>
-        This link expires in 24 hours. If you didn't create an account,
+        This link expires in 24 hours. If you didn&apos;t create an account,
         you can safely ignore this email.
       </EmailNote>
     </BaseEmailLayout>

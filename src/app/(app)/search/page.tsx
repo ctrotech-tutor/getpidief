@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 import { searchDocuments } from "@/lib/search/search";
 import { auth } from "@/lib/auth/auth";
 import { searchQuerySchema } from "@/lib/validations/schemas";
@@ -8,9 +7,12 @@ import { FilterSidebar } from "@/components/features/search/FilterSidebar";
 import { SearchResults } from "@/components/features/search/SearchResults";
 import { ActiveFilters } from "@/components/features/search/ActiveFilters";
 import { SearchPagination } from "@/components/features/search/SearchPagination";
+import { SortControls } from "@/components/features/search/SortControls";
+import { ShareModal } from "@/components/features/documents/ShareModal";
+import { ReportModal } from "@/components/features/documents/ReportModal";
 import { db } from "@/lib/db/client";
-import { categories, institutions } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { categories, institutions, documents } from "@/lib/db/schema";
+import { eq, sql } from "drizzle-orm";
 
 export const metadata: Metadata = {
   title: "Search — getpidief",
@@ -20,6 +22,11 @@ export const metadata: Metadata = {
 interface SearchPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
+
+type SearchSessionUser = {
+  id?: string;
+  institutionId?: string | null;
+};
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
   const params = await searchParams;
@@ -43,10 +50,10 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 
   // Auth (for institution-scoped visibility)
   const session = await auth();
-  const user    = session?.user as any;
+  const user = (session?.user ?? null) as SearchSessionUser | null;
 
   // Execute search (server-side — no JS needed for initial render)
-  const [searchResult, allCategories, activeCategory, activeInstitution] = await Promise.all([
+  const [searchResult, allCategoriesRaw, categoryCountRows, activeCategory, activeInstitution] = await Promise.all([
     searchDocuments(
       {
         query:          filters.q,
@@ -65,10 +72,23 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       user?.id
     ),
     db
-      .select({ id: categories.id, name: categories.name, color: categories.color, documentCount: categories.documentCount })
+      .select({
+        id: categories.id,
+        name: categories.name,
+        color: categories.color,
+      })
       .from(categories)
       .where(eq(categories.isActive, true))
       .limit(20),
+    db.execute<{ category_id: string; count: number }>(sql`
+      select d.category_id, count(*)::int as count
+      from ${documents} d
+      where d.status = 'approved'
+        and d.visibility = 'public'
+        and d.deleted_at is null
+        and d.category_id is not null
+      group by d.category_id
+    `),
     filters.category
       ? db.select({ id: categories.id, name: categories.name })
           .from(categories).where(eq(categories.id, filters.category)).limit(1)
@@ -80,6 +100,11 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           .then((r) => r[0] ?? null)
       : null,
   ]);
+  const countByCategory = new Map(categoryCountRows.rows.map((r) => [r.category_id, Number(r.count)]));
+  const allCategories = allCategoriesRaw.map((c) => ({
+    ...c,
+    documentCount: countByCategory.get(c.id) ?? 0,
+  }));
 
   const hasQuery  = !!filters.q.trim();
   const hasFilter = !!(filters.category || filters.institution || filters.type || filters.yearFrom);
@@ -118,7 +143,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                     </span>
                     {" "}results
                     {hasQuery && (
-                      <> for <span className="font-medium text-foreground">"{filters.q}"</span></>
+                      <> for <span className="font-medium text-foreground">&quot;{filters.q}&quot;</span></>
                     )}
                     <span className="text-xs ml-2 text-muted-foreground/60">
                       ({searchResult.queryTimeMs}ms)
@@ -158,41 +183,10 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           )}
         </main>
       </div>
-    </div>
-  );
-}
 
-function SortControls({ currentSort }: { currentSort: string }) {
-  const options = [
-    { value: "relevance", label: "Most Relevant" },
-    { value: "recent",    label: "Most Recent"   },
-    { value: "downloads", label: "Most Downloaded"},
-    { value: "likes",     label: "Highest Rated" },
-    { value: "discussed", label: "Most Discussed" },
-  ];
-
-  return (
-    <div className="flex items-center gap-2">
-      <label htmlFor="sort-select" className="text-xs text-muted-foreground whitespace-nowrap">
-        Sort by:
-      </label>
-      <select
-        id="sort-select"
-        defaultValue={currentSort}
-        className="text-sm bg-secondary border border-border rounded-lg px-2 py-1.5
-                   text-foreground cursor-pointer outline-none
-                   hover:border-ring/40 focus:border-ring focus:ring-2 focus:ring-ring/20"
-        onChange={(e) => {
-          const url = new URL(window.location.href);
-          url.searchParams.set("sort", e.target.value);
-          url.searchParams.set("page", "1");
-          window.location.href = url.toString();
-        }}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
+      {/* Global Modals */}
+      <ShareModal />
+      <ReportModal />
     </div>
   );
 }

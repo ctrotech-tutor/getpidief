@@ -1,7 +1,16 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth/auth";
+import { db } from "@/lib/db/client";
+import { users } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import { TopNav } from "@/components/layouts/TopNav";
 import { MobileBottomTabs } from "@/components/layouts/MobileBottomTabs";
+import { CommandPalette } from "@/components/layouts/CommandPalette";
+
+type AppSessionUser = {
+  onboardingComplete?: boolean;
+  status?: "active" | "suspended" | "deleted" | string;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROTECTED APP SHELL LAYOUT
@@ -23,16 +32,23 @@ export default async function AppLayout({
     redirect("/login");
   }
 
-  const user = session.user as any;
+  const user = session.user as AppSessionUser & { id?: string };
+
+  const profile = user.id
+    ? await db.query.users.findFirst({
+        where: eq(users.id, user.id),
+        columns: { onboardingComplete: true, status: true },
+      })
+    : null;
 
   // ── Onboarding incomplete → redirect to step-1 ───────────────────────────
-  // (Middleware handles this too, but this is the server-side safety net)
-  if (!user.onboardingComplete) {
+  // Use DB as source of truth to avoid stale JWT redirect loops.
+  if (!profile?.onboardingComplete) {
     redirect("/onboarding/step-1");
   }
 
   // ── Suspended / deleted account ───────────────────────────────────────────
-  if (user.status === "suspended" || user.status === "deleted") {
+  if (profile.status === "suspended" || profile.status === "deleted") {
     redirect("/login?error=account_suspended");
   }
 
@@ -48,6 +64,7 @@ export default async function AppLayout({
 
       {/* Mobile bottom tab bar — hidden on desktop */}
       <MobileBottomTabs />
+      <CommandPalette />
     </div>
   );
 }

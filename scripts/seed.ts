@@ -9,9 +9,13 @@
 import "dotenv/config";
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
+import { inArray, sql } from "drizzle-orm";
 import {
   institutions, categories, tags, badges, systemSettings,
-  authUsers, users,
+  authUsers, authAccounts, users,
+  documents, documentTags, documentViews, documentDownloads,
+  userInterests, follows, comments,
+  documentReactions, bookmarkCollections, documentBookmarks,
 } from "../src/lib/db/schema";
 import bcrypt from "bcryptjs";
 
@@ -19,17 +23,18 @@ import bcrypt from "bcryptjs";
 // Works well locally and in CI because it's stateless per query.
 const connectionString =
   process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL!;
-const sql = neon(connectionString);
-const seedDb = drizzle(sql);
+const neonSql = neon(connectionString);
+const seedDb = drizzle(neonSql);
 
 async function withRetry<T>(label: string, fn: () => Promise<T>, attempts = 4): Promise<T> {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
       return await fn();
-    } catch (err: any) {
+    } catch (err: unknown) {
       lastErr = err;
-      const code = err?.cause?.code ?? err?.code;
+      const error = err as { cause?: { code?: string }; code?: string };
+      const code = error?.cause?.code ?? error?.code;
       // Retry only for transient network failures.
       if (code !== "ECONNRESET" && code !== "ETIMEDOUT" && code !== "ECONNREFUSED") {
         throw err;
@@ -225,7 +230,6 @@ async function seed() {
         .onConflictDoNothing();
 
       // Store password hash in credentials account
-      const { authAccounts } = await import("../src/lib/db/schema");
       await seedDb
         .insert(authAccounts)
         .values({
@@ -241,6 +245,234 @@ async function seed() {
     console.log("       admin@getpidief.dev  / Password123!");
     console.log("       mod@getpidief.dev    / Password123!");
     console.log("       student@getpidief.dev/ Password123!");
+
+    // ── Demo Content (dev only) ──────────────────────────────────────────────
+    console.log("\n  → Seeding demo documents + interactions (dev only)...");
+    const existingDemo = await seedDb.execute<{ count: string }>(
+      sql`SELECT COUNT(*)::text AS count FROM documents WHERE slug LIKE 'seed-%'`
+    );
+    const demoCount = Number(existingDemo.rows[0]?.count ?? "0");
+
+    if (demoCount > 0) {
+      await seedDb.execute(
+        sql`UPDATE documents
+            SET thumbnail_url = NULL
+            WHERE slug LIKE 'seed-%'
+              AND thumbnail_url LIKE 'https://picsum.photos/%'`
+      );
+      console.log(`     ✓ demo content already exists (${demoCount} docs), skipping`);
+      console.log("     ✓ normalized seeded thumbnails to local-safe values");
+      console.log("\n✅  Seed complete!\n");
+      return;
+    }
+
+    const [allInstitutions, allCategories, allTags, testUserRows] = await Promise.all([
+      seedDb.select({ id: institutions.id }).from(institutions),
+      seedDb.select({ id: categories.id }).from(categories),
+      seedDb.select({ id: tags.id }).from(tags),
+      seedDb
+        .select({ id: users.id, username: users.username })
+        .from(users)
+        .where(inArray(users.username, ["admin_dev", "mod_dev", "test_student"])),
+    ]);
+
+    if (!allInstitutions.length || !allCategories.length || !allTags.length || !testUserRows.length) {
+      throw new Error("Cannot seed demo content: base entities (institutions/categories/tags/users) missing.");
+    }
+
+    const userIds = testUserRows.map((u) => u.id);
+    const now = Date.now();
+    const docCount = 30;
+    const resourceTypes = [
+      "past_exam",
+      "lecture_notes",
+      "research_paper",
+      "textbook_summary",
+      "assignment",
+      "tutorial_sheet",
+      "course_guide",
+      "lab_report",
+      "thesis",
+      "dissertation",
+      "other",
+    ] as const;
+    const titles = [
+      "Advanced Algorithms Revision Pack",
+      "Database Systems Lecture Notes",
+      "Public Health Biostatistics Handbook",
+      "Contract Law Case Digest",
+      "Signals and Systems Tutorial Set",
+      "Thermodynamics Lab Report Template",
+      "Machine Learning Practical Workbook",
+      "Software Engineering Course Guide",
+      "Financial Modelling Past Questions",
+      "Quantum Physics Problem Sheet",
+    ];
+
+    const docsPayload = Array.from({ length: docCount }).map((_, i) => {
+      const title = `${titles[i % titles.length]} ${i + 1}`;
+      const authorId = userIds[i % userIds.length];
+      const categoryId = allCategories[i % allCategories.length]?.id ?? null;
+      const institutionId = allInstitutions[i % allInstitutions.length]?.id ?? null;
+      const publishedAt = new Date(now - i * 86400000);
+      return {
+        slug: `seed-doc-${i + 1}`,
+        title,
+        description: `Seeded demo resource for development/testing (${title}).`,
+        language: "en",
+        categoryId,
+        resourceType: resourceTypes[i % resourceTypes.length],
+        semester: i % 2 === 0 ? ("semester_1" as const) : ("semester_2" as const),
+        academicYear: 2021 + (i % 5),
+        institutionId,
+        authorId,
+        fileUrl: `https://3rvj5ig9j4.ufs.sh/f/jpsC6qlv32e86z4607Guiv1KTYp4mO2cCtWknXIPJhd98Dfa`,
+        fileSize: 150000 + i * 2500,
+        mimeType: "application/pdf",
+        thumbnailUrl: null,
+        previewStatus: "ready" as const,
+        pageCount: 12 + (i % 40),
+        visibility: "public" as const,
+        license: "academic_use_only" as const,
+        allowDownload: true,
+        allowPrint: true,
+        status: "approved" as const,
+        publishedAt,
+        viewCount: 100 + i * 17,
+        uniqueViewCount: 80 + i * 11,
+        downloadCount: 20 + i * 7,
+        likeCount: 8 + (i % 13),
+        dislikeCount: i % 4,
+        bookmarkCount: 5 + (i % 8),
+        commentCount: 2 + (i % 5),
+        shareCount: 1 + (i % 6),
+        trendingScore: 20 + i * 1.5,
+      };
+    });
+
+    await seedDb.insert(documents).values(docsPayload).onConflictDoNothing();
+    const seededSlugs = docsPayload.map((d) => d.slug);
+    const seededDocs = await seedDb
+      .select({ id: documents.id, slug: documents.slug, authorId: documents.authorId })
+      .from(documents)
+      .where(inArray(documents.slug, seededSlugs));
+
+    // Document tags (3 tags per doc)
+    const docTagRows = seededDocs.flatMap((d, i) => {
+      const t1 = allTags[i % allTags.length]!;
+      const t2 = allTags[(i + 7) % allTags.length]!;
+      const t3 = allTags[(i + 13) % allTags.length]!;
+      return [
+        { documentId: d.id, tagId: t1.id },
+        { documentId: d.id, tagId: t2.id },
+        { documentId: d.id, tagId: t3.id },
+      ];
+    });
+    await seedDb.insert(documentTags).values(docTagRows).onConflictDoNothing();
+
+    // User interests (for recommendations)
+    const interestRows = userIds.flatMap((userId, idx) => [
+      { userId, tagId: allTags[idx % allTags.length]!.id },
+      { userId, tagId: allTags[(idx + 3) % allTags.length]!.id },
+      { userId, tagId: allTags[(idx + 9) % allTags.length]!.id },
+    ]);
+    await seedDb.insert(userInterests).values(interestRows).onConflictDoNothing();
+
+    // Follows
+    const followRows = userIds.flatMap((followerId) =>
+      userIds
+        .filter((u) => u !== followerId)
+        .slice(0, 2)
+        .map((followingId) => ({ followerId, followingId }))
+    );
+    await seedDb.insert(follows).values(followRows).onConflictDoNothing();
+
+    // Reactions (1-2 per doc, unique per user-doc)
+    const reactionRows = seededDocs.flatMap((d, idx) => {
+      const u1 = userIds[idx % userIds.length];
+      const u2 = userIds[(idx + 1) % userIds.length];
+      return [
+        { documentId: d.id, userId: u1, type: "like" as const },
+        ...(idx % 4 === 0 ? [{ documentId: d.id, userId: u2, type: "dislike" as const }] : []),
+      ];
+    });
+    await seedDb.insert(documentReactions).values(reactionRows).onConflictDoNothing();
+
+    // Bookmark collections + bookmarks
+    const collectionRows = userIds.map((userId) => ({
+      userId,
+      name: "Saved",
+      description: "Default seeded collection",
+      visibility: "private" as const,
+      isDefault: true,
+    }));
+    await seedDb.insert(bookmarkCollections).values(collectionRows).onConflictDoNothing();
+    const collections = await seedDb
+      .select({ id: bookmarkCollections.id, userId: bookmarkCollections.userId })
+      .from(bookmarkCollections)
+      .where(inArray(bookmarkCollections.userId, userIds));
+    const collectionByUser = new Map(collections.map((c) => [c.userId, c.id]));
+
+    const bookmarkRows = seededDocs.slice(0, 18).map((d, idx) => {
+      const userId = userIds[idx % userIds.length];
+      return {
+        userId,
+        documentId: d.id,
+        collectionId: collectionByUser.get(userId) ?? null,
+      };
+    });
+    await seedDb.insert(documentBookmarks).values(bookmarkRows).onConflictDoNothing();
+
+    // Comments (+ replies)
+    const topComments = await seedDb
+      .insert(comments)
+      .values(
+        seededDocs.slice(0, 12).map((d, idx) => ({
+          documentId: d.id,
+          userId: userIds[idx % userIds.length],
+          content: `This is a seeded top-level comment on ${d.slug}.`,
+          contentHtml: `<p>This is a seeded top-level comment on ${d.slug}.</p>`,
+        }))
+      )
+      .returning({ id: comments.id, documentId: comments.documentId });
+
+    await seedDb.insert(comments).values(
+      topComments.slice(0, 8).map((c, idx) => ({
+        documentId: c.documentId,
+        userId: userIds[(idx + 1) % userIds.length],
+        parentId: c.id,
+        rootId: c.id,
+        content: "Seeded reply for development.",
+        contentHtml: "<p>Seeded reply for development.</p>",
+      }))
+    );
+
+    // View + download logs
+    await seedDb.insert(documentViews).values(
+      seededDocs.slice(0, 20).map((d, idx) => ({
+        documentId: d.id,
+        userId: userIds[idx % userIds.length],
+        sessionId: `seed-session-${idx + 1}`,
+        ipHash: `seed-ip-${(idx % 6) + 1}`,
+        userAgent: "SeedScript/1.0",
+        durationSeconds: 30 + idx * 3,
+        pagesViewed: 2 + (idx % 8),
+      }))
+    );
+
+    await seedDb.insert(documentDownloads).values(
+      seededDocs.slice(0, 16).map((d, idx) => ({
+        documentId: d.id,
+        userId: userIds[idx % userIds.length],
+        ipHash: `seed-ip-${(idx % 6) + 1}`,
+      }))
+    );
+
+    console.log(`     ✓ ${seededDocs.length} demo documents seeded`);
+    console.log("     ✓ document tags seeded");
+    console.log("     ✓ follows + interests seeded");
+    console.log("     ✓ reactions + bookmarks seeded");
+    console.log("     ✓ comments + view/download logs seeded");
   }
 
   console.log("\n✅  Seed complete!\n");

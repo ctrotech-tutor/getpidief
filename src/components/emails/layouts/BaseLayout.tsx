@@ -1,6 +1,6 @@
 import {
   Body, Container, Head, Html, Preview,
-  Section, Text, Hr, Link, Img,
+  Section, Text, Hr, Link,
 } from "@react-email/components";
 
 interface BaseEmailLayoutProps {
@@ -9,7 +9,6 @@ interface BaseEmailLayoutProps {
   footerText?: string;
 }
 
-const BRAND_COLOR   = "#2563EB";
 const BG_DARK       = "#060C19";
 const BG_CARD       = "#111D3A";
 const TEXT_PRIMARY  = "#F1F5F9";

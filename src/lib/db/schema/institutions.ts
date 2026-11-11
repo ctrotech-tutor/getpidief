@@ -226,4 +226,4 @@ export const courseCodesRelations = relations(courseCodes, ({ one }) => ({
 }));
 
 // placeholder to avoid circular import — actual import in index.ts
-const users_placeholder = {} as any;
+const users_placeholder = {} as never;

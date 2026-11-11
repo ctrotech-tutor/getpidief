@@ -1,6 +1,6 @@
 import { inngest } from "../../client";
 import { db } from "@/lib/db/client";
-import { users, reputationEvents, badges, userBadges } from "@/lib/db/schema";
+import { users, reputationEvents, badges, userBadges, documents, follows } from "@/lib/db/schema";
 import { eq, and, not, inArray, sql } from "drizzle-orm";
 import { redis, KEYS, invalidateCache } from "@/lib/redis/client";
 import { pusherServer, CHANNELS, EVENTS } from "@/lib/pusher/server";
@@ -74,7 +74,7 @@ export const updateReputation = inngest.createFunction(
     await step.run("insert-reputation-event", async () => {
       await db.insert(reputationEvents).values({
         userId,
-        type: eventType as any,
+        type: eventType as typeof reputationEvents.$inferInsert["type"],
         pointsDelta,
         scoreAfter: newScore,
         referenceType: referenceType ?? null,
@@ -96,8 +96,14 @@ export const updateReputation = inngest.createFunction(
 
     // ── Step 4: Update Redis leaderboard ─────────────────────────────────────
     await step.run("update-redis-leaderboard", async () => {
-      await redis.zadd(KEYS.topContributors(), { score: newScore, member: userId });
-      await invalidateCache(KEYS.followerCount(userId));
+      if (redis) {
+        try {
+          await redis.zadd(KEYS.topContributors(), { score: newScore, member: userId });
+          await invalidateCache(KEYS.followerCount(userId));
+        } catch (error) {
+          console.warn("[Inngest] Failed to update Redis leaderboard:", error);
+        }
+      }
     });
 
     // ── Step 5: Check for level-up milestone ─────────────────────────────────
@@ -138,11 +144,11 @@ const criteriaEvaluators: Record<string, BadgeCriteriaEvaluator> = {
   document_count: async (userId) => {
     const result = await db
       .select({ count: sql<number>`count(*)` })
-      .from(require("@/lib/db/schema").documents)
+      .from(documents)
       .where(
         and(
-          eq(require("@/lib/db/schema").documents.authorId, userId),
-          eq(require("@/lib/db/schema").documents.status, "approved")
+          eq(documents.authorId, userId),
+          eq(documents.status, "approved")
         )
       );
     return (result[0]?.count ?? 0) >= 1;
@@ -158,7 +164,6 @@ const criteriaEvaluators: Record<string, BadgeCriteriaEvaluator> = {
   },
 
   follower_count: async (userId) => {
-    const { follows } = require("@/lib/db/schema");
     const result = await db
       .select({ count: sql<number>`count(*)` })
       .from(follows)

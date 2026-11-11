@@ -1,17 +1,34 @@
 import type { Metadata } from "next";
 import { InterestTagsStep } from "@/components/features/auth/InterestTagsStep";
 import { db } from "@/lib/db/client";
-import { tags } from "@/lib/db/schema";
+import { tags, users } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { auth } from "@/lib/auth/auth";
 import { redis, KEYS } from "@/lib/redis/client";
+import { resolveOnboardingStep } from "@/lib/auth/onboardingResume";
+import { redirect } from "next/navigation";
+
+type OnboardingSessionUser = {
+  institutionId?: string | null;
+};
 
 export const metadata: Metadata = { title: "Step 3 — Your Interests" };
 
 export default async function OnboardingStep3Page() {
+  const step = await resolveOnboardingStep();
+  if (step !== 3) redirect(`/onboarding/step-${step}`);
+
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) redirect("/login");
+  const profile = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { institutionId: true },
+  });
+
   // Load all active tags — cached in Redis
   const cacheKey = KEYS.tagsAll();
-  const cached   = await redis.get<{ id: string; name: string; slug: string }[]>(cacheKey);
+  const cached   = redis ? await redis.get<{ id: string; name: string; slug: string }[]>(cacheKey) : null;
 
   const allTags = cached ?? (await db
     .select({ id: tags.id, name: tags.name, slug: tags.slug })
@@ -19,14 +36,14 @@ export default async function OnboardingStep3Page() {
     .where(eq(tags.isActive, true))
     .orderBy(desc(tags.usageCount)));
 
-  if (!cached) {
+  if (!cached && redis) {
     await redis.setex(cacheKey, 3600, allTags);
   }
 
   // Get user's institution name for "trending at X" section
-  const session     = await auth();
+  const user = { institutionId: profile?.institutionId } as OnboardingSessionUser;
   const institutionName =
-    (session?.user as any)?.institutionId
+    user?.institutionId
       ? "your institution"
       : "your institution";
 

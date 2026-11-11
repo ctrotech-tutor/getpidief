@@ -31,7 +31,7 @@ export default function NotFound() {
           Page not found, Scholar.
         </h1>
         <p className="text-secondary mb-8">
-          The resource you're looking for may have been removed, renamed, or doesn't exist.
+          The resource you&apos;re looking for may have been removed, renamed, or doesn&apos;t exist.
         </p>
 
         <div className="flex gap-3 justify-center">

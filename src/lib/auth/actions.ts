@@ -2,15 +2,13 @@
 
 import { signIn, signOut } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
-import { authUsers, authAccounts, users } from "@/lib/db/schema";
+import { authUsers, authAccounts } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import { z } from "zod";
 import { registerSchema, forgotPasswordSchema, resetPasswordSchema } from "@/lib/validations/schemas";
 import { rateLimiters } from "@/lib/redis/client";
 import { redis, KEYS, TTL } from "@/lib/redis/client";
-import { resend, EMAIL_FROM } from "@/lib/email/client";
 import { inngest } from "@/lib/inngest/client";
 import { actionSuccess, actionError, type ActionResult } from "@/lib/utils/api";
 import { headers } from "next/headers";
@@ -46,8 +44,9 @@ export async function signInWithCredentials(
       redirect:   false,
     });
     return actionSuccess({ redirectTo: "/explore" });
-  } catch (error: any) {
-    if (error?.type === "CredentialsSignin") {
+  } catch (error: unknown) {
+    const authError = error as { type?: string };
+    if (authError.type === "CredentialsSignin") {
       return actionError("Invalid email or password.", "email");
     }
     return actionError("Something went wrong. Please try again.");
@@ -155,11 +154,17 @@ export async function requestPasswordReset(
     const token    = crypto.createHash("sha256").update(rawToken).digest("hex");
 
     // Store token in Redis with 15-minute TTL
-    await redis.setex(
-      KEYS.passwordResetToken(token),
-      TTL.passwordResetToken,
-      authUser.id
-    );
+    if (redis) {
+      try {
+        await redis.setex(
+          KEYS.passwordResetToken(token),
+          TTL.passwordResetToken,
+          authUser.id
+        );
+      } catch (error) {
+        console.warn("[Auth] Failed to store password reset token:", error);
+      }
+    }
 
     await inngest.send({
       name: "email/password-reset",
@@ -200,7 +205,7 @@ export async function resetPassword(
 
   // Hash token to look up in Redis
   const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
-  const userId    = await redis.get<string>(KEYS.passwordResetToken(tokenHash));
+  const userId    = redis ? await redis.get<string>(KEYS.passwordResetToken(tokenHash)) : null;
 
   if (!userId) return actionError("This reset link has expired or already been used.");
 
@@ -217,7 +222,13 @@ export async function resetPassword(
     );
 
   // Invalidate token
-  await redis.del(KEYS.passwordResetToken(tokenHash));
+  if (redis) {
+    try {
+      await redis.del(KEYS.passwordResetToken(tokenHash));
+    } catch (error) {
+      console.warn("[Auth] Failed to delete password reset token:", error);
+    }
+  }
 
   return actionSuccess({ message: "Password updated successfully. You can now sign in." });
 }
@@ -236,10 +247,16 @@ export async function signOutAction() {
 
 async function createEmailVerifyToken(userId: string, email: string): Promise<string> {
   const token = crypto.randomBytes(32).toString("hex");
-  await redis.setex(
-    KEYS.emailVerifyToken(token),
-    TTL.emailVerifyToken,
-    JSON.stringify({ userId, email })
-  );
+  if (redis) {
+    try {
+      await redis.setex(
+        KEYS.emailVerifyToken(token),
+        TTL.emailVerifyToken,
+        JSON.stringify({ userId, email })
+      );
+    } catch (error) {
+      console.warn("[Auth] Failed to store email verification token:", error);
+    }
+  }
   return token;
 }

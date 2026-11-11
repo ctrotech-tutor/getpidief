@@ -114,7 +114,13 @@ export const takeDailySnapshot = inngest.createFunction(
       }
     });
 
-    await redis.set(KEYS.lastAnalyticsSnapshot(), dateStr);
+    if (redis) {
+      try {
+        await redis.set(KEYS.lastAnalyticsSnapshot(), dateStr);
+      } catch (error) {
+        console.warn("[Inngest] Failed to set last analytics snapshot:", error);
+      }
+    }
 
     return { date: dateStr, status: "completed" };
   }
@@ -158,12 +164,18 @@ export const aggregatePopularSearches = inngest.createFunction(
       `);
 
       // Update global popular searches sorted set
-      await redis.del(KEYS.popularSearches());
-      for (const row of result.rows) {
-        await redis.zadd(KEYS.popularSearches(), {
-          score: Number(row.search_count),
-          member: row.query,
-        });
+      if (redis) {
+        try {
+          await redis.del(KEYS.popularSearches());
+          for (const row of result.rows) {
+            await redis.zadd(KEYS.popularSearches(), {
+              score: Number(row.search_count),
+              member: row.query,
+            });
+          }
+        } catch (error) {
+          console.warn("[Inngest] Failed to update popular searches:", error);
+        }
       }
     });
   }
@@ -202,12 +214,18 @@ export const updateInstitutionLeaderboard = inngest.createFunction(
         LIMIT 20
       `);
 
-      await redis.del(KEYS.institutionLeaderboard());
-      for (const row of result.rows) {
-        await redis.zadd(KEYS.institutionLeaderboard(), {
-          score: Number(row.activity_score),
-          member: row.institution_id,
-        });
+      if (redis) {
+        try {
+          await redis.del(KEYS.institutionLeaderboard());
+          for (const row of result.rows) {
+            await redis.zadd(KEYS.institutionLeaderboard(), {
+              score: Number(row.activity_score),
+              member: row.institution_id,
+            });
+          }
+        } catch (error) {
+          console.warn("[Inngest] Failed to update institution leaderboard:", error);
+        }
       }
     });
   }
@@ -308,7 +326,7 @@ async function insertSnapshot(
     .insert(analyticsSnapshots)
     .values({
       date,
-      metric: metric as any,
+      metric: metric as typeof analyticsSnapshots.$inferInsert["metric"],
       dimensionType: dimensionType ?? null,
       dimensionId: dimensionId ?? null,
       value,

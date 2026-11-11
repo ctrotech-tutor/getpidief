@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ResourceCard, ResourceCardSkeleton } from "@/components/features/documents/ResourceCard";
 import { cn } from "@/lib/utils/cn";
 import type { SearchResult } from "@/lib/search/search";
+import type { DocumentCard } from "@/lib/db/repositories/documents";
 
 interface SearchResultsProps {
   results: SearchResult[];
@@ -19,7 +20,7 @@ export function SearchResults({ results, total, query }: SearchResultsProps) {
   }
 
   // Map SearchResult to DocumentCard shape expected by ResourceCard
-  const docs = results.map((r) => ({
+  const docs: DocumentCard[] = results.map((r) => ({
     id:           r.id,
     slug:         r.slug,
     title:        r.title,
@@ -33,6 +34,8 @@ export function SearchResults({ results, total, query }: SearchResultsProps) {
     commentCount: r.commentCount,
     viewCount:    r.viewCount,
     publishedAt:  r.publishedAt,
+    createdAt:    new Date(), // Use current date for search results
+    status:       "approved", // Search results are always approved documents
     trendingScore:0,
     institution:  r.institutionId ? { id: r.institutionId, name: r.institutionName ?? "", logoUrl: null } : null,
     category:     r.categoryId    ? { id: r.categoryId,    name: r.categoryName    ?? "", color: "#2563EB" } : null,
@@ -90,13 +93,13 @@ export function SearchResults({ results, total, query }: SearchResultsProps) {
       {view === "list" ? (
         <div className="space-y-3">
           {docs.map((doc) => (
-            <ResourceCard key={doc.id} document={doc as any} variant="list" />
+            <ResourceCard key={doc.id} document={doc} variant="list" />
           ))}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {docs.map((doc) => (
-            <ResourceCard key={doc.id} document={doc as any} variant="grid" />
+            <ResourceCard key={doc.id} document={doc} variant="grid" />
           ))}
         </div>
       )}

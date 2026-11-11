@@ -9,7 +9,19 @@ import { signIn } from "next-auth/react";
 import { z } from "zod";
 import { GoogleOAuthButton } from "./GoogleOAuthButton";
 import { cn } from "@/lib/utils/cn";
-import { useUIStore } from "@/stores/index";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Eye, EyeOff, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 
 // ── Form schema (client-side, mirrors server loginSchema) ────────────────────
 const loginFormSchema = z.object({
@@ -27,6 +39,7 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   OAuthCallbackError: "Google sign-in failed. Please try again.",
   EmailSignin:        "Could not send verification email. Please try again.",
   CredentialsSignin:  "Invalid email or password.",
+  EmailNotVerified:    "Please verify your email address. Check your inbox or resend verification.",
   SessionRequired:    "Please sign in to access this page.",
   account_suspended:  "Your account has been suspended. Please contact support.",
   default:            "Something went wrong. Please try again.",
@@ -35,33 +48,69 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 export function LoginForm() {
   const router       = useRouter();
   const searchParams = useSearchParams();
-  const addToast     = useUIStore((s) => s.addToast);
   const [isPending, startTransition] = useTransition();
   const [showPassword, setShowPassword] = useState(false);
+  const [isResending, setIsResending] = useState(false);
 
   // Read OAuth error from URL (?error=OAuthAccountNotLinked etc.)
   const urlError   = searchParams.get("error");
   const registered = searchParams.get("registered");
   const reset      = searchParams.get("reset");
 
-  const {
-    register,
-    handleSubmit,
-    setError,
-    formState: { errors, isSubmitting },
-  } = useForm<LoginFormValues>({
+  const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginFormSchema),
     defaultValues: { email: "", password: "", rememberMe: false },
   });
 
+  const {
+    handleSubmit,
+    setError,
+    getValues,
+    formState: { errors, isSubmitting },
+  } = form;
+
   const isLoading = isSubmitting || isPending;
+
+  async function handleResendVerification() {
+    const email = getValues("email");
+    if (!email) {
+      setError("root", { message: "Please enter your email address first." });
+      return;
+    }
+
+    setIsResending(true);
+    try {
+      const response = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.toLowerCase() }),
+      });
+      
+      if (response.ok) {
+        setError("root", { 
+          message: "Verification email sent! Please check your inbox." 
+        });
+      } else {
+        const data = await response.json();
+        setError("root", { 
+          message: data.error || "Failed to resend verification email." 
+        });
+      }
+    } catch {
+      setError("root", { 
+        message: "Something went wrong. Please try again." 
+      });
+    } finally {
+      setIsResending(false);
+    }
+  }
 
   async function onSubmit(values: LoginFormValues) {
     startTransition(async () => {
       const result = await signIn("credentials", {
         email:    values.email.toLowerCase(),
         password: values.password,
-        redirect: false,
+        redirect: false, // Require email verification
       });
 
       if (!result) {
@@ -75,8 +124,19 @@ export function LoginForm() {
         return;
       }
 
-      // Success — navigate
+      // Success - check if email is verified
       const callbackUrl = searchParams.get("callbackUrl") ?? "/explore";
+      
+      // Check if user needs email verification
+      if (result.url?.includes("/verify-email")) {
+        // User needs to verify email - show message and redirect
+        setError("root", { 
+          message: "Please verify your email address. Check your inbox or resend verification below." 
+        });
+        // Don't redirect automatically - let user see the message
+        return;
+      }
+      
       router.push(callbackUrl);
       router.refresh(); // revalidate server components with new session
     });
@@ -86,30 +146,30 @@ export function LoginForm() {
     <div className="space-y-6">
       {/* Success banners from other flows */}
       {registered && (
-        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl
-                        bg-[var(--emerald-subtle)] border border-[var(--emerald)]/20
-                        text-[var(--emerald)] text-sm">
-          <CheckCircleIcon />
-          Account created! Check your email to verify your address.
-        </div>
+        <Alert className="border-emerald-200/50 bg-emerald-50/80 text-emerald-900">
+          <CheckCircle className="h-4 w-4" />
+          <AlertDescription>
+            Account created! Check your email to verify your address.
+          </AlertDescription>
+        </Alert>
       )}
       {reset && (
-        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl
-                        bg-[var(--emerald-subtle)] border border-[var(--emerald)]/20
-                        text-[var(--emerald)] text-sm">
-          <CheckCircleIcon />
-          Password updated successfully. Please sign in.
-        </div>
+        <Alert className="border-emerald-200/50 bg-emerald-50/80 text-emerald-900">
+          <CheckCircle className="h-4 w-4" />
+          <AlertDescription>
+            Password updated successfully. Please sign in.
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* OAuth error banner */}
       {urlError && (
-        <div role="alert" className="flex items-start gap-2 px-3 py-2.5 rounded-xl
-                                      bg-destructive/10 border border-destructive/20
-                                      text-destructive text-sm">
-          <AlertIcon />
-          {OAUTH_ERROR_MESSAGES[urlError] ?? OAUTH_ERROR_MESSAGES.default}
-        </div>
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            {OAUTH_ERROR_MESSAGES[urlError] ?? OAUTH_ERROR_MESSAGES.default}
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* Google OAuth */}
@@ -123,194 +183,135 @@ export function LoginForm() {
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
-        {/* Root error */}
-        {errors.root && (
-          <div role="alert" className="flex items-start gap-2 px-3 py-2.5 rounded-xl
-                                        bg-destructive/10 border border-destructive/20
-                                        text-destructive text-sm">
-            <AlertIcon />
-            {errors.root.message}
-          </div>
-        )}
+      <Form {...form}>
+        <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
+          {/* Root error */}
+          {errors.root && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                {errors.root.message}
+                {errors.root.message?.includes("verify your email") && (
+                  <button
+                    type="button"
+                    onClick={() => handleResendVerification()}
+                    disabled={isResending}
+                    className="mt-2 text-xs underline hover:no-underline disabled:opacity-50"
+                  >
+                    {isResending ? "Sending..." : "Resend verification email"}
+                  </button>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
 
-        {/* Email */}
-        <div className="space-y-1.5">
-          <label htmlFor="login-email" className="text-sm font-medium text-foreground">
-            Institutional Email
-          </label>
-          <input
-            id="login-email"
-            type="email"
-            autoComplete="email"
-            placeholder="you@university.edu"
-            aria-invalid={!!errors.email}
-            aria-describedby={errors.email ? "login-email-error" : undefined}
-            {...register("email")}
-            className={cn(
-              "w-full h-11 px-3.5 rounded-xl bg-secondary border",
-              "text-sm text-foreground placeholder:text-muted-foreground",
-              "transition-all duration-150 hover:border-ring/40 outline-none",
-              "focus:border-ring focus:ring-2 focus:ring-ring/20",
-              errors.email
-                ? "border-destructive focus:ring-destructive/20"
-                : "border-border"
+          {/* Email */}
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Institutional Email</FormLabel>
+                <FormControl>
+                  <Input
+                    type="email"
+                    autoComplete="email"
+                    placeholder="you@university.edu"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
             )}
           />
-          {errors.email && (
-            <p id="login-email-error" role="alert" className="text-xs text-destructive mt-1">
-              {errors.email.message}
-            </p>
-          )}
-        </div>
 
-        {/* Password */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <label htmlFor="login-password" className="text-sm font-medium text-foreground">
-              Password
-            </label>
-            <Link
-              href="/forgot-password"
-              className="text-xs text-muted-foreground hover:text-primary transition-colors"
-            >
-              Forgot password?
-            </Link>
-          </div>
-
-          <div className="relative">
-            <input
-              id="login-password"
-              type={showPassword ? "text" : "password"}
-              autoComplete="current-password"
-              placeholder="••••••••"
-              aria-invalid={!!errors.password}
-              aria-describedby={errors.password ? "login-password-error" : undefined}
-              {...register("password")}
-              className={cn(
-                "w-full h-11 px-3.5 pr-10 rounded-xl bg-secondary border",
-                "text-sm text-foreground placeholder:text-muted-foreground",
-                "transition-all duration-150 hover:border-ring/40 outline-none",
-                "focus:border-ring focus:ring-2 focus:ring-ring/20",
-                errors.password
-                  ? "border-destructive focus:ring-destructive/20"
-                  : "border-border"
-              )}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2
-                         text-muted-foreground hover:text-foreground transition-colors"
-              aria-label={showPassword ? "Hide password" : "Show password"}
-            >
-              {showPassword ? <EyeOffIcon /> : <EyeIcon />}
-            </button>
-          </div>
-          {errors.password && (
-            <p id="login-password-error" role="alert" className="text-xs text-destructive mt-1">
-              {errors.password.message}
-            </p>
-          )}
-        </div>
-
-        {/* Remember me */}
-        <label className="flex items-center gap-2.5 cursor-pointer">
-          <input
-            type="checkbox"
-            {...register("rememberMe")}
-            className="w-4 h-4 rounded accent-primary cursor-pointer"
+          {/* Password */}
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <div className="flex items-center justify-between">
+                  <FormLabel>Password</FormLabel>
+                  <Link
+                    href="/forgot-password"
+                    className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
+                <FormControl>
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      placeholder="••••••••"
+                      {...field}
+                      className={cn("pr-10")}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-          <span className="text-sm text-muted-foreground">Remember me for 30 days</span>
-        </label>
 
-        {/* Submit */}
-        <button
-          type="submit"
-          disabled={isLoading}
-          className={cn(
-            "w-full h-11 rounded-xl font-medium text-sm",
-            "bg-primary text-primary-foreground",
-            "transition-all duration-150 hover:bg-primary/90 active:scale-[0.98]",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-            "disabled:opacity-60 disabled:cursor-not-allowed"
-          )}
-        >
-          {isLoading ? (
-            <span className="flex items-center justify-center gap-2">
-              <SpinnerIcon />
-              Signing in…
-            </span>
-          ) : (
-            "Sign In to Archive"
-          )}
-        </button>
+          {/* Remember me */}
+          <FormField
+            control={form.control}
+            name="rememberMe"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+                <div className="space-y-1 leading-none">
+                  <FormLabel className="text-sm font-normal">
+                    Remember me for 30 days
+                  </FormLabel>
+                </div>
+              </FormItem>
+            )}
+          />
 
-        <p className="text-center text-sm text-muted-foreground">
-          New to getpidief?{" "}
-          <Link
-            href="/register"
-            className="font-medium text-primary hover:text-primary/80 transition-colors"
+          {/* Submit */}
+          <Button
+            type="submit"
+            disabled={isLoading}
+            className="w-full"
           >
-            Create your scholar profile →
-          </Link>
-        </p>
-      </form>
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Signing in…
+              </>
+            ) : (
+              "Sign In to Archive"
+            )}
+          </Button>
+        </form>
+      </Form>
 
-      {/* Security note */}
-      <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-        <LockIcon />
-        <span>Secured with 256-bit encryption · SOC 2 compliant</span>
-      </div>
+      <p className="text-center text-sm text-muted-foreground">
+        Don&apos;t have an account?{" "}
+        <Link href="/register" className="font-medium text-primary hover:text-primary/80 transition-colors">
+          Create Scholar Profile →
+        </Link>
+      </p>
     </div>
   );
 }
 
-// ── Inline icons ──────────────────────────────────────────────────────────────
-function EyeIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" stroke="currentColor" strokeWidth="1.4"/>
-      <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.4"/>
-    </svg>
-  );
-}
-function EyeOffIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <path d="M2 2l12 12M6.5 6.6A2 2 0 009.4 9.5M5 4.4C3.3 5.5 2 7 2 7s2.5 5 6 5c1 0 2-.3 2.8-.7M9 3.2C12 4.2 14 7 14 7s-.6 1.2-1.5 2.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-    </svg>
-  );
-}
-function AlertIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="mt-0.5 shrink-0" aria-hidden>
-      <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M7 4v3.5M7 9.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-    </svg>
-  );
-}
-function CheckCircleIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0" aria-hidden>
-      <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M4 7l2 2L10 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-function LockIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
-      <rect x="2" y="5" width="8" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
-      <path d="M4 5V3.5a2 2 0 014 0V5" stroke="currentColor" strokeWidth="1.2"/>
-    </svg>
-  );
-}
-function SpinnerIcon() {
-  return (
-    <svg className="animate-spin w-4 h-4" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.3"/>
-      <path d="M8 2a6 6 0 016 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-    </svg>
-  );
-}

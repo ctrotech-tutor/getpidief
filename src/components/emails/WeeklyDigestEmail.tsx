@@ -1,189 +1,153 @@
-import * as React from "react";
+import { Text, Link } from "@react-email/components";
 import {
-  Html,
-  Body,
-  Container,
-  Head,
-  Heading,
-  Text,
-  Preview,
-  Section,
-  Link,
-  Hr,
-  Img,
-} from "@react-email/components";
+  BaseEmailLayout, EmailHeading, EmailBody,
+  EmailDivider, EmailNote,
+} from "./layouts/BaseLayout";
 
-interface WeeklyDigestEmailProps {
-  userId: string;
-  followedDocs: Array<{
-    id: string;
-    title: string;
-    slug: string;
-    thumbnail_url: string | null;
-    author_name: string;
-    download_count: number;
-  }>;
-  trendingDocs: Array<{
-    id: string;
-    title: string;
-    slug: string;
-    thumbnail_url: string | null;
-    download_count: number;
-  }>;
+interface DigestDocument {
+  title:        string;
+  slug:         string;
+  resourceType: string;
+  authorName:   string;
+  downloadCount:number;
 }
 
+interface DigestContributor {
+  displayName: string;
+  username:    string;
+  documents:   DigestDocument[];
+}
+
+interface WeeklyDigestEmailProps {
+  recipientName:       string;
+  weekLabel:           string;
+  fromFollowed:        DigestContributor[];
+  trendingAtInstitution: DigestDocument[];
+  institution?:        string;
+}
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://getpidief.me";
+
+const TYPE_SHORT: Record<string, string> = {
+  past_exam:        "EXAM",
+  lecture_notes:    "NOTES",
+  research_paper:   "PAPER",
+  textbook_summary: "SUMMARY",
+  assignment:       "ASSIGNMENT",
+  tutorial_sheet:   "TUTORIAL",
+  thesis:           "THESIS",
+  dissertation:     "DISSERTATION",
+  other:            "OTHER",
+};
+
 export function WeeklyDigestEmail({
-  userId,
-  followedDocs,
-  trendingDocs,
+  recipientName, weekLabel, fromFollowed, trendingAtInstitution, institution,
 }: WeeklyDigestEmailProps) {
+  const firstName     = recipientName.split(" ")[0];
+  const totalNewDocs  = fromFollowed.reduce((sum, c) => sum + c.documents.length, 0);
+
   return (
-    <Html>
-      <Head />
-      <Preview>Your weekly academic digest from getpidief</Preview>
-      <Body style={main}>
-        <Container style={container}>
-          <Heading style={h1}>Your Weekly Digest 📚</Heading>
-          
-          <Text style={text}>
-            Here's what happened in your academic circle this week!
-          </Text>
+    <BaseEmailLayout
+      preview={`Your weekly academic digest — ${totalNewDocs} new resource${totalNewDocs !== 1 ? "s" : ""} from people you follow.`}
+      footerText="You receive this weekly digest because you have follows on getpidief. Adjust in Settings → Notifications."
+    >
+      <EmailHeading>Your Weekly Archive Digest 📚</EmailHeading>
+      <EmailBody>
+        Good morning, {firstName}. Here's your personalised academic summary for {weekLabel}.
+        {totalNewDocs > 0
+          ? ` ${totalNewDocs} new resource${totalNewDocs !== 1 ? "s" : ""} from contributors you follow.`
+          : " Nothing new from your follows this week — time to discover more contributors."}
+      </EmailBody>
 
-          {followedDocs.length > 0 && (
-            <Section style={section}>
-              <Heading style={h2}>New from contributors you follow</Heading>
-              {followedDocs.map((doc) => (
-                <div key={doc.id} style={docContainer}>
-                  <Text style={docTitle}>
-                    <Link href={`https://getpidief.me/d/${doc.slug}`} style={link}>
-                      {doc.title}
-                    </Link>
-                  </Text>
-                  <Text style={docMeta}>
-                    Uploaded by {doc.author_name} • {doc.download_count} downloads
+      {/* From followed contributors */}
+      {fromFollowed.length > 0 && (
+        <>
+          <Text style={{ color: "#F1F5F9", fontSize: "13px", fontWeight: 700, margin: "24px 0 12px", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            From Contributors You Follow
+          </Text>
+          {fromFollowed.map((contrib) => (
+            <div key={contrib.username} style={{ marginBottom: "20px" }}>
+              <Link href={`${APP_URL}/u/${contrib.username}`} style={{ color: "#60A5FA", fontSize: "14px", fontWeight: 600, textDecoration: "none" }}>
+                {contrib.displayName}
+              </Link>
+              {contrib.documents.map((doc) => (
+                <div key={doc.slug} style={{ padding: "8px 0 8px 12px", borderLeft: "2px solid rgba(37,99,235,0.3)", marginTop: "8px" }}>
+                  <Link href={`${APP_URL}/d/${doc.slug}`} style={{ color: "#F1F5F9", fontSize: "13px", fontWeight: 500, textDecoration: "none", display: "block" }}>
+                    {doc.title}
+                  </Link>
+                  <Text style={{ color: "#6B7280", fontSize: "11px", margin: "2px 0 0" }}>
+                    {TYPE_SHORT[doc.resourceType] ?? "DOCUMENT"} · ↓ {doc.downloadCount}
                   </Text>
                 </div>
               ))}
-            </Section>
-          )}
+            </div>
+          ))}
+          <EmailDivider />
+        </>
+      )}
 
-          {trendingDocs.length > 0 && (
-            <Section style={section}>
-              <Heading style={h2}>Trending related to your interests</Heading>
-              {trendingDocs.map((doc) => (
-                <div key={doc.id} style={docContainer}>
-                  <Text style={docTitle}>
-                    <Link href={`https://getpidief.me/d/${doc.slug}`} style={link}>
-                      {doc.title}
-                    </Link>
-                  </Text>
-                  <Text style={docMeta}>
-                    {doc.download_count} recent downloads
-                  </Text>
-                </div>
-              ))}
-            </Section>
-          )}
-
-          <Hr style={hr} />
-          
-          <Text style={footer}>
-            You received this email because you opted into weekly digests.
-            <br />
-            <Link href="https://getpidief.me/settings/notifications" style={footerLink}>
-              Unsubscribe or manage your preferences here.
-            </Link>
+      {/* Trending at institution */}
+      {trendingAtInstitution.length > 0 && (
+        <>
+          <Text style={{ color: "#F1F5F9", fontSize: "13px", fontWeight: 700, margin: "0 0 12px", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            🔥 Trending{institution ? ` at ${institution}` : ""}
           </Text>
-        </Container>
-      </Body>
-    </Html>
+          {trendingAtInstitution.slice(0, 5).map((doc, i) => (
+            <div key={doc.slug} style={{ display: "flex", gap: "12px", marginBottom: "12px", alignItems: "flex-start" }}>
+              <Text style={{ color: "#6B7280", fontSize: "13px", fontWeight: 700, minWidth: "20px", margin: 0 }}>
+                {i + 1}.
+              </Text>
+              <div style={{ flex: 1 }}>
+                <Link href={`${APP_URL}/d/${doc.slug}`} style={{ color: "#F1F5F9", fontSize: "13px", fontWeight: 500, textDecoration: "none" }}>
+                  {doc.title}
+                </Link>
+                <Text style={{ color: "#6B7280", fontSize: "11px", margin: "2px 0 0" }}>
+                  by {doc.authorName} · ↓ {doc.downloadCount}
+                </Text>
+              </div>
+            </div>
+          ))}
+          <EmailDivider />
+        </>
+      )}
+
+      {/* CTA */}
+      <div style={{ textAlign: "center", margin: "24px 0" }}>
+        <Link
+          href={`${APP_URL}/explore`}
+          style={{
+            display: "inline-block", background: "#2563EB", color: "#fff",
+            padding: "12px 28px", borderRadius: "10px", fontSize: "14px",
+            fontWeight: 600, textDecoration: "none",
+          }}
+        >
+          Explore Full Archive →
+        </Link>
+      </div>
+
+      <EmailNote>
+        Follow more contributors and set your interest tags to get a richer digest next week.
+      </EmailNote>
+    </BaseEmailLayout>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// STYLES
-// ─────────────────────────────────────────────────────────────────────────────
-const main = {
-  backgroundColor: "#f6f9fc",
-  fontFamily:
-    '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
-};
-
-const container = {
-  backgroundColor: "#ffffff",
-  margin: "0 auto",
-  padding: "20px 0 48px",
-  marginBottom: "64px",
-  border: "1px solid #f0f0f0",
-  borderRadius: "8px",
-};
-
-const section = {
-  padding: "0 48px",
-  marginTop: "24px",
-};
-
-const h1 = {
-  color: "#333",
-  fontSize: "24px",
-  fontWeight: "bold",
-  textAlign: "center" as const,
-  padding: "0 48px",
-};
-
-const h2 = {
-  color: "#333",
-  fontSize: "18px",
-  fontWeight: "600",
-  marginBottom: "16px",
-};
-
-const text = {
-  color: "#525f7f",
-  fontSize: "16px",
-  lineHeight: "24px",
-  textAlign: "center" as const,
-  padding: "0 48px",
-};
-
-const docContainer = {
-  marginBottom: "12px",
-  padding: "12px",
-  backgroundColor: "#fafafa",
-  borderRadius: "6px",
-};
-
-const docTitle = {
-  fontSize: "16px",
-  fontWeight: "bold",
-  margin: "0 0 4px 0",
-};
-
-const link = {
-  color: "#5469d4",
-  textDecoration: "none",
-};
-
-const docMeta = {
-  fontSize: "13px",
-  color: "#8898aa",
-  margin: "0",
-};
-
-const hr = {
-  borderColor: "#e6ebf1",
-  margin: "32px 0",
-};
-
-const footer = {
-  color: "#8898aa",
-  fontSize: "12px",
-  lineHeight: "16px",
-  textAlign: "center" as const,
-  padding: "0 48px",
-};
-
-const footerLink = {
-  color: "#8898aa",
-  textDecoration: "underline",
-};
+WeeklyDigestEmail.PreviewProps = {
+  recipientName: "Ada Lovelace",
+  weekLabel:     "Week of 13 April 2026",
+  institution:   "University of Cape Town",
+  fromFollowed: [
+    {
+      displayName: "Charles Babbage",
+      username:    "cbabbage",
+      documents: [
+        { title: "Mechanical Computing — Lecture 4 Notes", slug: "mech-computing-lec4", resourceType: "lecture_notes", authorName: "Charles Babbage", downloadCount: 142 },
+        { title: "Difference Engine Design Thesis 2025",   slug: "diff-engine-thesis",  resourceType: "thesis",         authorName: "Charles Babbage", downloadCount: 89  },
+      ],
+    },
+  ],
+  trendingAtInstitution: [
+    { title: "CS201 Past Exam 2024",      slug: "cs201-past-exam-2024",    resourceType: "past_exam",     authorName: "Jane Doe",   downloadCount: 1240 },
+    { title: "Data Structures Summary",   slug: "data-structures-summary", resourceType: "textbook_summary", authorName: "John Smith", downloadCount: 892 },
+  ],
+} as WeeklyDigestEmailProps;

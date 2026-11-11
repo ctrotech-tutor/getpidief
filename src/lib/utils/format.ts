@@ -92,6 +92,13 @@ export function getInitials(name: string): string {
     .join("");
 }
 
+/** Extract first name safely: "John Doe" -> "John" */
+export function getFirstName(name?: string | null, fallback = "Scholar"): string {
+  const safeName = (name ?? "").trim();
+  if (!safeName) return fallback;
+  return safeName.split(" ")[0] ?? fallback;
+}
+
 /** Capitalize first letter */
 export function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
@@ -142,4 +149,16 @@ export function absoluteUrl(path: string): string {
 /** Strip trailing slash */
 export function stripTrailingSlash(url: string): string {
   return url.endsWith("/") ? url.slice(0, -1) : url;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TIME-BASED GREETING
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Get time-based greeting: "Good morning", "Good afternoon", etc. */
+export function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
 }

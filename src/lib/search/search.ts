@@ -1,6 +1,6 @@
 import { db } from "@/lib/db/client";
 import { documents, users, institutions, categories } from "@/lib/db/schema";
-import { sql, and, eq, gte, lte, inArray, or } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { redis, KEYS, TTL, setCache, getCache, zincrby } from "@/lib/redis/client";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -52,6 +52,34 @@ export type SearchResult = {
   rank: number;                  // ts_rank score
 };
 
+type SearchRow = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  thumbnail_url: string | null;
+  resource_type: string;
+  academic_year: number | null;
+  language: string;
+  page_count: number | null;
+  download_count: number;
+  like_count: number;
+  comment_count: number;
+  view_count: number;
+  published_at: Date | null;
+  institution_id: string | null;
+  institution_name: string | null;
+  category_id: string | null;
+  category_name: string | null;
+  author_id: string;
+  author_name: string;
+  author_avatar_url: string | null;
+  author_verified: boolean;
+  headline: string | null;
+  rank: number;
+  total_count: string;
+};
+
 export type SearchResponse = {
   results: SearchResult[];
   total: number;
@@ -89,62 +117,68 @@ export async function searchDocuments(
   const offset = (page - 1) * limit;
 
   // ── Build WHERE clause ────────────────────────────────────────────────────
-
-  const conditions: string[] = [
-    `d.status = 'approved'`,
-    `d.deleted_at IS NULL`,
+  const q = query.trim();
+  const conditions = [
+    sql`d.status = 'approved'`,
+    sql`d.deleted_at IS NULL`,
+    institutionScoped
+      ? sql`(d.visibility = 'public' OR (d.visibility = 'institution' AND d.institution_id = ${institutionScoped}))`
+      : sql`d.visibility = 'public'`,
   ];
 
-  // Visibility: public OR institution-scoped
-  if (institutionScoped) {
-    conditions.push(
-      `(d.visibility = 'public' OR (d.visibility = 'institution' AND d.institution_id = '${institutionScoped}'))`
-    );
-  } else {
-    conditions.push(`d.visibility = 'public'`);
-  }
-
-  // Full-text search
-  const ftsCondition = query.trim()
-    ? `d.search_vector @@ plainto_tsquery('english', $1)`
-    : null;
-
-  if (ftsCondition) conditions.push(ftsCondition);
-
-  // Filters
+  if (q) conditions.push(sql`d.search_vector @@ plainto_tsquery('english', ${q})`);
   if (categoryIds?.length) {
-    conditions.push(`d.category_id = ANY($${conditions.length + 1}::uuid[])`);
+    conditions.push(
+      sql`d.category_id IN (${sql.join(
+        categoryIds.map((id) => sql`${id}::uuid`),
+        sql`, `
+      )})`
+    );
   }
   if (institutionIds?.length) {
-    conditions.push(`d.institution_id = ANY($${conditions.length + 1}::uuid[])`);
+    conditions.push(
+      sql`d.institution_id IN (${sql.join(
+        institutionIds.map((id) => sql`${id}::uuid`),
+        sql`, `
+      )})`
+    );
   }
   if (resourceTypes?.length) {
-    conditions.push(`d.resource_type = ANY($${conditions.length + 1}::text[])`);
+    conditions.push(
+      sql`d.resource_type IN (${sql.join(
+        resourceTypes.map((type) => sql`${type}`),
+        sql`, `
+      )})`
+    );
   }
-  if (yearFrom) conditions.push(`d.academic_year >= ${yearFrom}`);
-  if (yearTo) conditions.push(`d.academic_year <= ${yearTo}`);
-  if (verifiedOnly) conditions.push(`u.verification_status = 'verified'`);
-  if (language) conditions.push(`d.language = '${language}'`);
-  if (pageCountMin) conditions.push(`d.page_count >= ${pageCountMin}`);
-  if (pageCountMax) conditions.push(`d.page_count <= ${pageCountMax}`);
+  if (yearFrom) conditions.push(sql`d.academic_year >= ${yearFrom}`);
+  if (yearTo) conditions.push(sql`d.academic_year <= ${yearTo}`);
+  if (verifiedOnly) conditions.push(sql`u.verification_status = 'verified'`);
+  if (language) conditions.push(sql`d.language = ${language}`);
+  if (pageCountMin) conditions.push(sql`d.page_count >= ${pageCountMin}`);
+  if (pageCountMax) conditions.push(sql`d.page_count <= ${pageCountMax}`);
 
-  // ── ORDER BY ──────────────────────────────────────────────────────────────
-
-  const orderMap: Record<NonNullable<SearchFilters["sort"]>, string> = {
-    relevance: query.trim()
-      ? `ts_rank(d.search_vector, plainto_tsquery('english', $1)) DESC, d.download_count DESC`
-      : `d.trending_score DESC`,
-    recent:     `d.published_at DESC`,
-    downloads:  `d.download_count DESC`,
-    likes:      `d.like_count DESC`,
-    discussed:  `d.comment_count DESC`,
+  const orderMap: Record<NonNullable<SearchFilters["sort"]>, ReturnType<typeof sql>> = {
+    relevance: q
+      ? sql`ts_rank(d.search_vector, plainto_tsquery('english', ${q})) DESC, d.download_count DESC`
+      : sql`d.trending_score DESC`,
+    recent: sql`d.published_at DESC`,
+    downloads: sql`d.download_count DESC`,
+    likes: sql`d.like_count DESC`,
+    discussed: sql`d.comment_count DESC`,
   };
-
   const orderBy = orderMap[sort];
+  const headlineAndRank = q
+    ? sql`ts_headline(
+          'english',
+          d.title || ' ' || coalesce(d.description, ''),
+          plainto_tsquery('english', ${q}),
+          'MaxFragments=1, MaxWords=20, MinWords=10, StartSel=<mark>, StopSel=</mark>'
+        ) AS headline,
+        ts_rank(d.search_vector, plainto_tsquery('english', ${q})) AS rank`
+    : sql`NULL AS headline, d.trending_score AS rank`;
 
-  // ── Execute search query ───────────────────────────────────────────────────
-
-  const searchQuery = sql.raw(`
+  const searchQuery = sql`
     SELECT
       d.id, d.slug, d.title, d.description, d.thumbnail_url,
       d.resource_type, d.academic_year, d.language, d.page_count,
@@ -156,36 +190,48 @@ export async function searchDocuments(
       u.display_name AS author_name,
       u.avatar_url AS author_avatar_url,
       (u.verification_status = 'verified') AS author_verified,
-      ${
-        query.trim()
-          ? `ts_headline('english', d.title || ' ' || coalesce(d.description, ''),
-               plainto_tsquery('english', $1),
-               'MaxFragments=1, MaxWords=20, MinWords=10, StartSel=<mark>, StopSel=</mark>'
-             ) AS headline,
-             ts_rank(d.search_vector, plainto_tsquery('english', $1)) AS rank`
-          : `NULL AS headline, d.trending_score AS rank`
-      },
+      ${headlineAndRank},
       COUNT(*) OVER() AS total_count
     FROM documents d
     LEFT JOIN institutions i ON i.id = d.institution_id
     LEFT JOIN categories c ON c.id = d.category_id
     JOIN users u ON u.id = d.author_id
-    WHERE ${conditions.join(" AND ")}
+    WHERE ${sql.join(conditions, sql` AND `)}
     ORDER BY ${orderBy}
     LIMIT ${limit} OFFSET ${offset}
-  `);
+  `;
 
-  const rawParams: unknown[] = [];
-  if (query.trim()) rawParams.push(query.trim());
-  if (categoryIds?.length) rawParams.push(categoryIds);
-  if (institutionIds?.length) rawParams.push(institutionIds);
-  if (resourceTypes?.length) rawParams.push(resourceTypes);
-
-  const rows = await db.execute<SearchResult & { total_count: string }>(
+  const rows = await db.execute<SearchRow>(
     searchQuery
   );
+  const mappedRows: SearchResult[] = rows.rows.map((r) => ({
+    id: r.id,
+    slug: r.slug,
+    title: r.title,
+    description: r.description,
+    thumbnailUrl: r.thumbnail_url,
+    resourceType: r.resource_type,
+    academicYear: r.academic_year,
+    language: r.language,
+    pageCount: r.page_count,
+    downloadCount: r.download_count,
+    likeCount: r.like_count,
+    commentCount: r.comment_count,
+    viewCount: r.view_count,
+    publishedAt: r.published_at,
+    institutionId: r.institution_id,
+    institutionName: r.institution_name,
+    categoryId: r.category_id,
+    categoryName: r.category_name,
+    authorId: r.author_id,
+    authorName: r.author_name,
+    authorAvatarUrl: r.author_avatar_url,
+    authorVerified: r.author_verified,
+    headline: r.headline,
+    rank: r.rank,
+  }));
 
-  const total = rows.rows[0] ? parseInt(rows.rows[0].total_count as any, 10) : 0;
+  const total = rows.rows[0] ? parseInt(rows.rows[0].total_count, 10) : 0;
   const totalPages = Math.ceil(total / limit);
   const queryTimeMs = Date.now() - start;
 
@@ -197,7 +243,7 @@ export async function searchDocuments(
   }
 
   return {
-    results: rows.rows as SearchResult[],
+    results: mappedRows,
     total,
     page,
     totalPages,
@@ -235,22 +281,26 @@ export async function getAutocomplete(
   const q = prefix.toLowerCase().trim();
 
   // 1. Recent searches for this user (from Redis)
-  if (userId) {
-    const recentKey = KEYS.recentSearches(userId);
-    const recent = await redis.zrange(recentKey, 0, 2, { rev: true });
-    const matchingRecent = (recent as string[]).filter((s) =>
-      s.toLowerCase().includes(q)
-    );
-    results.push(
-      ...matchingRecent.slice(0, 2).map((s) => ({
-        type: "recent" as const,
-        label: s,
-      }))
-    );
+  if (userId && redis) {
+    try {
+      const recentKey = KEYS.recentSearches(userId);
+      const recent = await redis.zrange(recentKey, 0, 2, { rev: true });
+      const matchingRecent = (recent as string[]).filter((s) =>
+        s.toLowerCase().includes(q)
+      );
+      results.push(
+        ...matchingRecent.slice(0, 2).map((s) => ({
+          type: "recent" as const,
+          label: s,
+        }))
+      );
+    } catch (error) {
+      console.warn("[Search] Failed to get recent searches:", error);
+    }
   }
 
   // 2. Popular searches globally (from Redis)
-  const popular = await redis.zrange(KEYS.popularSearches(), 0, 19, { rev: true });
+  const popular = redis ? await redis.zrange(KEYS.popularSearches(), 0, 19, { rev: true }) : [];
   const matchingPopular = (popular as string[])
     .filter((s) => s.toLowerCase().startsWith(q))
     .slice(0, 2);

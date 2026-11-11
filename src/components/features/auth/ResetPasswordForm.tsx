@@ -2,11 +2,42 @@
 
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { useRouter } from "next/navigation";
 import { PasswordStrengthMeter } from "./PasswordStrengthMeter";
 import { resetPassword } from "@/lib/auth/actions";
-import { cn } from "@/lib/utils/cn";
 import type { ActionResult } from "@/lib/utils/api";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { CheckCircle, Eye, EyeOff, Loader2 } from "lucide-react";
+
+// Form schema
+const resetPasswordSchema = z.object({
+  password: z
+    .string()
+    .min(8, "Minimum 8 characters")
+    .max(72, "Maximum 72 characters")
+    .regex(/[A-Z]/, "Must include an uppercase letter")
+    .regex(/[0-9]/, "Must include a number")
+    .regex(/[^A-Za-z0-9]/, "Must include a special character"),
+  confirmPassword: z.string(),
+}).refine((d) => d.password === d.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
+});
+
+type ResetPasswordValues = z.infer<typeof resetPasswordSchema>;
 
 const initialState: ActionResult<{ message: string }> = {
   success: false,
@@ -15,8 +46,14 @@ const initialState: ActionResult<{ message: string }> = {
 
 export function ResetPasswordForm({ token }: { token: string }) {
   const router = useRouter();
-  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+
+  const form = useForm<ResetPasswordValues>({
+    resolver: zodResolver(resetPasswordSchema),
+    defaultValues: { password: "", confirmPassword: "" },
+  });
+
+  const passwordValue = form.watch("password");
 
   const [state, action] = useActionState(
     async (prev: ActionResult<{ message: string }>, formData: FormData) => {
@@ -32,14 +69,9 @@ export function ResetPasswordForm({ token }: { token: string }) {
   if (state.success) {
     return (
       <div className="space-y-6 text-center">
-        <div className="mx-auto w-16 h-16 rounded-2xl bg-[var(--emerald-subtle)] border border-[var(--emerald)]/20
+        <div className="mx-auto w-16 h-16 rounded-2xl bg-emerald-50 border border-emerald-200
                         flex items-center justify-center">
-          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden>
-            <circle cx="14" cy="14" r="11" stroke="currentColor" strokeWidth="1.6"
-                    className="text-[var(--emerald)]"/>
-            <path d="M9 14l3.5 3.5L19 10" stroke="currentColor" strokeWidth="1.8"
-                  strokeLinecap="round" strokeLinejoin="round" className="text-[var(--emerald)]"/>
-          </svg>
+          <CheckCircle className="w-7 h-7 text-emerald-600" />
         </div>
         <div className="space-y-2">
           <h2 className="font-heading font-semibold text-foreground text-xl">Password updated!</h2>
@@ -50,99 +82,99 @@ export function ResetPasswordForm({ token }: { token: string }) {
   }
 
   return (
-    <form action={action} className="space-y-5" noValidate>
-      <input type="hidden" name="token" value={token} />
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit((data) => {
+        // Convert to FormData for server action
+        const formData = new FormData();
+        formData.append("token", token);
+        formData.append("password", data.password);
+        formData.append("confirmPassword", data.confirmPassword);
+        action(formData);
+      })} className="space-y-5" noValidate>
+        {!state.success && state.error && (
+          <Alert variant="destructive">
+            <AlertDescription>
+              {state.error}
+            </AlertDescription>
+          </Alert>
+        )}
 
-      {!state.success && state.error && (
-        <div role="alert" className="text-sm text-destructive bg-destructive/10
-                                      border border-destructive/20 rounded-lg px-3 py-2.5">
-          {state.error}
-        </div>
-      )}
-
-      {/* New Password */}
-      <div className="space-y-1.5">
-        <label htmlFor="password" className="text-sm font-medium text-foreground">
-          New Password
-        </label>
-        <div className="relative">
-          <input
-            id="password"
-            name="password"
-            type={showPassword ? "text" : "password"}
-            autoComplete="new-password"
-            required
-            placeholder="Create a strong new password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className={cn(
-              "w-full h-11 px-3.5 pr-10 rounded-xl bg-secondary border border-border",
-              "text-sm placeholder:text-muted-foreground",
-              "transition-all hover:border-ring/40",
-              "focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-            )}
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword((v) => !v)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            aria-label={showPassword ? "Hide" : "Show"}
-          >
-            {showPassword ? (
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-                <path d="M2 2l12 12M6.5 6.6A2 2 0 009.4 9.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-                <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" stroke="currentColor" strokeWidth="1.4"/>
-                <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.4"/>
-              </svg>
-            )}
-          </button>
-        </div>
-        <PasswordStrengthMeter password={password} />
-      </div>
-
-      {/* Confirm */}
-      <div className="space-y-1.5">
-        <label htmlFor="confirmPassword" className="text-sm font-medium text-foreground">
-          Confirm New Password
-        </label>
-        <input
-          id="confirmPassword"
-          name="confirmPassword"
-          type="password"
-          autoComplete="new-password"
-          required
-          placeholder="Repeat your new password"
-          className={cn(
-            "w-full h-11 px-3.5 rounded-xl bg-secondary border border-border",
-            "text-sm placeholder:text-muted-foreground",
-            "transition-all hover:border-ring/40",
-            "focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+        {/* New Password */}
+        <FormField
+          control={form.control}
+          name="password"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>New Password</FormLabel>
+              <FormControl>
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    placeholder="Create a strong new password"
+                    {...field}
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </FormControl>
+              <FormMessage />
+              {passwordValue && <PasswordStrengthMeter password={passwordValue} />}
+            </FormItem>
           )}
         />
-      </div>
 
-      <SubmitButton />
-    </form>
+        {/* Confirm Password */}
+        <FormField
+          control={form.control}
+          name="confirmPassword"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Confirm New Password</FormLabel>
+              <FormControl>
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  placeholder="Repeat your new password"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <SubmitButton />
+      </form>
+    </Form>
   );
 }
 
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <button
+    <Button
       type="submit"
       disabled={pending}
-      className={cn(
-        "w-full h-11 rounded-xl font-medium text-sm",
-        "bg-primary text-primary-foreground",
-        "transition-all hover:bg-primary/90 active:scale-[0.98]",
-        "disabled:opacity-60 disabled:cursor-not-allowed"
-      )}
+      className="w-full"
     >
-      {pending ? "Updating…" : "Reset & Sign In"}
-    </button>
+      {pending ? (
+        <>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Updating…
+        </>
+      ) : (
+        "Reset & Sign In"
+      )}
+    </Button>
   );
 }

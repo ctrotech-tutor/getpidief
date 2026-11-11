@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { Mock } from "vitest";
 
 // Mock the DB client and Redis before importing the repository
 vi.mock("@/lib/db/client", () => ({
@@ -43,7 +44,7 @@ describe("documentsRepository", () => {
   describe("getBySlug", () => {
     it("returns null when document not found", async () => {
       const { db } = await import("@/lib/db/client");
-      (db.query.documents.findFirst as any).mockResolvedValue(null);
+      (db.query.documents.findFirst as Mock).mockResolvedValue(null);
 
       const result = await documentsRepository.getBySlug("nonexistent-slug");
       expect(result).toBeNull();
@@ -52,7 +53,7 @@ describe("documentsRepository", () => {
     it("returns cached result when available", async () => {
       const { getCache } = await import("@/lib/redis/client");
       const cachedDoc = { id: "1", slug: "test-doc", title: "Test" };
-      (getCache as any).mockResolvedValue(cachedDoc);
+      (getCache as Mock).mockResolvedValue(cachedDoc);
 
       const result = await documentsRepository.getBySlug("test-doc");
       expect(result).toEqual(cachedDoc);
@@ -62,10 +63,10 @@ describe("documentsRepository", () => {
   describe("getTrending", () => {
     it("falls back to getRecent when Redis is empty", async () => {
       const { zgetTop } = await import("@/lib/redis/client");
-      (zgetTop as any).mockResolvedValue([]);
+      (zgetTop as Mock).mockResolvedValue([]);
 
       const { db } = await import("@/lib/db/client");
-      (db.query.documents.findMany as any).mockResolvedValue([]);
+      (db.query.documents.findMany as Mock).mockResolvedValue([]);
 
       const result = await documentsRepository.getTrending({ limit: 6 });
       expect(Array.isArray(result)).toBe(true);

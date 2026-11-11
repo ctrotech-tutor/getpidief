@@ -129,4 +129,5 @@ export const functions = [
   sendPasswordResetEmail,
   handleOnboardingCompleted,
   handleUserDeleted,
+  sendEmailVerification,
 ];

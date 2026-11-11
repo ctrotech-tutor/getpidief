@@ -14,17 +14,21 @@ export function GoogleOAuthButton({
   className,
 }: GoogleOAuthButtonProps) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
   async function handleClick() {
     setLoading(true);
+    setError(false);
     try {
       await signInWithGoogle();
     } catch {
       setLoading(false);
+      setError(true);
     }
   }
 
   return (
+    <>
     <button
       type="button"
       onClick={handleClick}
@@ -41,7 +45,7 @@ export function GoogleOAuthButton({
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         className
       )}
-      aria-label="Sign in with Google"
+      aria-label={label}
     >
       {loading ? (
         <Spinner />
@@ -50,6 +54,8 @@ export function GoogleOAuthButton({
       )}
       <span>{loading ? "Redirecting…" : label}</span>
     </button>
+    {error && <p role="alert" className="text-sm text-red-700 mt-2">Google sign-in is unavailable. Please try again.</p>}
+    </>
   );
 }
 

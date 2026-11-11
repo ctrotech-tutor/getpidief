@@ -1,7 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { useFormStatus } from "react-dom";
+import { useActionState, useState, startTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -55,7 +54,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
 
   const passwordValue = form.watch("password");
 
-  const [state, action] = useActionState(
+  const [state, action, pending] = useActionState(
     async (prev: ActionResult<{ message: string }>, formData: FormData) => {
       const result = await resetPassword(prev, formData);
       if (result.success) {
@@ -89,7 +88,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
         formData.append("token", token);
         formData.append("password", data.password);
         formData.append("confirmPassword", data.confirmPassword);
-        action(formData);
+        startTransition(() => action(formData));
       })} className="space-y-5" noValidate>
         {!state.success && state.error && (
           <Alert variant="destructive">
@@ -153,14 +152,13 @@ export function ResetPasswordForm({ token }: { token: string }) {
           )}
         />
 
-        <SubmitButton />
+        <SubmitButton pending={pending} />
       </form>
     </Form>
   );
 }
 
-function SubmitButton() {
-  const { pending } = useFormStatus();
+function SubmitButton({ pending }: { pending: boolean }) {
   return (
     <Button
       type="submit"
@@ -173,7 +171,7 @@ function SubmitButton() {
           Updating…
         </>
       ) : (
-        "Reset & Sign In"
+        "Update password"
       )}
     </Button>
   );

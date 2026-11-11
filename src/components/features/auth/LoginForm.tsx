@@ -11,7 +11,6 @@ import { GoogleOAuthButton } from "./GoogleOAuthButton";
 import { cn } from "@/lib/utils/cn";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Form,
@@ -27,7 +26,6 @@ import { Eye, EyeOff, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 const loginFormSchema = z.object({
   email:      z.string().email("Please enter a valid email address"),
   password:   z.string().min(8, "Password must be at least 8 characters"),
-  rememberMe: z.boolean().optional(),
 });
 
 type LoginFormValues = z.infer<typeof loginFormSchema>;
@@ -59,7 +57,7 @@ export function LoginForm() {
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginFormSchema),
-    defaultValues: { email: "", password: "", rememberMe: false },
+    defaultValues: { email: "", password: "" },
   });
 
   const {
@@ -107,11 +105,12 @@ export function LoginForm() {
 
   async function onSubmit(values: LoginFormValues) {
     startTransition(async () => {
-      const result = await signIn("credentials", {
+      let result;
+      try { result = await signIn("credentials", {
         email:    values.email.toLowerCase(),
         password: values.password,
-        redirect: false, // Require email verification
-      });
+        redirect: false,
+      }); } catch { setError("root", { message: "Could not sign in right now. Please try again." }); return; }
 
       if (!result) {
         setError("root", { message: "Something went wrong. Please try again." });
@@ -125,7 +124,8 @@ export function LoginForm() {
       }
 
       // Success - check if email is verified
-      const callbackUrl = searchParams.get("callbackUrl") ?? "/explore";
+      const requested = searchParams.get("callbackUrl");
+      const callbackUrl = requested?.startsWith("/") && !requested.startsWith("//") && !requested.includes("\\") ? requested : "/explore";
       
       // Check if user needs email verification
       if (result.url?.includes("/verify-email")) {
@@ -211,12 +211,12 @@ export function LoginForm() {
             name="email"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Institutional Email</FormLabel>
+                <FormLabel>Email address</FormLabel>
                 <FormControl>
                   <Input
                     type="email"
                     autoComplete="email"
-                    placeholder="you@university.edu"
+                    placeholder="you@example.com"
                     {...field}
                   />
                 </FormControl>
@@ -266,27 +266,6 @@ export function LoginForm() {
             )}
           />
 
-          {/* Remember me */}
-          <FormField
-            control={form.control}
-            name="rememberMe"
-            render={({ field }) => (
-              <FormItem className="flex flex-row items-start space-x-3 space-y-0">
-                <FormControl>
-                  <Checkbox
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
-                </FormControl>
-                <div className="space-y-1 leading-none">
-                  <FormLabel className="text-sm font-normal">
-                    Remember me for 30 days
-                  </FormLabel>
-                </div>
-              </FormItem>
-            )}
-          />
-
           {/* Submit */}
           <Button
             type="submit"
@@ -299,7 +278,7 @@ export function LoginForm() {
                 Signing in…
               </>
             ) : (
-              "Sign In to Archive"
+              "Log in"
             )}
           </Button>
         </form>
@@ -308,7 +287,7 @@ export function LoginForm() {
       <p className="text-center text-sm text-muted-foreground">
         Don&apos;t have an account?{" "}
         <Link href="/register" className="font-medium text-primary hover:text-primary/80 transition-colors">
-          Create Scholar Profile →
+          Create an account →
         </Link>
       </p>
     </div>

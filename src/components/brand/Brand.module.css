@@ -1,0 +1,5 @@
+.brand { display: inline-flex; align-items: center; gap: 9px; color: #1a2b21; text-decoration: none; font-family: var(--font-display), sans-serif; font-size: 21px; font-weight: 750; letter-spacing: -.06em; line-height: 1; white-space: nowrap; }
+.brand svg { flex: none; }
+.dot { color: #688a6d; }
+.light { color: #f6f7eb; }
+.brand:focus-visible { outline: 2px solid #517a59; outline-offset: 5px; border-radius: 3px; }

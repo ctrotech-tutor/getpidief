@@ -17,7 +17,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -69,7 +68,7 @@ export function RegisterForm() {
     handleSubmit,
     watch,
     setError,
-    formState: { errors, isSubmitting },
+    formState: { isSubmitting },
   } = form;
 
   const passwordValue = watch("password");
@@ -88,7 +87,9 @@ export function RegisterForm() {
       if (values.acceptTerms)          fd.append("acceptTerms", "on");
       if (values.isAcademicResearcher) fd.append("isAcademicResearcher", "on");
 
-      const result = await registerWithCredentials({ success: false, error: "" }, fd);
+      let result;
+      try { result = await registerWithCredentials({ success: false, error: "" }, fd); }
+      catch { setServerError("We couldn't create your account right now. Please try again."); return; }
 
       if (!result.success) {
         if (result.field === "email") {
@@ -104,10 +105,6 @@ export function RegisterForm() {
     });
   }
 
-  // Domain hint — detects edu/ac/uni domains
-  const emailValue    = watch("email");
-  const isEduEmail    = /\.(edu|ac\.|university|uni\.)/.test(emailValue);
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -116,9 +113,9 @@ export function RegisterForm() {
           className="font-heading font-bold text-foreground"
           style={{ fontSize: "clamp(24px, 3.5vw, 30px)", letterSpacing: "-0.03em" }}
         >
-          Create your Scholar Profile
+          Make yourself at home.
         </h1>
-        <p className="text-muted-foreground text-sm">Join the network. Contribute. Discover.</p>
+        <p className="text-muted-foreground text-sm">A little curiosity goes a long way. Create your account to get started.</p>
       </div>
 
       <GoogleOAuthButton label="Sign up with Google" />
@@ -195,12 +192,12 @@ export function RegisterForm() {
             name="email"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Institutional Email</FormLabel>
+                <FormLabel>Email address</FormLabel>
                 <FormControl>
                   <Input
                     type="email"
                     autoComplete="email"
-                    placeholder="you@university.edu"
+                    placeholder="you@example.com"
                     {...field}
                   />
                 </FormControl>
@@ -324,7 +321,7 @@ export function RegisterForm() {
                 Creating Account…
               </>
             ) : (
-              "Create Scholar Profile"
+              "Create account"
             )}
           </Button>
         </form>

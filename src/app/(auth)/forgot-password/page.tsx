@@ -3,17 +3,17 @@ import { ForgotPasswordForm } from "@/components/features/auth/ForgotPasswordFor
 
 export const metadata: Metadata = {
   title: "Forgot Password - getpidief",
-  description: "Reset your getpidief password. Enter your institutional email and we'll send you a secure reset link to regain access to your academic archive.",
+  description: "Reset your getpidief password. Enter your email address and we'll send you a secure reset link to regain access to your account.",
   keywords: ["forgot password", "reset password", "password recovery", "getpidief"],
   openGraph: {
     title: "Forgot Password - getpidief",
-    description: "Reset your getpidief password and regain access to your academic archive.",
+    description: "Reset your getpidief password and regain access to your account.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Forgot Password - getpidief",
-    description: "Reset your getpidief password and regain access to your academic archive.",
+    description: "Reset your getpidief password and regain access to your account.",
   },
 };
 
@@ -28,7 +28,7 @@ export default function ForgotPasswordPage() {
           Forgot your password?
         </h1>
         <p className="text-muted-foreground text-base leading-relaxed">
-          Enter your institutional email and we&apos;ll send a secure reset link to help you regain access to your academic archive.
+          Enter your email address and we&apos;ll help you get back into your account.
         </p>
       </div>
       <ForgotPasswordForm />

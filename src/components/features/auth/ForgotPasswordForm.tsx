@@ -1,7 +1,6 @@
 "use client";
 
-import { useActionState, useState, useEffect } from "react";
-import { useFormStatus } from "react-dom";
+import { useActionState, useState, useEffect, startTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -11,7 +10,6 @@ import { cn } from "@/lib/utils/cn";
 import type { ActionResult } from "@/lib/utils/api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Form,
@@ -36,7 +34,7 @@ const initialState: ActionResult<{ message: string }> = {
 };
 
 export function ForgotPasswordForm() {
-  const [state, action] = useActionState(requestPasswordReset, initialState);
+  const [state, action, pending] = useActionState(requestPasswordReset, initialState);
   const [cooldown, setCooldown] = useState(0);
 
   const form = useForm<ForgotPasswordValues>({
@@ -76,7 +74,7 @@ export function ForgotPasswordForm() {
             Check your inbox.
           </h2>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            We sent a reset link to your email address. It expires in{" "}
+            If an account exists for that email, a reset link will be sent. It expires in{" "}
             <span className="text-foreground font-medium">15 minutes</span>.
           </p>
           <p className="text-xs text-muted-foreground">
@@ -86,10 +84,11 @@ export function ForgotPasswordForm() {
 
         {/* Resend with cooldown */}
         <form action={action}>
+          <input type="hidden" name="email" value={form.getValues("email")} />
           <Button
             type="submit"
             variant="ghost"
-            disabled={cooldown > 0}
+            disabled={cooldown > 0 || pending}
             className={cn(
               "text-sm font-medium",
               cooldown > 0
@@ -113,7 +112,7 @@ export function ForgotPasswordForm() {
         // Convert to FormData for server action
         const formData = new FormData();
         formData.append("email", data.email);
-        action(formData);
+        startTransition(() => action(formData));
       })} className="space-y-5" noValidate>
         {!state.success && state.error && (
           <Alert variant="destructive">
@@ -128,12 +127,12 @@ export function ForgotPasswordForm() {
           name="email"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Institutional Email</FormLabel>
+              <FormLabel>Email address</FormLabel>
               <FormControl>
                 <Input
                   type="email"
                   autoComplete="email"
-                  placeholder="you@university.edu"
+                  placeholder="you@example.com"
                   {...field}
                 />
               </FormControl>
@@ -142,15 +141,14 @@ export function ForgotPasswordForm() {
           )}
         />
 
-        <SubmitButton />
+        <SubmitButton pending={pending} />
         <BackLink />
       </form>
     </Form>
   );
 }
 
-function SubmitButton() {
-  const { pending } = useFormStatus();
+function SubmitButton({ pending }: { pending: boolean }) {
   return (
     <Button
       type="submit"

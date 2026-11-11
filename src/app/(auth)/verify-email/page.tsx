@@ -5,11 +5,11 @@ import { authUsers } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Mail, CheckCircle, AlertCircle, Clock } from "lucide-react";
+import { Mail, CheckCircle, Clock } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Verify Email - getpidief",
-  description: "Verify your email address to activate your getpidief account and access the academic archive.",
+  description: "Verify your email address to activate your getpidief account and get started.",
   keywords: ["verify email", "email verification", "account activation", "getpidief"],
   openGraph: {
     title: "Verify Email - getpidief",
@@ -35,8 +35,11 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
     return <CheckInboxState />;
   }
 
-  // Validate token
-  const stored = redis ? await redis.get<string>(KEYS.emailVerifyToken(token)) : null;
+  // A missing or unreachable token store is not evidence that a link expired.
+  if (!redis) return <UnavailableState />;
+  let stored: string | null;
+  try { stored = await redis.get<string>(KEYS.emailVerifyToken(token)); }
+  catch { return <UnavailableState />; }
   if (!stored) {
     return <ExpiredState />;
   }
@@ -77,7 +80,7 @@ function CheckInboxState() {
       <div className="space-y-2">
         <h1 className="font-heading font-black text-foreground text-2xl tracking-tight">Check your email.</h1>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          We sent a verification link to your email. Click it to activate your account.
+          If you recently signed up, check your inbox for a verification link.
         </p>
         <p className="text-xs text-muted-foreground">
           The link expires in 24 hours. Check your spam folder if you don&apos;t see it.
@@ -106,7 +109,7 @@ function SuccessState({ email }: { email: string }) {
       </div>
       <Button asChild className="w-full">
         <Link href="/login">
-          Sign In to the Archive
+          Log in
         </Link>
       </Button>
     </div>
@@ -131,4 +134,8 @@ function ExpiredState() {
       </Link>
     </div>
   );
+}
+
+function UnavailableState() {
+  return <div className="space-y-5"><h1 className="font-heading text-2xl font-semibold">We can&apos;t verify this link right now.</h1><p className="text-sm text-muted-foreground">Please try again later.</p><Link href="/login" className="text-sm text-primary underline">Back to log in</Link></div>;
 }

@@ -1,0 +1,25 @@
+# Feed foundation and next phases
+
+## Product direction
+
+The signed-in root is the social home: people share thoughts and questions, discuss, save, and discover useful work. Resources belong in conversations, not just a catalogue. The first implementation deliberately labels the public chronological stream **Latest**, not For you. Following contains only posts authored by followed accounts, in chronological order. Saved contains the user's saved posts. None of these views claim recommendation or topic personalization.
+
+The first phase supplies a responsive feed shell, composer, post anatomy, discussion entry, truthful empty states, and existing resource-search and library access. The home view uses real data only. The existing /explore remains available: do not redirect or retire it before its resource discovery functionality has a tested replacement. Post detail and resource flows remain available and are not reimplemented here.
+
+## Architecture and data decisions
+
+- `auth_users` owns credentials and `users` is the existing one-to-one profile. Reuse identity, profile and `follows` rather than duplicating users or creating a separate feed identity. The follow pair has a unique index. Every read and mutation must continue to check active/deleted state and authorization.
+- `posts` owns text and kind, while replies, likes and saves are separate records with foreign keys and uniqueness constraints. The current feed is bounded to 20 posts and reads two recent replies per post; it uses the indexed `(created_at, id)` order. The cursor lookup uses PostgreSQL's stored timestamp precision. A hard-deleted cursor currently ends pagination; address that before relying on it for long-lived sessions.
+- Following uses an `EXISTS` lookup on follower and author, so it does not multiply posts by join rows. Existing indexes help but performance is workload-dependent: benchmark with realistic data and `EXPLAIN (ANALYZE, BUFFERS)` before adding an author/time partial index or fan-out infrastructure. No synthetic production data or unmeasured performance claims.
+- A future topic association should be a join table with unique `(post_id, tag_id)`, reverse lookup `(tag_id, post_id)`, foreign keys and bounded active-topic selection validated server-side. Plan migrations, existing-post behavior, tag moderation and transactional writes before shipping it. Do not infer sensitive categories from free text.
+- A future PDF association should refer to the canonical document record, not copy a file URL into a post. Specify author ownership, status, visibility and authorization at creation and every read; withheld, deleted or inaccessible documents must never leak through cards or signed URLs. Existing UploadThing privacy requires live verification before private delivery is enabled.
+- A ranked feed requires a separate candidate-generation and safety-filter stage, simple explainable scoring, diversity, and explicit feedback. Scores change as activity changes, so a plain chronological cursor is not a ranked-feed cursor. Design a versioned snapshot or equivalent stable pagination, bounded TTL, access rechecks and tests for repeats, omissions and newly removed content. No fake For you tab until it works.
+- Avoid speculative user-profile columns or permanent surveillance data. Any impression/feedback retention needs explicit purpose, minimization, deletion and privacy review. No engagement-only optimization or sensitive inference by default.
+
+## Delivery and verification
+
+The feed remains server-rendered, with only the composer client-side. It retains explicit older-post navigation for keyboard and low-bandwidth use instead of adding uncontrolled infinite scrolling. Error handling preserves drafts. Production safety behavior, abuse limits, report/review paths and row visibility remain in force.
+
+Next phases: topic-aware posts and candidate ranking; real follow/discovery controls and people search; PDF attachments; richer conversation and actions; safe consolidation of /explore. Browser-test mobile, keyboard, screen reader, zoom and slow connections, and measure real latency and interaction performance before making performance claims. Existing resource search is resource-focused, not yet people/post search.
+
+References: [Bluesky custom feed choice](https://bsky.social/about/blog/7-27-2023-custom-feeds), [Reddit recommendation stages](https://support.reddithelp.com/hc/en-us/articles/23511859482388-Reddit-s-Approach-to-Content-Recommendations), [TikTok diversity and feedback](https://www.tiktok.com/transparency/en/recommendation-system), [YouTube satisfaction and responsibility](https://blog.youtube/inside-youtube/on-youtubes-recommendation-system/), [PostgreSQL multicolumn indexes](https://www.postgresql.org/docs/current/indexes-multicolumn.html), and [Deque on infinite scroll accessibility](https://www.deque.com/blog/infinite-scrolling-rolefeed-accessibility-issues/).

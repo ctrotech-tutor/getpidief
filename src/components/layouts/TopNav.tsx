@@ -47,6 +47,7 @@ export function TopNav() {
                   variant="ghost"
                   size="icon"
                   className="sm:hidden h-9 w-9"
+                  aria-label="Search"
                   onClick={() => setCommandPaletteOpen(true)}
                 >
                   <Search className="h-5 w-5" />

@@ -62,6 +62,17 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
     expect(names).toHaveLength(24);
     expect(new Set(names).size).toBe(24);
   });
+  it("shows only followed authors in the following feed and preserves the view when paging", async () => {
+    as(ids.reader);
+    const empty = renderToStaticMarkup(await home({ searchParams: Promise.resolve({ view: "following" }) }));
+    expect(empty).toContain("Your circle starts here.");
+    expect(empty).not.toContain("Cursor fixture");
+    await db.execute(sql`INSERT INTO follows (follower_id, following_id) VALUES (${ids.reader}::uuid, ${ids.author}::uuid)`);
+    const first = renderToStaticMarkup(await home({ searchParams: Promise.resolve({ view: "following" }) }));
+    expect(first).toContain("Cursor fixture");
+    expect(first).toContain("view=following&amp;before=");
+    await db.execute(sql`DELETE FROM follows WHERE follower_id = ${ids.reader}::uuid AND following_id = ${ids.author}::uuid`);
+  });
   it("makes repeated likes and saves idempotent and blocks another user deleting the post", async () => {
     as(ids.reader);
     await Promise.all(Array.from({ length: 6 }, () => actions.toggleLike(form({ postId, active: "false" }))));

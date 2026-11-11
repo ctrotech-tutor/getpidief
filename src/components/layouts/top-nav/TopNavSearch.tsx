@@ -17,7 +17,7 @@ export function TopNavSearch({ onClick }: TopNavSearchProps) {
           variant="outline"
           onClick={onClick}
           className={cn(
-            "w-full justify-start rounded-md bg-muted/50 text-sm font-normal text-muted-foreground shadow-none",
+            "w-full justify-start rounded-full bg-muted/50 text-sm font-normal text-muted-foreground shadow-none",
             "hover:bg-accent hover:text-accent-foreground",
             "focus-visible:ring-1 focus-visible:ring-ring"
           )}

@@ -7,7 +7,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils/cn"
-import type { SessionUser } from "@/hooks/useSession"
 import {
   Compass,
   Library,
@@ -23,13 +22,23 @@ import {
   Plus,
 } from "lucide-react"
 
+interface SidebarUser {
+  displayName?: string | null
+  name?: string | null
+  username?: string
+  avatarUrl?: string | null
+  reputationScore?: number
+  reputationLevel?: string
+  role?: string
+}
+
 interface ExploreSidebarProps {
-  user: SessionUser | null
+  user: SidebarUser | null
   isLoading: boolean
 }
 
 // Extended user properties that may be added to session
-interface ExtendedUser extends SessionUser {
+interface ExtendedUser extends SidebarUser {
   uploadCount?: number
   followerCount?: number
   followingCount?: number

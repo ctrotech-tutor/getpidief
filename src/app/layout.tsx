@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
-import { auth } from "@/lib/auth/auth";
 import { ThemeProvider, ThemeScript } from "@/components/providers/theme-provider";
 import { Toaster } from "sonner";
 import { TanstackQueryProvider } from "@/components/layouts/TanstackQueryProvider";
@@ -102,12 +101,11 @@ export const viewport: Viewport = {
 
 // ── Root Layout ───────────────────────────────────────────────────────────────
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
 
   return (
     <html
@@ -119,7 +117,7 @@ export default async function RootLayout({
         <ThemeScript />
       </head>
       <body className="bg-void text-primary antialiased">
-        <SessionProvider session={session}>
+        <SessionProvider>
           <ThemeProvider>
             <TanstackQueryProvider>
               <PostHogProvider>

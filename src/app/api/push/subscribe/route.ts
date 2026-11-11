@@ -3,15 +3,6 @@ import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
 import { pushSubscriptions, users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import webpush from "web-push";
-
-// Configure web-push VAPID keys once
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT!,
-  process.env.VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-);
-
 // POST /api/push/subscribe
 export async function POST(req: NextRequest) {
   const session = await auth();

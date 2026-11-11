@@ -56,6 +56,13 @@ jobs:
         run: npm run test:db
         env:
           TEST_DATABASE_URL: postgresql://test:test@127.0.0.1:5432/getpidief_test
+      - name: Full application build (isolated configuration)
+        run: npm run build
+        env:
+          DATABASE_URL: postgresql://test:test@127.0.0.1:5432/getpidief_test
+          AUTH_SECRET: ci-build-only-not-a-production-secret-0123456789
+          NEXTAUTH_SECRET: ci-build-only-not-a-production-secret-0123456789
+          NEXT_TELEMETRY_DISABLED: '1'
       - name: PostgreSQL social concurrency
         run: npm run test:db:social
         env:

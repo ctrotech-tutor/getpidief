@@ -32,4 +32,4 @@ npm run lint
 npm run test -- --run
 ```
 
-The existing codebase has known lint and dependency-audit issues. A full production build and all integrations still need verification as part of the rebuild.
+The full application build has been verified with isolated PostgreSQL and placeholder credentials. Lint still reports warnings, dependencies need an audit, and production integrations and deployment remain unverified.

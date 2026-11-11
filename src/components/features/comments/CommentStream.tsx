@@ -9,11 +9,12 @@ import { cn } from "@/lib/utils/cn";
 
 interface Comment {
   id:          string;
-  userId:      string;
+  userId:      string | null;
   content:     string;
   contentHtml?: string | null;
   createdAt:   string | Date;
   isEdited:    boolean;
+  isDeleted?:  boolean;
   helpfulCount:number;
   replyCount:  number;
   parentId:    string | null;
@@ -23,7 +24,7 @@ interface Comment {
     displayName:       string;
     avatarUrl:         string | null;
     verificationStatus?:string;
-  };
+  } | null;
   replies?: Comment[];
 }
 
@@ -224,6 +225,29 @@ function CommentItem({
   const [moreReplies, setMoreReplies] = useState(false);
   const [replyLoading, setReplyLoading] = useState(false);
   const [replyError, setReplyError] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(comment.content);
+  const [actionError, setActionError] = useState("");
+  const [pending, setPending] = useState(false);
+  const [voted, setVoted] = useState(false);
+  const [helpfulCount, setHelpfulCount] = useState(comment.helpfulCount);
+  async function updateComment(kind: "edit" | "delete" | "vote") {
+    if (pending) return;
+    if (kind === "delete" && !window.confirm("Delete this comment? Replies will remain visible.")) return;
+    setPending(true); setActionError("");
+    try {
+      const response = await fetch(`/api/comments/${comment.id}`, {
+        method: kind === "delete" ? "DELETE" : "PATCH",
+        headers: { "Content-Type": "application/json" },
+        ...(kind === "delete" ? {} : { body: JSON.stringify(kind === "vote" ? { action: "helpful" } : { content: draft }) }),
+      });
+      if (!response.ok) throw new Error("Update failed");
+      const data = await response.json();
+      if (kind === "vote") { setVoted(true); setHelpfulCount(data.data.helpfulCount); }
+      else { setEditing(false); onReplyPosted(); }
+    } catch { setActionError("Could not update this comment. Please try again."); }
+    finally { setPending(false); }
+  }
   async function loadReplies(page: number) {
     setReplyLoading(true); setReplyError("");
     try {
@@ -243,13 +267,13 @@ function CommentItem({
       <div className="flex-1 min-w-0 space-y-1.5">
         {/* Header */}
         <div className="flex items-center gap-2 flex-wrap">
-          <a
+          {comment.user ? <a
             href={`/u/${comment.user.username}`}
             className="text-sm font-medium text-foreground hover:text-primary transition-colors"
           >
             {comment.user.displayName}
-          </a>
-          {comment.user.verificationStatus === "verified" && (
+          </a> : <span className="text-sm text-muted-foreground">Deleted comment</span>}
+          {comment.user?.verificationStatus === "verified" && (
             <span title="Verified" className="text-[var(--gold)]">
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-label="Verified">
                 <circle cx="5" cy="5" r="4.5" fill="currentColor" fillOpacity="0.2" stroke="currentColor" strokeWidth="0.8"/>
@@ -262,11 +286,24 @@ function CommentItem({
         </div>
 
         {/* Content */}
-        <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words">{comment.content}</p>
+        {editing ? <div className="space-y-2">
+          <textarea aria-label="Edit comment" maxLength={2000} value={draft} onChange={(event) => setDraft(event.target.value)}
+            className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm" />
+          <div className="flex gap-3 text-xs">
+            <button type="button" disabled={pending || !draft.trim()} onClick={() => updateComment("edit")}>Save</button>
+            <button type="button" disabled={pending} onClick={() => { setEditing(false); setDraft(comment.content); }}>Cancel</button>
+          </div>
+        </div> : <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words">{comment.content}</p>}
+        {actionError && <p role="alert" className="text-xs text-destructive">{actionError}</p>}
 
         {/* Actions */}
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          {!isReply && isAuthenticated && (
+          {isAuthenticated && !comment.isDeleted && <button type="button" disabled={pending || voted} onClick={() => updateComment("vote")} className="hover:text-foreground disabled:opacity-60">{voted ? "Marked helpful" : "Helpful"} ({helpfulCount})</button>}
+          {isAuthenticated && user?.id === comment.userId && !comment.isDeleted && !editing && <>
+            <button type="button" disabled={pending} onClick={() => setEditing(true)} className="hover:text-foreground">Edit</button>
+            <button type="button" disabled={pending} onClick={() => updateComment("delete")} className="hover:text-foreground">Delete</button>
+          </>}
+          {!isReply && isAuthenticated && !comment.isDeleted && (
             <button
               onClick={() => setShowReplyBox((v) => !v)}
               className="hover:text-foreground transition-colors"
@@ -291,7 +328,7 @@ function CommentItem({
               user={user}
               onPosted={() => { setShowReplyBox(false); setReplies(null); onReplyPosted(); }}
               onCancel={() => setShowReplyBox(false)}
-              placeholder={`Reply to ${comment.user.displayName}…`}
+              placeholder={`Reply to ${comment.user?.displayName ?? "this comment"}…`}
             />
           </div>
         )}
@@ -304,7 +341,7 @@ function CommentItem({
                 key={reply.id}
                 comment={reply}
                 documentId={documentId}
-                onReplyPosted={onReplyPosted}
+                onReplyPosted={() => { setReplies(null); onReplyPosted(); }}
                 isReply
               />
             ))}

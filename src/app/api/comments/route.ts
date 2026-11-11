@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
 import { comments, documents, users } from "@/lib/db/schema";
-import { eq, and, isNull, desc, sql } from "drizzle-orm";
+import { eq, and, or, gt, isNull, desc, sql } from "drizzle-orm";
 import { createCommentSchema } from "@/lib/validations/schemas";
 import { apiSuccess, apiCreated, apiUnauthorized, apiZodError, apiNotFound, apiError, apiRateLimited, handleApiError } from "@/lib/utils/api";
 import { rateLimiters } from "@/lib/redis/client";
@@ -63,7 +63,8 @@ export async function POST(req: NextRequest) {
     const mutation = await db.execute<{ id: string; created_at: Date | string }>(sql`
       WITH eligible AS MATERIALIZED (
         SELECT id FROM documents WHERE id = ${documentId} AND status = 'approved'
-          AND visibility = 'public' AND deleted_at IS NULL FOR UPDATE
+          AND visibility = 'public' AND deleted_at IS NULL
+          AND EXISTS (SELECT 1 FROM users WHERE id = ${userId}::uuid AND status = 'active' AND deleted_at IS NULL) FOR UPDATE
       ), parent AS MATERIALIZED (
         SELECT id FROM comments WHERE id = ${parentId ?? null}::uuid
           AND document_id = ${documentId} AND is_deleted = false AND parent_id IS NULL FOR UPDATE
@@ -149,7 +150,7 @@ export async function GET(req: NextRequest) {
     if (parentId) {
       const parent = await db.query.comments.findFirst({
         where: and(eq(comments.id, parentId), eq(comments.documentId, documentId),
-          eq(comments.isDeleted, false), isNull(comments.parentId)),
+          isNull(comments.parentId), or(eq(comments.isDeleted, false), gt(comments.replyCount, 0))),
         columns: { id: true },
       });
       if (!parent) return apiNotFound("Comment");
@@ -168,17 +169,17 @@ export async function GET(req: NextRequest) {
       where: and(
         eq(comments.documentId, documentId),
         parentId ? eq(comments.parentId, parentId) : isNull(comments.parentId),
-        eq(comments.isDeleted, false)
+        parentId ? eq(comments.isDeleted, false) : or(eq(comments.isDeleted, false), and(eq(comments.isDeleted, true), gt(comments.replyCount, 0)))
       ),
       orderBy: [desc(comments.createdAt), desc(comments.id)],
       limit: limit + 1,
       offset,
-      columns: { id: true, userId: true, parentId: true, content: true, createdAt: true, isEdited: true, helpfulCount: true, replyCount: true },
+      columns: { id: true, userId: true, parentId: true, content: true, createdAt: true, isEdited: true, isDeleted: true, helpfulCount: true, replyCount: true },
       with: {
         user: { columns: { id: true, username: true, displayName: true, avatarUrl: true, verificationStatus: true } },
         replies: {
           where: eq(comments.isDeleted, false),
-          columns: { id: true, userId: true, parentId: true, content: true, createdAt: true, isEdited: true, helpfulCount: true, replyCount: true },
+          columns: { id: true, userId: true, parentId: true, content: true, createdAt: true, isEdited: true, isDeleted: true, helpfulCount: true, replyCount: true },
           orderBy: [desc(comments.createdAt), desc(comments.id)],
           limit: 3,
           with: {
@@ -188,7 +189,10 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    const response = apiSuccess({ comments: rows.slice(0, limit), page, hasMore: rows.length > limit });
+    const visible = rows.slice(0, limit).map((comment) => comment.isDeleted
+      ? { ...comment, userId: null, user: null, content: "[deleted]", isEdited: false, helpfulCount: 0 }
+      : comment);
+    const response = apiSuccess({ comments: visible, page, hasMore: rows.length > limit });
     response.headers.set("Cache-Control", "private, no-store");
     return response;
   } catch (e) {

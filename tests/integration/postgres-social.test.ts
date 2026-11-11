@@ -19,6 +19,7 @@ describe.skipIf(!enabled)("real PostgreSQL social mutations", () => {
   let reaction: typeof import("@/app/api/documents/[id]/react/route");
   let reports: typeof import("@/app/api/reports/route");
   let comments: typeof import("@/app/api/comments/route");
+  let commentActions: typeof import("@/app/api/comments/[id]/route");
   let submission: typeof import("@/app/api/documents/route");
   let usersRepo: typeof import("@/lib/db/repositories/users").usersRepository;
   let resolveReport: typeof import("@/lib/moderation/reports").resolveReport;
@@ -36,6 +37,7 @@ describe.skipIf(!enabled)("real PostgreSQL social mutations", () => {
     reaction = await import("@/app/api/documents/[id]/react/route");
     reports = await import("@/app/api/reports/route");
     comments = await import("@/app/api/comments/route");
+    commentActions = await import("@/app/api/comments/[id]/route");
     submission = await import("@/app/api/documents/route");
     ({ usersRepository: usersRepo } = await import("@/lib/db/repositories/users"));
     ({ resolveReport } = await import("@/lib/moderation/reports"));
@@ -115,4 +117,49 @@ describe.skipIf(!enabled)("real PostgreSQL social mutations", () => {
     expect((await db.execute<{ comment_count: number }>(sql`SELECT comment_count FROM documents WHERE id = ${ids.doc}::uuid`)).rows[0].comment_count).toBe(5);
     expect((await comments.POST(request({ documentId: ids.privateDoc, content: "hidden" }))).status).toBe(404);
   });
+  it("protects comment edits and preserves replies after deleting their parent", async () => {
+    const created = await comments.POST(request({ documentId: ids.doc, content: "Original parent" }));
+    expect(created.status).toBe(201);
+    const parentId = (await created.json()).data.comment.id as string;
+    const replied = await comments.POST(request({ documentId: ids.doc, parentId, content: "Independent reply" }));
+    expect(replied.status).toBe(201);
+    const replyId = (await replied.json()).data.comment.id as string;
+    const votes = await Promise.all(Array.from({ length: 6 }, () => commentActions.PATCH(request({ action: "helpful" }, "PATCH"), params(parentId))));
+    expect(votes.every((r) => r.status === 200)).toBe(true);
+    const count = await db.execute<{ helpful_count: number }>(sql`SELECT helpful_count FROM comments WHERE id = ${parentId}::uuid`);
+    expect(count.rows[0].helpful_count).toBe(1);
+    mocks.auth.mockResolvedValue({ user: { id: ids.author } });
+    expect((await commentActions.PATCH(request({ content: "hijacked" }, "PATCH"), params(parentId))).status).toBe(403);
+    expect((await commentActions.DELETE(request({}, "DELETE"), params(parentId))).status).toBe(403);
+    mocks.auth.mockResolvedValue({ user: { id: ids.actor } });
+    expect((await commentActions.PATCH(request({ content: "Edited parent" }, "PATCH"), params(parentId))).status).toBe(200);
+    const deletes = await Promise.all(Array.from({ length: 4 }, () => commentActions.DELETE(request({}, "DELETE"), params(parentId))));
+    expect(deletes.map((r) => r.status)).toEqual([200, 200, 200, 200]);
+    const list = await comments.GET(new NextRequest(`http://localhost/api/comments?documentId=${ids.doc}`));
+    const data = await list.json();
+    const tombstone = data.data.comments.find((c: { id: string }) => c.id === parentId);
+    expect(tombstone).toMatchObject({ content: "[deleted]", isDeleted: true, userId: null, user: null, replyCount: 1 });
+    expect(tombstone.replies[0].id).toBe(replyId);
+    const children = await comments.GET(new NextRequest(`http://localhost/api/comments?documentId=${ids.doc}&parentId=${parentId}`));
+    expect(children.status).toBe(200);
+    expect((await db.execute<{ comment_count: number }>(sql`SELECT comment_count FROM documents WHERE id = ${ids.doc}::uuid`)).rows[0].comment_count).toBe(6);
+    expect((await commentActions.DELETE(request({}, "DELETE"), params(replyId))).status).toBe(200);
+    const final = await comments.GET(new NextRequest(`http://localhost/api/comments?documentId=${ids.doc}`));
+    expect((await final.json()).data.comments.some((c: { id: string }) => c.id === parentId)).toBe(false);
+    expect((await db.execute<{ comment_count: number }>(sql`SELECT comment_count FROM documents WHERE id = ${ids.doc}::uuid`)).rows[0].comment_count).toBe(5);
+  });
+
+  it("denies mutations on inaccessible comments and validates requests", async () => {
+    const hidden = randomUUID();
+    await db.execute(sql`INSERT INTO comments (id, document_id, user_id, content) VALUES (${hidden}::uuid, ${ids.privateDoc}::uuid, ${ids.actor}::uuid, 'Private text')`);
+    expect((await commentActions.PATCH(request({ action: "helpful" }, "PATCH"), params(hidden))).status).toBe(404);
+    expect((await commentActions.DELETE(request({}, "DELETE"), params(hidden))).status).toBe(404);
+    expect((await commentActions.PATCH(request({ content: " " }, "PATCH"), params(hidden))).status).toBe(400);
+    expect((await commentActions.PATCH(request({ action: "helpful", content: "ambiguous" }, "PATCH"), params(hidden))).status).toBe(400);
+    await db.execute(sql`UPDATE users SET status = 'suspended' WHERE id = ${ids.actor}::uuid`);
+    const result = await comments.POST(request({ documentId: ids.doc, content: "should not post" }));
+    expect(result.status).toBe(404);
+    await db.execute(sql`UPDATE users SET status = 'active' WHERE id = ${ids.actor}::uuid`);
+  });
+
 });

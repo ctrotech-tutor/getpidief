@@ -86,7 +86,7 @@ describe("comment access", () => {
     vi.mocked(db.query.comments.findFirst).mockResolvedValue(undefined);
     expect((await GET(get(`documentId=${id}&parentId=${parent}`))).status).toBe(404);
     const query = queryParts(vi.mocked(db.query.comments.findFirst).mock.calls[0][0]!.where as never);
-    expect(query.params).toEqual([parent, id, false]);
+    expect(query.params).toEqual([parent, id, false, 0]);
     expect(db.query.comments.findMany).not.toHaveBeenCalled();
   });
 

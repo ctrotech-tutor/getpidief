@@ -13,6 +13,8 @@ import { ShareModal } from "@/components/features/documents/ShareModal";
 import { ReportModal } from "@/components/features/documents/ReportModal";
 import type { PublicProfile } from "@/lib/db/repositories/users";
 
+export const dynamic = "force-dynamic";
+
 interface PageProps { params: Promise<{ username: string }> }
 type BadgeRow = Awaited<ReturnType<typeof usersRepository.getBadges>>[number];
 
@@ -40,7 +42,7 @@ export default async function ProfilePage({ params }: PageProps) {
   // Fetch user's approved documents
   const { documents: docs } = await documentsRepository.getByAuthor(
     typedProfile.id,
-    { status: "approved", page: 1, limit: 6 }
+    { status: "approved", page: 1, limit: 6, publicOnly: true }
   );
 
   const isOwnProfile = session?.user?.id === typedProfile.id;

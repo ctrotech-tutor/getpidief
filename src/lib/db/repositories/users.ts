@@ -1,7 +1,7 @@
 import { db } from "@/lib/db/client";
 import { users, follows, userBadges, badges, userInterests, tags } from "@/lib/db/schema";
-import { eq, and, desc, sql, not, inArray } from "drizzle-orm";
-import { redis, KEYS, TTL, getCache, setCache, invalidateCache } from "@/lib/redis/client";
+import { eq, and, desc, sql, not } from "drizzle-orm";
+import { KEYS, invalidateCache } from "@/lib/redis/client";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // USERS REPOSITORY
@@ -48,10 +48,7 @@ export const usersRepository = {
   // ── Get public profile by username ────────────────────────────────────────
 
   async getPublicProfile(username: string, requestingUserId?: string) {
-    const cacheKey = KEYS.userProfile(username);
-    const cached = await getCache(cacheKey);
-    if (cached) return cached;
-
+    // Relationship state is viewer-specific and must not enter a shared cache.
     const user = await db.query.users.findFirst({
       where: and(
         eq(users.username, username),
@@ -110,7 +107,6 @@ export const usersRepository = {
     }
 
     const result = { ...user, isFollowing, isFollowedBy };
-    await setCache(cacheKey, result, TTL.userProfile);
     return result;
   },
 
@@ -160,20 +156,21 @@ export const usersRepository = {
             sql`${users.deletedAt} IS NULL`
           )
         )
-        .orderBy(desc(follows.createdAt))
+        .orderBy(desc(follows.createdAt), desc(follows.id))
         .limit(limit)
         .offset(offset),
       db
         .select({ count: sql<number>`count(*)` })
         .from(follows)
-        .where(eq(follows.followingId, userId)),
+        .innerJoin(users, eq(users.id, follows.followerId))
+        .where(and(eq(follows.followingId, userId), eq(users.status, "active"), sql`${users.deletedAt} IS NULL`)),
     ]);
 
     return {
       followers: rows,
-      total: countResult[0]?.count ?? 0,
+      total: Number(countResult[0]?.count ?? 0),
       page,
-      totalPages: Math.ceil((countResult[0]?.count ?? 0) / limit),
+      totalPages: Math.ceil((Number(countResult[0]?.count ?? 0)) / limit),
     };
   },
 
@@ -209,76 +206,70 @@ export const usersRepository = {
             sql`${users.deletedAt} IS NULL`
           )
         )
-        .orderBy(desc(follows.createdAt))
+        .orderBy(desc(follows.createdAt), desc(follows.id))
         .limit(limit)
         .offset(offset),
       db
         .select({ count: sql<number>`count(*)` })
         .from(follows)
-        .where(eq(follows.followerId, userId)),
+        .innerJoin(users, eq(users.id, follows.followingId))
+        .where(and(eq(follows.followerId, userId), eq(users.status, "active"), sql`${users.deletedAt} IS NULL`)),
     ]);
 
     return {
       following: rows,
-      total: countResult[0]?.count ?? 0,
+      total: Number(countResult[0]?.count ?? 0),
       page,
-      totalPages: Math.ceil((countResult[0]?.count ?? 0) / limit),
+      totalPages: Math.ceil((Number(countResult[0]?.count ?? 0)) / limit),
     };
   },
 
   // ── Follow a user ─────────────────────────────────────────────────────────
 
-  async follow(followerId: string, followingId: string): Promise<void> {
-    await db
-      .insert(follows)
-      .values({ followerId, followingId })
-      .onConflictDoNothing();
-
-    // Update denormalized counts
-    await Promise.all([
-      db.execute(
-        sql`UPDATE users SET following_count = following_count + 1 WHERE id = ${followerId}`
-      ),
-      db.execute(
-        sql`UPDATE users SET follower_count = follower_count + 1 WHERE id = ${followingId}`
-      ),
-    ]);
-
-    await invalidateCache(
-      KEYS.userProfile(followerId),
-      KEYS.userProfile(followingId),
-      KEYS.followerCount(followingId),
-      KEYS.userFollowingList(followerId)
-    );
+  async follow(followerId: string, followingId: string): Promise<{ changed: boolean }> {
+    if (followerId === followingId) throw new Error("INVALID_FOLLOW");
+    const result = await db.execute<{ eligible: boolean; changed: boolean }>(sql`
+      WITH locked AS MATERIALIZED (
+        SELECT id, status, deleted_at FROM users
+        WHERE id IN (${followerId}::uuid, ${followingId}::uuid) ORDER BY id FOR UPDATE
+      ), eligible AS MATERIALIZED (
+        SELECT id FROM locked WHERE status = 'active' AND deleted_at IS NULL
+      ), inserted AS (
+        INSERT INTO follows (follower_id, following_id)
+        SELECT ${followerId}, ${followingId}
+        WHERE (SELECT count(*) FROM eligible) = 2
+        ON CONFLICT (follower_id, following_id) DO NOTHING RETURNING id
+      ), updated AS (
+        UPDATE users SET
+          following_count = following_count + CASE WHEN id = ${followerId}::uuid THEN 1 ELSE 0 END,
+          follower_count = follower_count + CASE WHEN id = ${followingId}::uuid THEN 1 ELSE 0 END
+        WHERE id IN (SELECT id FROM locked) AND EXISTS (SELECT 1 FROM inserted) RETURNING id
+      )
+      SELECT (SELECT count(*) FROM eligible) = 2 AS eligible,
+             EXISTS(SELECT 1 FROM updated) AS changed
+    `);
+    const outcome = result.rows[0];
+    if (!outcome?.eligible) throw new Error("NOT_FOUND");
+    if (outcome.changed) await invalidateCache(KEYS.followerCount(followingId), KEYS.userFollowingList(followerId)).catch(() => {});
+    return { changed: outcome.changed };
   },
 
-  // ── Unfollow a user ───────────────────────────────────────────────────────
-
+  // Removal remains possible for relationships with inactive accounts.
   async unfollow(followerId: string, followingId: string): Promise<void> {
-    await db
-      .delete(follows)
-      .where(
-        and(
-          eq(follows.followerId, followerId),
-          eq(follows.followingId, followingId)
-        )
-      );
-
-    await Promise.all([
-      db.execute(
-        sql`UPDATE users SET following_count = GREATEST(0, following_count - 1) WHERE id = ${followerId}`
-      ),
-      db.execute(
-        sql`UPDATE users SET follower_count = GREATEST(0, follower_count - 1) WHERE id = ${followingId}`
-      ),
-    ]);
-
-    await invalidateCache(
-      KEYS.userProfile(followerId),
-      KEYS.userProfile(followingId),
-      KEYS.followerCount(followingId),
-      KEYS.userFollowingList(followerId)
-    );
+    if (followerId === followingId) throw new Error("INVALID_FOLLOW");
+    await db.execute(sql`
+      WITH locked AS MATERIALIZED (
+        SELECT id FROM users WHERE id IN (${followerId}::uuid, ${followingId}::uuid) ORDER BY id FOR UPDATE
+      ), removed AS (
+        DELETE FROM follows WHERE follower_id = ${followerId}::uuid AND following_id = ${followingId}::uuid
+          AND (SELECT count(*) FROM locked) = 2 RETURNING id
+      )
+      UPDATE users SET
+        following_count = GREATEST(0, following_count - CASE WHEN id = ${followerId}::uuid THEN 1 ELSE 0 END),
+        follower_count = GREATEST(0, follower_count - CASE WHEN id = ${followingId}::uuid THEN 1 ELSE 0 END)
+      WHERE id IN (SELECT id FROM locked) AND EXISTS (SELECT 1 FROM removed)
+    `);
+    await invalidateCache(KEYS.followerCount(followingId), KEYS.userFollowingList(followerId)).catch(() => {});
   },
 
   // ── Get follow suggestions for a user ─────────────────────────────────────

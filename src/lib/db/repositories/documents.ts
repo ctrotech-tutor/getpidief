@@ -380,9 +380,10 @@ export const documentsRepository = {
       status?: typeof documents.$inferSelect["status"];
       page?: number;
       limit?: number;
+      publicOnly?: boolean;
     } = {}
   ) {
-    const { status, page = 1, limit = 20 } = options;
+    const { status, page = 1, limit = 20, publicOnly = false } = options;
     const offset = (page - 1) * limit;
 
     const conditions = [
@@ -390,6 +391,7 @@ export const documentsRepository = {
       isNull(documents.deletedAt),
     ];
     if (status) conditions.push(eq(documents.status, status));
+    if (publicOnly) conditions.push(eq(documents.visibility, "public"));
 
     const [rows, countResult] = await Promise.all([
       withDbRetry(() => db.query.documents.findMany({
@@ -397,6 +399,10 @@ export const documentsRepository = {
         orderBy: [desc(documents.createdAt)],
         limit,
         offset,
+        columns: { id: true, slug: true, title: true, description: true, thumbnailUrl: true,
+          resourceType: true, academicYear: true, pageCount: true, downloadCount: true,
+          likeCount: true, commentCount: true, viewCount: true, publishedAt: true,
+          createdAt: true, status: true, trendingScore: true },
         with: {
           author: {
             columns: { id: true, username: true, displayName: true, avatarUrl: true, verificationStatus: true },

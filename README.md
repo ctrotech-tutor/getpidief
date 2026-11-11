@@ -4,7 +4,11 @@ A study-media platform in the planning stage: an engaging social experience buil
 
 The product is being reconsidered from the ground up. The current homepage is intentionally minimal; existing application code is a starting point to evaluate, not a finished product.
 
-- [Working product vision and rebuild plan](docs/PRODUCT.md)
+- [Approved product direction and build blueprint](docs/BUILD-BLUEPRINT.md)
+- [Working product vision](docs/PRODUCT.md)
+- [Prioritized rebuild and UI/UX plan](docs/REBUILD-PLAN.md)
+- [Study-media product and design strategy](docs/STUDY-MEDIA-STRATEGY.md)
+- [Current codebase review](docs/CODEBASE-REVIEW.md)
 - [Historical docs and previous audit](docs/archive/) — reference only; may be outdated or inaccurate.
 
 ## Development

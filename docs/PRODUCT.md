@@ -57,7 +57,7 @@ Aim for one complete loop before building a broad platform:
 ### Existing code: candidates, not commitments
 
 - **Evaluate:** Next.js/React, the existing Drizzle schema, authentication, document storage, search, feed cards, and background jobs. Some may save time, but their suitability and security must be verified before reuse.
-- **Rebuild or replace where needed:** the largely placeholder pages and UI, existing information architecture, duplicate auth configuration, raw search SQL, and incomplete upload/reader/moderation flows.
+- **Rebuild or replace where needed:** the existing information architecture and UI, remaining placeholders, and incomplete or unverified upload/reader/moderation flows. In the newer code, the auth config is a compatibility re-export and the main search query uses parameterized fragments; see `CODEBASE-REVIEW.md` for the current assessment.
 - **Do not assume production readiness:** old docs and placeholder tests describe intention as well as implementation. Validate behavior, access control, data model, worker wiring and dependency compatibility with fresh tests.
 - **Avoid destructive resets:** do not drop databases, discard migrations, rewrite history or remove working integrations until their use and data-retention needs are understood.
 

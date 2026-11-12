@@ -55,6 +55,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
       <div className={styles.sidebarBrand}><BrandMark /></div>
       <nav className={styles.sideNav} aria-label="Main navigation">
         <Link className={`${styles.sideLink} ${view !== "saved" ? styles.sideActive : ""}`} href="/" aria-current={view !== "saved" ? "page" : undefined}><HomeIcon size={24} weight={view !== "saved" ? "fill" : "regular"} aria-hidden="true" /> Home</Link>
+        <Link className={`${styles.sideLink} ${styles.tabletSearch}`} href="/search"><Search size={24} aria-hidden="true" /> Search</Link>
         <Link className={styles.sideLink} href="/explore"><Compass size={24} aria-hidden="true" /> Explore</Link>
         <Link className={styles.sideLink} href="/notifications"><Bell size={24} aria-hidden="true" /> Notifications</Link>
         <Link className={styles.sideLink} href="/dashboard/library"><BookOpen size={24} aria-hidden="true" /> Library</Link>
@@ -65,8 +66,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
       <div className={styles.sidebarMore}><FeedMoreMenu /></div>
     </aside>
     <section aria-labelledby="feed-title" className={styles.feedColumn}>
-      <div className={styles.mobileHeader}><Brand /><div className={styles.mobileHeaderActions}><Link href="/?view=saved" className={styles.mobileSettings} aria-label="Saved posts" aria-current={view === "saved" ? "page" : undefined}><Bookmark size={22} weight={view === "saved" ? "fill" : "regular"} aria-hidden="true" /></Link><Link href="/settings" className={styles.mobileSettings} aria-label="Settings"><GearSix size={22} aria-hidden="true" /></Link></div></div>
-      <header className={styles.header}><h1 id="feed-title">{view === "saved" ? "Saved posts" : "Home"}</h1><div className={styles.headerActions}><Link href="/search" className={`${styles.headerAction} ${styles.compactSearch}`} aria-label="Search resources"><Search size={20} aria-hidden="true" /></Link><Link href="/?view=saved" className={styles.headerAction} aria-label="Saved posts" aria-current={view === "saved" ? "page" : undefined}><Bookmark size={20} weight={view === "saved" ? "fill" : "regular"} aria-hidden="true" /></Link></div></header>
+      <div className={styles.mobileHeader}><Brand /><Link href="/settings" className={styles.mobileSettings} aria-label="Settings"><GearSix size={22} aria-hidden="true" /></Link></div>
+      <h1 id="feed-title" className="sr-only">{view === "saved" ? "Saved posts" : "Home"}</h1>
       <Composer name={profile?.name ?? "You"} />
       <nav aria-label="Feed views" className={styles.tabs}>{tabs.map(tab => <Link key={tab.view} href={tab.href} aria-current={view === tab.view ? "page" : undefined} className={`${styles.tab} ${view === tab.view ? styles.activeTab : ""}`}>{tab.label}</Link>)}</nav>
       <div className={styles.feedIntro}><strong>{view === "following" ? "From people you follow" : view === "saved" ? "Your saved posts" : "The latest conversations"}</strong><span>Newest first</span></div>

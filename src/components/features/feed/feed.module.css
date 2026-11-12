@@ -71,3 +71,7 @@
 /* Reduce outer gutters while keeping comfortable touch spacing on mobile. */
 @media(min-width:768px){.layout{max-width:1600px;padding-left:12px;padding-right:12px}}
 @media(min-width:768px) and (max-width:1100px){.layout{max-width:none}}
+
+/* Search stays reachable at the intermediate width where the right rail is hidden. */
+.tabletSearch{display:none}
+@media(min-width:768px) and (max-width:1100px){.tabletSearch{display:flex}}

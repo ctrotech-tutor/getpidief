@@ -3,6 +3,7 @@ import { BookOpen, Compass, Heart, House as HomeIcon, ChatCircle as MessageCircl
 import { notBlockedByEither } from "@/lib/blocks/visibility";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
+import { usersRepository } from "@/lib/db/repositories/users";
 import { users, posts, documents, categories } from "@/lib/db/schema";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { toggleLike, deletePost } from "./actions";
@@ -27,6 +28,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   const view: View = params.view === "saved" || params.view === "following" ? params.view : "latest";
   const before = params.before && uuid.test(params.before) ? params.before : undefined;
   const [profile] = await db.select({ name: users.displayName, username: users.username, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, userId)).limit(1);
+  const following = await usersRepository.getFollowing(userId, { viewerId: userId, limit: 3 });
   // Only publicly visible, approved resources appear here; this is not a recommendation ranking.
   const recentResources = await db.select({ id: documents.id, title: documents.title, slug: documents.slug, category: categories.name })
     .from(documents).innerJoin(users, eq(users.id, documents.authorId)).leftJoin(categories, eq(documents.categoryId, categories.id))
@@ -123,6 +125,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
         <input id="feed-resource-search" name="q" type="search" placeholder="Search resources" />
         <button type="submit" className="sr-only">Search</button>
       </form>
+      <section className={styles.discoveryCard} aria-labelledby="following-accounts-title">
+        <div className={styles.discoveryHeading}><h2 id="following-accounts-title">Following</h2>{following.total > 0 && <Link href="/dashboard/following">See all <ArrowUpRight size={15} aria-hidden="true" /></Link>}</div>
+        {following.following.length ? <ul className={styles.followingList}>{following.following.map(account => <li key={account.id}><Link className={styles.followingItem} href={`/u/${account.username}`}><FeedProfileAvatar name={account.displayName} avatarUrl={account.avatarUrl} post /><span className={styles.followingDetails}><strong>{account.displayName}</strong><small>@{account.username}</small></span></Link></li>)}</ul> : <div className={styles.resourceEmpty}><p>You’re not following anyone yet.</p><Link href="/explore">Explore <ArrowUpRight size={15} aria-hidden="true" /></Link></div>}
+      </section>
       <section className={styles.discoveryCard} aria-labelledby="recent-resources-title">
         <div className={styles.discoveryHeading}><h2 id="recent-resources-title">Recently added</h2><Link href="/explore">Explore <ArrowUpRight size={15} aria-hidden="true" /></Link></div>
         {recentResources.length ? <ul className={styles.resourceList}>{recentResources.map(resource => <li key={resource.id}><Link href={`/d/${resource.slug}`} className={styles.resourceItem}><span className={styles.resourceIcon}><FileText size={19} aria-hidden="true" /></span><span className={styles.resourceDetails}><strong>{resource.title}</strong><small>{resource.category ?? "Resource"}</small></span><ArrowUpRight className={styles.resourceArrow} size={16} aria-hidden="true" /></Link></li>)}</ul> : <div className={styles.resourceEmpty}><p>No public resources yet.</p><Link href="/dashboard/uploads">Share a resource <ArrowUpRight size={15} aria-hidden="true" /></Link></div>}

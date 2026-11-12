@@ -12,6 +12,8 @@ Remaining work: apply eventual blocking rules to originals, actors, counts and w
 
 ## Blocking
 
+**Paused at the user’s request:** resume this work after the feed right-rail Following section. The outstanding steps below remain open; do not expose Block until they are addressed.
+
 `user_blocks` is a directional relationship: `blocker_id` created the block against `blocked_id`. A database constraint rejects self-blocks; duplicate pairs are unique; deleting either account cascades. An internal repository can insert/remove blocks and atomically removes mutual follows; unblock takes matching account locks and may remove a block against a suspended or soft-deleted account. The internal outgoing-block list uses ID-cursor pagination and masks unavailable account details; it is not an authenticated endpoint, so future callers must authorize the owner themselves. New follows check both directions under matching account locks. Feed event reads, reply previews/counts, direct discussion reads, viewer-aware profile reads and metadata, and initial feed-action target validation now filter blocked pairs. Direct-ID reports of a blocked reply are also rejected. No Block or Unblock control or authenticated API is exposed yet.
 
 Before exposing the action, design and implement:

@@ -10,3 +10,5 @@
 /* Match the open post timeline and alignment of the loaded feed. */
 .post .lines{margin:13px 0 20px 52px}
 .postActions{margin-left:52px;border-top:0;padding-top:0}
+
+.following{display:grid;gap:14px;margin-top:20px}.followAvatar{width:36px;height:36px;border-radius:50%}

@@ -110,3 +110,10 @@
 .optionInput{position:absolute;right:0;top:calc(100% + 34px);z-index:3;width:220px;max-width:70vw;font-size:12px;padding:8px;border:1px solid #cbdcca;border-radius:8px;background:#fff;color:#315f45}
 .repostAttribution{display:flex;align-items:center;gap:5px;margin:0 0 12px 51px;color:#718579;font-size:12px;font-weight:600}.repostAttribution a{color:#506b5b}.repostAttribution a:hover{text-decoration:underline}
 .repostControl{display:inline-flex;align-items:center;flex-wrap:wrap}.repostControl button:disabled{opacity:.55}.repostError{color:#a12d2d;font-size:12px}
+
+/* People the viewer actually follows, kept compact in the discovery rail. */
+.followingList{margin-top:10px}.followingList li+li{border-top:1px solid #edf2ec}
+.followingItem{display:flex;align-items:center;gap:11px;padding:10px 0;color:#254336;min-width:0}
+.followingItem:hover strong{color:#2a7650}.followingItem:focus-visible{outline:2px solid #337353;outline-offset:3px;border-radius:4px}
+.followingItem .postAvatar{width:36px;height:36px;border-radius:50%}.followingItem .postAvatar img,.followingItem .postAvatarFallback{border-radius:50%}
+.followingDetails{min-width:0;display:grid;gap:2px}.followingDetails strong,.followingDetails small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.followingDetails strong{font-size:13px;line-height:1.35}.followingDetails small{font-size:12px;color:#84958a}

@@ -97,6 +97,36 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
     expect(first).toContain("view=following&amp;before=");
     await db.execute(sql`DELETE FROM follows WHERE follower_id = ${ids.reader}::uuid AND following_id = ${ids.author}::uuid`);
   });
+  it("shows real followed accounts in the right rail, excludes blocked and inactive users, and updates after unfollow", async () => {
+    const person = randomUUID(), hidden = randomUUID();
+    try {
+      for (const [id, name] of [[person, "Rail Person"], [hidden, "Rail Hidden"]]) {
+        await db.execute(sql`INSERT INTO auth_users (id, email) VALUES (${id}::uuid, ${id + "@example.test"})`);
+        await db.execute(sql`INSERT INTO users (id, username, display_name, role, onboarding_complete) VALUES (${id}::uuid, ${"rail" + id.replaceAll("-", "")}, ${name}, 'student'::user_role, true)`);
+      }
+      as(ids.reader);
+      await db.execute(sql`INSERT INTO follows (follower_id, following_id) VALUES (${ids.reader}::uuid, ${person}::uuid), (${ids.reader}::uuid, ${hidden}::uuid)`);
+      await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${hidden}::uuid, ${ids.reader}::uuid)`);
+      const markup = renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) }));
+      const rail = markup.split('aria-labelledby="following-accounts-title"')[1].split('</section>')[0];
+      expect(rail).toContain('Rail Person');
+      expect(rail).toContain('/u/rail' + person.replaceAll('-', ''));
+      expect(rail).toContain('/dashboard/following');
+      expect(rail).not.toContain('Rail Hidden');
+      expect(markup.indexOf('following-accounts-title')).toBeLessThan(markup.indexOf('recent-resources-title'));
+      await db.execute(sql`DELETE FROM follows WHERE follower_id = ${ids.reader}::uuid AND following_id = ${person}::uuid`);
+      const empty = renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) }));
+      const emptyRail = empty.split('aria-labelledby="following-accounts-title"')[1].split('</section>')[0];
+      expect(emptyRail).toContain('not following anyone yet');
+      expect(emptyRail).not.toContain('Rail Person');
+      await db.execute(sql`DELETE FROM user_blocks WHERE blocker_id = ${hidden}::uuid AND blocked_id = ${ids.reader}::uuid`);
+      await db.execute(sql`UPDATE users SET status = 'suspended' WHERE id = ${hidden}::uuid`);
+      const inactive = renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) }));
+      expect(inactive.split('aria-labelledby="following-accounts-title"')[1].split('</section>')[0]).not.toContain('Rail Hidden');
+    } finally {
+      for (const id of [person, hidden]) await db.execute(sql`DELETE FROM auth_users WHERE id = ${id}::uuid`);
+    }
+  });
   it("reposts idempotently, attributes the event, and allows undo", async () => {
     as(ids.reader);
     await Promise.all(Array.from({ length: 4 }, () => actions.setRepost(form({ postId, repost: "true" }))));

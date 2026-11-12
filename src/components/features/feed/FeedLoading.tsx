@@ -31,6 +31,7 @@ export function FeedLoading() {
       </div>
       <div className={styles.right}>
         <div className={`${loading.block} ${loading.search}`} />
+        <div className={loading.resourceCard}><span className={`${loading.block} ${loading.name}`} /><div className={loading.following}>{[1, 2, 3].map(item => <div className={loading.person} key={item}><span className={`${loading.block} ${loading.followAvatar}`} /><div className={loading.personText}><span className={`${loading.block} ${loading.resourceTitle}`} /><span className={`${loading.block} ${loading.meta}`} /></div></div>)}</div></div>
         <div className={loading.resourceCard}><span className={`${loading.block} ${loading.name}`} /><div className={loading.resources}>{[1, 2, 3, 4].map(item => <div className={loading.person} key={item}><span className={`${loading.block} ${loading.resourceIcon}`} /><div className={loading.personText}><span className={`${loading.block} ${loading.resourceTitle}`} /><span className={`${loading.block} ${loading.meta}`} /></div></div>)}</div></div>
       </div>
     </div>

@@ -29,8 +29,9 @@ describe("feed stream", () => {
     expect(await screen.findByText(/Couldn’t load posts/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Try again" })).toBeInTheDocument();
     expect(screen.getByText("Post one")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Resume automatic loading" })).toBeInTheDocument());
-  });  it("automatically fetches when the sentinel intersects and can be paused", async () => {
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn’t load posts");
+  });
+  it("automatically fetches when the sentinel intersects and can be paused", async () => {
     let callback: IntersectionObserverCallback | undefined;
     class Observer {
       constructor(cb: IntersectionObserverCallback) { callback = cb; }
@@ -59,6 +60,16 @@ describe("feed stream", () => {
     expect(screen.getByText("Post two")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Unlike post by Ada" })).toBeInTheDocument();
     expect(fetchMock.mock.calls[1][0]).toContain("events=");
+  });
+  it("shows an accessible loading announcement and decorative post skeletons while fetching", async () => {
+    let complete!: (value: { ok: boolean; json: () => Promise<{ items: FeedItem[]; hasMore: boolean }> }) => void;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(resolve => { complete = resolve; })));
+    const { container } = render(<FeedStream initial={{ items: [item("one")], hasMore: true }} view="latest" userId="reader" now="2026-01-02T00:00:00.000Z" />);
+    fireEvent.click(screen.getByRole("link", { name: "Load more" }));
+    expect(screen.getByText("Loading posts…")).toHaveAttribute("role", "status");
+    expect(container.querySelector("[data-feed-skeleton]")).toHaveAttribute("aria-hidden", "true");
+    await act(async () => complete({ ok: true, json: async () => ({ items: [item("two")], hasMore: false }) }));
+    expect(container.querySelector("[data-feed-skeleton]")).not.toBeInTheDocument();
   });
 
 });

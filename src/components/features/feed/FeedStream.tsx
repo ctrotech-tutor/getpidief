@@ -6,6 +6,7 @@ import { Heart, ChatCircle, Repeat } from "@phosphor-icons/react";
 import type { FeedItem, FeedView } from "@/lib/feed/read";
 import { formatPostTime } from "@/lib/feed/post-time";
 import { deletePost, toggleLike } from "@/app/(app)/home/actions";
+import { PostSkeleton } from "./PostSkeleton";
 import { ClickablePost } from "./ClickablePost";
 import { FeedProfileAvatar } from "./FeedProfileAvatar";
 import { PostOptions } from "./PostOptions";
@@ -41,17 +42,16 @@ export function FeedStream({ initial, userId, view, now }: { initial: Page; user
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [automatic, setAutomatic] = useState(true);
-  const [autoPaused, setAutoPaused] = useState(false);
+  const [supportsAuto, setSupportsAuto] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const initialRef = useRef(initial);
   const extraRef = useRef(extra);
   const pendingRefresh = useRef<FeedItem[]>([]);
-  extraRef.current = extra;
+  useEffect(() => { extraRef.current = extra; }, [extra]);
   const focusAfterLoad = useRef<string | null>(null);
   const sentinel = useRef<HTMLDivElement>(null);
   const inflight = useRef(false);
   const abort = useRef<AbortController | null>(null);
-  const autoCount = useRef(0);
   const items = [...initial.items, ...extra.filter(item => !initial.items.some(x => x.eventId === item.eventId && x.eventKind === item.eventKind))];
   const last = tail;
   const atCapacity = extra.length >= 100;
@@ -60,7 +60,7 @@ export function FeedStream({ initial, userId, view, now }: { initial: Page; user
     const oldInitial = initialRef.current;
     initialRef.current = initial;
     abort.current?.abort(); inflight.current = false;
-    setLoading(false); setError(""); setAnnouncement(""); autoCount.current = 0; setAutoPaused(false);
+    setLoading(false); setError(""); setAnnouncement("");
     const currentKeys = new Set(initial.items.map(item => `${item.eventKind}:${item.eventId}`));
     const previousByKey = new Map<string, FeedItem>();
     for (const item of [...oldInitial.items, ...pendingRefresh.current, ...extraRef.current]) {
@@ -99,11 +99,10 @@ export function FeedStream({ initial, userId, view, now }: { initial: Page; user
     document.getElementById(focusAfterLoad.current)?.focus();
     focusAfterLoad.current = null;
   }, [extra]);
-  useEffect(() => { const network = navigator as Navigator & { connection?: { saveData?: boolean } }; if (network.connection?.saveData) setAutomatic(false); return () => abort.current?.abort(); }, []);
+  useEffect(() => { const network = navigator as Navigator & { connection?: { saveData?: boolean } }; setSupportsAuto("IntersectionObserver" in window); if (network.connection?.saveData) setAutomatic(false); return () => abort.current?.abort(); }, []);
   const load = useCallback(async (isAuto = false) => {
     if (!last || !hasMore || inflight.current) return;
     inflight.current = true; setLoading(true); setError("");
-    if (isAuto && ++autoCount.current >= 3) setAutoPaused(true);
     const controller = new AbortController(); abort.current = controller;
     try {
       const response = await fetch(cursorUrl(view, last, "/api/feed"), { cache: "no-store", signal: controller.signal });
@@ -119,16 +118,18 @@ export function FeedStream({ initial, userId, view, now }: { initial: Page; user
     } finally { if (abort.current === controller) { abort.current = null; inflight.current = false; if (!controller.signal.aborted) setLoading(false); } }
   }, [last, hasMore, view, initial.items]);
   useEffect(() => {
-    if (!automatic || autoPaused || atCapacity || refreshing || !hasMore || loading || error || !sentinel.current || !("IntersectionObserver" in window) || autoCount.current >= 3) return;
+    if (!automatic || atCapacity || refreshing || !hasMore || loading || error || !sentinel.current || !("IntersectionObserver" in window)) return;
     const observer = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) void load(true); }, { rootMargin: "400px 0px" });
     observer.observe(sentinel.current); return () => observer.disconnect();
-  }, [automatic, autoPaused, atCapacity, refreshing, hasMore, loading, error, load]);
+  }, [automatic, atCapacity, refreshing, hasMore, loading, error, load]);
   return <>
     <div className={styles.posts}>{items.map(post => <FeedCard key={`${post.eventKind}:${post.eventId}`} post={post} userId={userId} now={now} refreshing={refreshing && extra.some(item => item.eventId === post.eventId && item.eventKind === post.eventKind) && !initial.items.some(item => item.eventId === post.eventId && item.eventKind === post.eventKind)} />)}</div>
+    {loading && <PostSkeleton />}
     <div ref={sentinel} className={styles.feedPagination}>
-      <span role="status" aria-live="polite">{refreshing ? "Refreshing posts…" : loading ? "Loading posts…" : error || announcement}</span>
-      {hasMore && last && <a href={cursorUrl(view, last, "/")} className={styles.more} aria-disabled={loading || refreshing} onClick={event => { if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return; if (atCapacity && !loading && !refreshing) return; event.preventDefault(); if (!loading && !refreshing) { autoCount.current = 0; void load(); } }}>{atCapacity ? "Continue browsing" : error ? "Try again" : "Load more"}</a>}
-      {hasMore && !atCapacity && <button type="button" className={styles.autoToggle} onClick={() => { autoCount.current = 0; if (autoPaused) { setAutoPaused(false); setAutomatic(true); } else setAutomatic(value => !value); }}>{automatic && !autoPaused ? "Pause automatic loading" : "Resume automatic loading"}</button>}
+      <span role="status" aria-live="polite" className={styles.feedAnnouncement}>{refreshing ? "Refreshing posts…" : loading ? "Loading posts…" : announcement}</span>
+      {error && <p role="alert">{error}</p>}
+      {hasMore && last && <a href={cursorUrl(view, last, "/")} className={`${styles.more} ${supportsAuto && automatic && !error && !atCapacity ? styles.feedAssistControl : ""}`} aria-disabled={loading || refreshing} onClick={event => { if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return; if (atCapacity && !loading && !refreshing) return; event.preventDefault(); if (!loading && !refreshing) { void load(); } }}>{atCapacity ? "Continue browsing" : error ? "Try again" : "Load more"}</a>}
+      {hasMore && !atCapacity && supportsAuto && <button type="button" className={`${styles.autoToggle} ${automatic ? styles.feedAssistControl : ""}`} onClick={() => setAutomatic(value => !value)}>{automatic ? "Pause automatic loading" : "Resume automatic loading"}</button>}
       {!hasMore && extra.length > 0 && <p>You’re all caught up.</p>}
     </div>
   </>;

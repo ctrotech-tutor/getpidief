@@ -19,11 +19,11 @@ function cursorUrl(view: FeedView, item: FeedItem, endpoint: string) {
   const params = new URLSearchParams({ view, before: item.eventId, beforeKind: item.eventKind, beforeAt: item.eventAt });
   return `${endpoint}?${params}`;
 }
-export function FeedCard({ post, userId, now, refreshing }: { post: FeedItem; userId: string; now: string; refreshing: boolean }) {
+export function FeedCard({ post, userId, now, refreshing, savedView = false }: { post: FeedItem; userId: string; now: string; refreshing: boolean; savedView?: boolean }) {
   const date = new Date(post.createdAt);
   return <ClickablePost postId={post.id} id={`feed-${post.eventKind}-${post.eventId}`} refreshing={refreshing}>
     {post.eventKind === "repost" && <div className={styles.repostAttribution}><Repeat size={15} aria-hidden="true" /><Link href={`/u/${post.reposterUsername}`}>{post.reposterName}</Link> reposted</div>}
-    <div className={styles.postTop}><FeedProfileAvatar name={post.name} avatarUrl={post.avatarUrl} post /><div className={styles.author}><Link href={`/u/${post.username}`}>{post.name}</Link><time className={styles.postTime} dateTime={date.toISOString()} title={date.toLocaleDateString("en-US", { dateStyle: "long", timeZone: "UTC" })}>{formatPostTime(date, new Date(now))}</time></div><PostOptions postId={post.id} authorId={post.authorId} author={post.name} ownPost={post.authorId === userId} initiallyFollowing={post.following} initiallySaved={post.saved} /></div>
+    <div className={styles.postTop}><FeedProfileAvatar name={post.name} avatarUrl={post.avatarUrl} post /><div className={styles.author}><Link href={`/u/${post.username}`}>{post.name}</Link><time className={styles.postTime} dateTime={date.toISOString()} title={date.toLocaleDateString("en-US", { dateStyle: "long", timeZone: "UTC" })}>{formatPostTime(date, new Date(now))}</time></div><PostOptions postId={post.id} authorId={post.authorId} author={post.name} ownPost={post.authorId === userId} initiallyFollowing={post.following} initiallySaved={post.saved} savedView={savedView} /></div>
     <p className={styles.postBody}><Link href={`/home/post/${post.id}`} className={styles.postBodyLink} aria-label={`Open post by ${post.name}`}>{post.body}</Link></p>
     <div className={styles.actions}><InstantReaction kind="like" postId={post.id} author={post.name} initialActive={post.liked} count={post.likeCount} />
       <Link className={styles.action} href={`/home/post/${post.id}`} aria-label={`Open discussion on post by ${post.name}, ${post.replyCount} replies`}><ChatCircle size={17} aria-hidden="true" />{post.replyCount}</Link>
@@ -123,7 +123,7 @@ export function FeedStream({ initial, userId, view, now }: { initial: Page; user
     observer.observe(sentinel.current); return () => observer.disconnect();
   }, [automatic, atCapacity, refreshing, hasMore, loading, error, load]);
   return <>
-    <div className={styles.posts}>{items.map(post => <FeedCard key={`${post.eventKind}:${post.eventId}`} post={post} userId={userId} now={now} refreshing={refreshing && extra.some(item => item.eventId === post.eventId && item.eventKind === post.eventKind) && !initial.items.some(item => item.eventId === post.eventId && item.eventKind === post.eventKind)} />)}</div>
+    <div className={styles.posts}>{items.map(post => <FeedCard key={`${post.eventKind}:${post.eventId}`} post={post} userId={userId} now={now} savedView={view === "saved"} refreshing={refreshing && extra.some(item => item.eventId === post.eventId && item.eventKind === post.eventKind) && !initial.items.some(item => item.eventId === post.eventId && item.eventKind === post.eventKind)} />)}</div>
     {loading && <PostSkeleton />}
     <div ref={sentinel} className={styles.feedPagination}>
       <span role="status" aria-live="polite" className={styles.feedAnnouncement}>{refreshing ? "Refreshing posts…" : loading ? "Loading posts…" : announcement}</span>

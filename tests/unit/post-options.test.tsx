@@ -41,6 +41,28 @@ describe("post options", () => {
     expect(form.get("postId")).toBe(base.postId); expect(form.get("active")).toBe("false");
     openMenu(); expect(await screen.findByRole("menuitem", { name: "Remove from saved posts" })).toBeInTheDocument();
   });
+  it("updates save immediately, rolls back failures, and does not refresh the timeline", async () => {
+    let reject!: (reason: Error) => void;
+    mocks.save.mockReturnValueOnce(new Promise((_, fail) => { reject = fail; }));
+    render(<PostOptions {...base} />); openMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Save post" }));
+    openMenu(); expect(await screen.findByRole("menuitem", { name: "Remove from saved posts" })).toHaveAttribute("data-disabled");
+    await act(async () => reject(new Error("offline")));
+    expect(screen.getByRole("status", { hidden: true })).toHaveTextContent("Could not update saved post");
+    expect(screen.getByRole("menuitem", { name: "Save post" })).toBeInTheDocument();
+    expect(mocks.refresh).not.toHaveBeenCalled();
+  });
+  it("shows follow immediately and restores it if the request fails", async () => {
+    let resolve!: (response: { ok: boolean }) => void;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(r => { resolve = r; })));
+    render(<PostOptions {...base} />);
+    fireEvent.click(screen.getByRole("button", { name: "Follow Ada" }));
+    expect(screen.queryByRole("button", { name: "Follow Ada" })).not.toBeInTheDocument();
+    openMenu(); expect(await screen.findByRole("menuitem", { name: "Unfollow" })).toHaveAttribute("data-disabled");
+    await act(async () => resolve({ ok: false }));
+    expect(screen.getByRole("menuitem", { name: "Follow" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { hidden: true })).toHaveTextContent("Could not update follow");
+  });
   it("clears successful copy feedback after a short delay", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });

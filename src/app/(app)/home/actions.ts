@@ -75,8 +75,6 @@ export async function toggleSave(form: FormData) {
     if (form.get("active") === "true") await tx.delete(postSaves).where(and(eq(postSaves.postId, id), eq(postSaves.userId, userId)));
     else await tx.insert(postSaves).values({ postId: id, userId }).onConflictDoNothing();
   });
-  revalidatePath("/");
-  revalidatePath("/home");
 }
 export async function deletePost(form: FormData) {
   const userId = await currentUser(); const id = await postId(form, userId);

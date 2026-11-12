@@ -119,6 +119,33 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
       if (created.length) await db.execute(sql`DELETE FROM posts WHERE id IN (${sql.join(created.map(id => sql`${id}::uuid`), sql`, `)})`);
     }
   });
+  it("filters ineligible recent events before limiting each stream and keeps precise Following cursors", async () => {
+    const { readFeed } = await import("@/lib/feed/read");
+    const good: string[] = Array.from({ length: 25 }, () => randomUUID());
+    const blocked: string[] = Array.from({ length: 30 }, () => randomUUID());
+    try {
+      await db.execute(sql`INSERT INTO follows (follower_id, following_id) VALUES (${ids.reader}::uuid, ${ids.author}::uuid), (${ids.reader}::uuid, ${ids.moderator}::uuid) ON CONFLICT DO NOTHING`);
+      await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${ids.reader}::uuid, ${ids.author}::uuid)`);
+      for (const id of blocked) await db.execute(sql`INSERT INTO posts (id, author_id, kind, body, created_at) VALUES (${id}::uuid, ${ids.author}::uuid, 'thought', 'Hidden top event', '2099-01-01'::timestamptz)`);
+      for (const id of good) await db.execute(sql`INSERT INTO posts (id, author_id, kind, body, created_at) VALUES (${id}::uuid, ${ids.moderator}::uuid, 'thought', 'Eligible event', '2098-01-01'::timestamptz)`);
+      // A followed reposter does not make a blocked original visible, nor does
+      // an allowed original make a blocked reposter visible.
+      await db.execute(sql`INSERT INTO post_reposts (post_id, user_id, created_at) VALUES (${blocked[0]}::uuid, ${ids.moderator}::uuid, '2099-01-02'::timestamptz), (${good[0]}::uuid, ${ids.author}::uuid, '2099-01-02'::timestamptz)`);
+      const first = await readFeed(ids.reader, "following");
+      expect(first.items).toHaveLength(20); expect(first.hasMore).toBe(true);
+      expect(first.items.every(item => good.includes(item.id) && item.eventKind === "post")).toBe(true);
+      const cursor = first.items.at(-1)!;
+      const second = await readFeed(ids.reader, "following", cursor.eventId, cursor.eventKind, cursor.eventAt);
+      const returned = [...first.items, ...second.items].filter(item => good.includes(item.id));
+      expect(returned).toHaveLength(25); expect(new Set(returned.map(item => item.id)).size).toBe(25);
+      const refresh = await readFeed(ids.reader, "following", undefined, undefined, undefined, [{ kind: "post", id: blocked[0] }, { kind: "post", id: good[0] }]);
+      expect(refresh.items.map(item => item.id)).toEqual([good[0]]);
+    } finally {
+      await db.execute(sql`DELETE FROM user_blocks WHERE blocker_id = ${ids.reader}::uuid AND blocked_id = ${ids.author}::uuid`);
+      await db.execute(sql`DELETE FROM follows WHERE follower_id = ${ids.reader}::uuid AND following_id IN (${ids.author}::uuid, ${ids.moderator}::uuid)`);
+      await db.execute(sql`DELETE FROM posts WHERE id IN (${sql.join([...good, ...blocked].map(id => sql`${id}::uuid`), sql`, `)})`);
+    }
+  });
   it("rechecks loaded events against current interactions and visibility", async () => {
     const { readFeed } = await import("@/lib/feed/read");
     const otherPost = randomUUID();

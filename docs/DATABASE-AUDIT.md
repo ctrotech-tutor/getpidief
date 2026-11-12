@@ -38,3 +38,27 @@ The feed PostgreSQL integration suite covers mixed post/repost timestamps, old a
 2. Benchmark suggestions, search, notification list/count, session checks and common resource queries using realistic volume and selectivity. Record query counts per request and execution plans, avoiding sensitive parameters.
 3. Compare candidate changes against identical datasets and correctness tests. For any indexes, check storage/write costs and deploy with a reviewed lock-aware migration and rollback; production `CREATE INDEX` can block writes. Do not assume local results transfer to Supabase.
 4. Review production metrics and configuration with appropriate authorization; test backups by restoring into an isolated environment. No hosted writes are required for this first pass.
+
+## Second pass: bounded timeline branches
+
+The chronological query now retrieves at most 21 eligible, cursor-matching events **from each** of the original and repost streams before merging. All author/reposter status, block, follow/save and cursor conditions apply inside each branch before its limit; the existing outer checks remain. For fixed event kinds, the branch ordering by timestamp and ID is equivalent to the global `(timestamp, kind, id)` ordering, so no event in a branch below its first 21 eligible items can be in the global first 21. Specific-ID revalidation retains the separate unbounded-by-branch path. An empty-follow existence check avoids scanning the event tables when nobody is followed. No index or migration was added.
+
+In a second local PostgreSQL 18.6 experiment using `scripts/bench/feed-database.ts`, with warm cache and ten serial application-level samples, approximate lower medians before/after (not a production benchmark) were:
+
+| Scenario | Before | After |
+| --- | ---: | ---: |
+| Following, 100 followed accounts, including blocked/inactive authors | 83.27 ms | 4.92 ms |
+| Following, one account | 49.41 ms | 9.97 ms |
+| Following, no accounts | 15.46 ms | 3.98 ms |
+| Following, deep cursor | 58.33 ms | 4.55 ms |
+| Latest, first page | 31.08 ms | 5.59 ms |
+| Saved, first page | 26.36 ms | 5.94 ms |
+| For-you 20-ID delivery (unchanged path) | 4.94 ms | 4.82 ms |
+
+Ten runs are insufficient to estimate reliable tail latency; the script's sample maximum is not a production p95. Its deterministic data has 1,000 accounts, 100k posts, 30k reposts, 100k replies and likes, 5k saves, a few blocks and inactive accounts. It does not model popular-post skew, high concurrency, realistic request rates, network latency, vacuum/dead tuples, cold disk, or Supabase. The people suggestion query measured ~2.19 ms lower median on that small dataset with no interests; it must not be extrapolated to a large or interest-rich user base. The original and revised feed results were compared on the same fixture for three viewers, all three views, first pages, precise and ID-only post/repost cursors; they matched. Dedicated integration coverage also exercises blocked originals/reposters above the branch limits and pagination ties.
+
+### Reproducing locally
+
+Use a **new, isolated, empty** local PostgreSQL database whose name ends in `_test`. Migrate that disposable database using the normal local process. Then, with `TEST_DATABASE_URL` set to its local URL, explicitly set `BENCH_WRITE=yes` and run `npx tsx scripts/bench/feed-database.ts --seed`. The seed is synthetic and deliberately refuses non-local targets, database names not ending `_test`, missing write confirmation, or occupied public tables; do not run it in a shared database. Run `npx tsx scripts/bench/feed-database.ts` with the same `TEST_DATABASE_URL` to measure reads. It uses warm-up runs, ten serial samples and `EXPLAIN (ANALYZE, BUFFERS)`; it does not report credentials or query parameters. The script checks hostname/name but cannot prove that a local database is disposable; the operator must verify the target. Stop and remove the test database afterward.
+
+Still open: skewed/multi-million-row datasets, actual query-count and tail-latency profiling, contention, suggestions with many interests, search, notifications, pooled connection pressure and production configuration. Neither the speedup nor the current indexing strategy has been validated under production traffic. No production schema, settings or data were changed.

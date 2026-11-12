@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpen, BookmarkSimple as Bookmark, Compass, Heart, House as HomeIcon, ChatCircle as MessageCircle, MagnifyingGlass as Search, BookOpenText as Sparkles, Bell, GearSix, UploadSimple, ArrowUpRight, FileText } from "@phosphor-icons/react/ssr";
+import { BookOpen, BookmarkSimple as Bookmark, Compass, Heart, House as HomeIcon, ChatCircle as MessageCircle, MagnifyingGlass as Search, BookOpenText as Sparkles, Bell, GearSix, SquaresFour, UploadSimple, ArrowUpRight, FileText } from "@phosphor-icons/react/ssr";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
 import { users, posts, documents, categories } from "@/lib/db/schema";
@@ -58,6 +58,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
         <Link className={styles.sideLink} href="/explore"><Compass size={24} aria-hidden="true" /> Explore</Link>
         <Link className={styles.sideLink} href="/notifications"><Bell size={24} aria-hidden="true" /> Notifications</Link>
         <Link className={styles.sideLink} href="/dashboard/library"><BookOpen size={24} aria-hidden="true" /> Library</Link>
+        <Link className={styles.sideLink} href="/dashboard"><SquaresFour size={24} aria-hidden="true" /> Dashboard</Link>
         {profile?.username && <Link className={styles.sideLink} href={`/u/${profile.username}`}><FeedProfileAvatar name={profile.name} avatarUrl={profile.avatarUrl} /> Profile</Link>}
       </nav>
       <Link className={styles.uploadCta} href="/dashboard/uploads/new"><UploadSimple size={19} aria-hidden="true" /> Upload a resource</Link>

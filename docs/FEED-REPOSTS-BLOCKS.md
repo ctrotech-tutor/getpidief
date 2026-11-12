@@ -1,6 +1,6 @@
 # Reposts and blocking: implementation groundwork
 
-**Status: reposts implemented for local testing; blocking is database groundwork only.** The migration is additive, but should be reviewed with the complete feature before being applied to a shared or production database. No production migration or seed is part of this work.
+**Status: reposts implemented for local testing; blocking is partially implemented but not exposed or complete.** The migration is additive, but should be reviewed with the complete feature before being applied to a shared or production database. No production migration or seed is part of this work.
 
 ## Reposts
 
@@ -12,12 +12,12 @@ Remaining work: apply eventual blocking rules to originals, actors, counts and w
 
 ## Blocking
 
-`user_blocks` is a directional relationship: `blocker_id` created the block against `blocked_id`. A database constraint rejects self-blocks; duplicate pairs are unique; deleting either account cascades. **This table does not enforce blocking anywhere.**
+`user_blocks` is a directional relationship: `blocker_id` created the block against `blocked_id`. A database constraint rejects self-blocks; duplicate pairs are unique; deleting either account cascades. An internal repository can insert/remove blocks and atomically removes mutual follows; new follows check both directions under matching account locks. Feed event reads, reply previews/counts, direct discussion reads and initial feed-action target validation now filter blocked pairs. No Block or Unblock control or authenticated API is exposed yet.
 
 Before exposing the action, design and implement:
 
-- A clear confirmation and a reachable list of blocked accounts with unblock. Decide what happens to existing follows in both directions, counters and notifications; enforce it atomically, including concurrent follow requests.
-- Server-side checks for both directions across feed posts, reposts, replies, direct post links, profiles, follow endpoints and other relevant interactions. Apply visibility checks before pagination and counts so blocked activity does not leak through previews or counts.
+- Add authorized, rate-limited actions, a clear confirmation and a reachable list of blocked accounts with unblock. The internal block operation removes follows in both directions and adjusts counts; unblock does not restore follows. Existing notifications still need a policy.
+- Finish server-side checks across profiles, APIs, search and other interactions. Feed queries and follow creation have initial checks, but are not a complete safety boundary; review write-time races between post actions and a new block, and replies/report targets. Filtering is applied before feed pagination and visible reply/repost counts.
 - Explicit treatment of resources, search, notifications and public/unauthenticated pages. The app currently has public content and some public file URLs: do **not** imply that a block makes such content private or prevents a logged-out visitor from accessing it.
 - Audit existing direct write endpoints, author/account status and stale sessions; define reporting/moderation exceptions. Prevent bypass through APIs or a client-supplied ID, and test race conditions.
 - Accessible confirmations, errors, repeat actions, unblock, and browser tests. Never silently claim a block succeeded if only one view has been filtered.
@@ -30,4 +30,4 @@ Against an **isolated, local, disposable** PostgreSQL database whose name ends i
 TEST_DATABASE_URL=... TEST_DATABASE_WRITE=yes npx vitest --run tests/integration/postgres-feed-foundations.test.ts
 ```
 
-The guard in this test checks for a local hostname and database name suffix, but cannot detect a local tunnel to a remote database. The test creates and removes its own fixtures. Passing it verifies constraints only, not the finished product or security behavior.
+Also run `tests/integration/postgres-block-repository.test.ts` and `tests/integration/postgres-feed.test.ts` with the same guarded environment. The guard in this test checks for a local hostname and database name suffix, but cannot detect a local tunnel to a remote database. The test creates and removes its own fixtures. Passing it verifies constraints only, not the finished product or security behavior.

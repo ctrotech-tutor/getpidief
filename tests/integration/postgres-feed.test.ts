@@ -51,6 +51,20 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
     expect(await home({ searchParams: Promise.resolve({}) })).toBeTruthy();
     expect(await discussion({ params: Promise.resolve({ id: postId }), searchParams: Promise.resolve({}) })).toBeTruthy();
   });
+  it("filters blocked post authors in both directions and rejects direct post access and interactions", async () => {
+    await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${ids.reader}::uuid, ${ids.author}::uuid)`);
+    for (const [viewer, target] of [[ids.reader, ids.author], [ids.author, ids.reader]]) {
+      as(viewer);
+      const targetPost = target === ids.author ? postId : randomUUID();
+      if (target === ids.reader) await db.execute(sql`INSERT INTO posts (id, author_id, kind, body) VALUES (${targetPost}::uuid, ${ids.reader}::uuid, 'thought', 'Blocked reader content')`);
+      const markup = renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) }));
+      expect(markup).not.toContain(target === ids.author ? "What is a useful way to learn?" : "Blocked reader content");
+      await expect(discussion({ params: Promise.resolve({ id: targetPost }), searchParams: Promise.resolve({}) })).rejects.toThrow("NOT_FOUND");
+      await expect(actions.toggleLike(form({ postId: targetPost, active: "false" }))).rejects.toThrow("Post unavailable");
+      if (target === ids.reader) await db.execute(sql`DELETE FROM posts WHERE id = ${targetPost}::uuid`);
+    }
+    await db.execute(sql`DELETE FROM user_blocks WHERE blocker_id = ${ids.reader}::uuid AND blocked_id = ${ids.author}::uuid`);
+  });
   it("paginates posts that share a timestamp without losing or duplicating rows", async () => {
     for (let i = 0; i < 24; i++) await db.execute(sql`INSERT INTO posts (author_id, kind, body, created_at) VALUES (${ids.author}::uuid, 'thought', ${`Cursor fixture ${i}`}, '2026-01-01 00:00:00.123456+00'::timestamptz)`);
     as(ids.reader);

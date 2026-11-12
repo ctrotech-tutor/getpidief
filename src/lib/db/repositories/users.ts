@@ -228,28 +228,33 @@ export const usersRepository = {
 
   async follow(followerId: string, followingId: string): Promise<{ changed: boolean }> {
     if (followerId === followingId) throw new Error("INVALID_FOLLOW");
-    const result = await db.execute<{ eligible: boolean; changed: boolean }>(sql`
-      WITH locked AS MATERIALIZED (
+    // Pair locks are acquired in the same order as blocking. Check blocks in a
+    // separate statement after the locks: a pre-lock statement snapshot can be stale.
+    const outcome = await db.transaction(async tx => {
+      const locked = await tx.execute<{ id: string; status: string; deleted_at: string | null }>(sql`
         SELECT id, status, deleted_at FROM users
         WHERE id IN (${followerId}::uuid, ${followingId}::uuid) ORDER BY id FOR UPDATE
-      ), eligible AS MATERIALIZED (
-        SELECT id FROM locked WHERE status = 'active' AND deleted_at IS NULL
-      ), inserted AS (
-        INSERT INTO follows (follower_id, following_id)
-        SELECT ${followerId}, ${followingId}
-        WHERE (SELECT count(*) FROM eligible) = 2
-        ON CONFLICT (follower_id, following_id) DO NOTHING RETURNING id
-      ), updated AS (
-        UPDATE users SET
-          following_count = following_count + CASE WHEN id = ${followerId}::uuid THEN 1 ELSE 0 END,
-          follower_count = follower_count + CASE WHEN id = ${followingId}::uuid THEN 1 ELSE 0 END
-        WHERE id IN (SELECT id FROM locked) AND EXISTS (SELECT 1 FROM inserted) RETURNING id
-      )
-      SELECT (SELECT count(*) FROM eligible) = 2 AS eligible,
-             EXISTS(SELECT 1 FROM updated) AS changed
-    `);
-    const outcome = result.rows[0];
-    if (!outcome?.eligible) throw new Error("NOT_FOUND");
+      `);
+      if (locked.rows.length !== 2 || locked.rows.some(u => u.status !== "active" || u.deleted_at !== null)) throw new Error("NOT_FOUND");
+      const blocked = await tx.execute<{ blocked: boolean }>(sql`
+        SELECT EXISTS (SELECT 1 FROM user_blocks WHERE
+          (blocker_id = ${followerId}::uuid AND blocked_id = ${followingId}::uuid) OR
+          (blocker_id = ${followingId}::uuid AND blocked_id = ${followerId}::uuid)) AS blocked
+      `);
+      if (blocked.rows[0]?.blocked) throw new Error("NOT_FOUND");
+      const inserted = await tx.execute<{ changed: boolean }>(sql`
+        WITH inserted AS (
+          INSERT INTO follows (follower_id, following_id) VALUES (${followerId}::uuid, ${followingId}::uuid)
+          ON CONFLICT (follower_id, following_id) DO NOTHING RETURNING id
+        ), updated AS (
+          UPDATE users SET
+            following_count = following_count + CASE WHEN id = ${followerId}::uuid THEN 1 ELSE 0 END,
+            follower_count = follower_count + CASE WHEN id = ${followingId}::uuid THEN 1 ELSE 0 END
+          WHERE id IN (${followerId}::uuid, ${followingId}::uuid) AND EXISTS (SELECT 1 FROM inserted) RETURNING id
+        ) SELECT EXISTS(SELECT 1 FROM updated) AS changed
+      `);
+      return { changed: inserted.rows[0]?.changed === true };
+    });
     if (outcome.changed) await invalidateCache(KEYS.followerCount(followingId), KEYS.userFollowingList(followerId)).catch(() => {});
     return { changed: outcome.changed };
   },

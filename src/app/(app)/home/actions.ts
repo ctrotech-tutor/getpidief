@@ -2,7 +2,7 @@
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
 import { users, posts, postReplies, postLikes, postSaves, postReposts, feedReports } from "@/lib/db/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { rateLimiters, redisRateLimit } from "@/lib/redis/client";
@@ -30,10 +30,10 @@ function body(form: FormData, limit: number) {
   if (typeof value !== "string" || !value.trim() || value.trim().length > limit) throw new Error(`Please enter between 1 and ${limit} characters.`);
   return value.trim();
 }
-async function postId(form: FormData) {
+async function postId(form: FormData, viewerId: string) {
   const id = form.get("postId");
   if (typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new Error("Invalid post.");
-  const [post] = await db.select({ id: posts.id }).from(posts).innerJoin(users, eq(posts.authorId, users.id)).where(and(eq(posts.id, id), isNull(posts.deletedAt), eq(users.status, "active"), isNull(users.deletedAt))).limit(1);
+  const [post] = await db.select({ id: posts.id }).from(posts).innerJoin(users, eq(posts.authorId, users.id)).where(and(eq(posts.id, id), isNull(posts.deletedAt), eq(users.status, "active"), isNull(users.deletedAt), sql`not exists (select 1 from user_blocks b where (b.blocker_id = ${viewerId}::uuid and b.blocked_id = ${users.id}) or (b.blocked_id = ${viewerId}::uuid and b.blocker_id = ${users.id}))`)).limit(1);
   if (!post) throw new Error("Post unavailable.");
   return id;
 }
@@ -50,7 +50,7 @@ export async function createPost(form: FormData) {
 export async function reply(form: FormData) {
   const userId = await currentUser();
   const text = body(form, 1000);
-  const id = await postId(form);
+  const id = await postId(form, userId);
   await limit(userId, "comment");
   await db.transaction(async tx => {
     const [post] = await tx.select({ id: posts.id }).from(posts).where(and(eq(posts.id, id), isNull(posts.deletedAt))).for("update");
@@ -62,21 +62,21 @@ export async function reply(form: FormData) {
   revalidatePath(`/home/post/${id}`);
 }
 export async function toggleLike(form: FormData) {
-  const userId = await currentUser(); const id = await postId(form);
+  const userId = await currentUser(); const id = await postId(form, userId);
   if (form.get("active") === "true") await db.delete(postLikes).where(and(eq(postLikes.postId, id), eq(postLikes.userId, userId)));
   else await db.insert(postLikes).values({ postId: id, userId }).onConflictDoNothing();
   revalidatePath("/");
   revalidatePath("/home");
 }
 export async function toggleSave(form: FormData) {
-  const userId = await currentUser(); const id = await postId(form);
+  const userId = await currentUser(); const id = await postId(form, userId);
   if (form.get("active") === "true") await db.delete(postSaves).where(and(eq(postSaves.postId, id), eq(postSaves.userId, userId)));
   else await db.insert(postSaves).values({ postId: id, userId }).onConflictDoNothing();
   revalidatePath("/");
   revalidatePath("/home");
 }
 export async function deletePost(form: FormData) {
-  const userId = await currentUser(); const id = await postId(form);
+  const userId = await currentUser(); const id = await postId(form, userId);
   await db.update(posts).set({ deletedAt: new Date() }).where(and(eq(posts.id, id), eq(posts.authorId, userId)));
   revalidatePath("/");
   revalidatePath("/home");
@@ -86,7 +86,7 @@ export async function reportFeedContent(form: FormData) {
   const userId = await currentUser();
   const reason = form.get("reason");
   if (typeof reason !== "string" || !["spam", "harassment", "misinformation", "other"].includes(reason)) throw new Error("Choose a report reason.");
-  const id = await postId(form);
+  const id = await postId(form, userId);
   const replyId = form.get("replyId");
   if (replyId !== null && (typeof replyId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(replyId))) throw new Error("Invalid reply.");
   await limit(userId, "report");
@@ -108,7 +108,7 @@ export async function reportFeedContent(form: FormData) {
 
 export async function deleteReply(form: FormData) {
   const userId = await currentUser();
-  const id = await postId(form);
+  const id = await postId(form, userId);
   const replyId = form.get("replyId");
   if (typeof replyId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(replyId)) throw new Error("Invalid reply.");
   await db.update(postReplies).set({ deletedAt: new Date() }).where(and(eq(postReplies.id, replyId), eq(postReplies.postId, id), eq(postReplies.authorId, userId), isNull(postReplies.deletedAt)));
@@ -118,7 +118,7 @@ export async function deleteReply(form: FormData) {
 /** Idempotent desired-state repost; post lock serializes against soft deletion. */
 export async function setRepost(form: FormData) {
   const userId = await currentUser();
-  const id = await postId(form);
+  const id = await postId(form, userId);
   const desired = form.get("repost");
   if (desired !== "true" && desired !== "false") throw new Error("Invalid repost request.");
   if (desired === "true") await limit(userId, "feedPost");

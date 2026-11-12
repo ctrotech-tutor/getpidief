@@ -52,14 +52,15 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
       EXISTS (SELECT 1 FROM post_likes l WHERE l.post_id = p.id AND l.user_id = ${userId}::uuid) AS liked,
       EXISTS (SELECT 1 FROM post_saves s WHERE s.post_id = p.id AND s.user_id = ${userId}::uuid) AS saved,
       EXISTS (SELECT 1 FROM follows f WHERE f.follower_id = ${userId}::uuid AND f.following_id = p.author_id) AS following,
-      (SELECT count(*)::int FROM post_replies r JOIN users ru ON ru.id = r.author_id WHERE r.post_id = p.id AND r.deleted_at IS NULL AND ru.status = 'active' AND ru.deleted_at IS NULL) AS "replyCount",
+      (SELECT count(*)::int FROM post_replies r JOIN users ru ON ru.id = r.author_id WHERE r.post_id = p.id AND r.deleted_at IS NULL AND ru.status = 'active' AND ru.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE (b.blocker_id = ${userId}::uuid AND b.blocked_id = ru.id) OR (b.blocked_id = ${userId}::uuid AND b.blocker_id = ru.id))) AS "replyCount",
       EXISTS (SELECT 1 FROM post_reposts r WHERE r.post_id = p.id AND r.user_id = ${userId}::uuid) AS reposted,
-      (SELECT count(*)::int FROM post_reposts r JOIN users x ON x.id = r.user_id WHERE r.post_id = p.id AND x.status = 'active' AND x.deleted_at IS NULL) AS "repostCount",
+      (SELECT count(*)::int FROM post_reposts r JOIN users x ON x.id = r.user_id WHERE r.post_id = p.id AND x.status = 'active' AND x.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE (b.blocker_id = ${userId}::uuid AND b.blocked_id = x.id) OR (b.blocked_id = ${userId}::uuid AND b.blocker_id = x.id))) AS "repostCount",
       CASE WHEN e.event_kind = 'repost' THEN actor.display_name END AS "reposterName",
       CASE WHEN e.event_kind = 'repost' THEN actor.username END AS "reposterUsername"
     FROM feed_events e JOIN posts p ON p.id = e.post_id
     JOIN users u ON u.id = p.author_id JOIN users actor ON actor.id = e.actor_id
     WHERE p.deleted_at IS NULL AND u.status = 'active' AND u.deleted_at IS NULL AND actor.status = 'active' AND actor.deleted_at IS NULL
+      AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE (b.blocker_id = ${userId}::uuid AND b.blocked_id IN (u.id, actor.id)) OR (b.blocked_id = ${userId}::uuid AND b.blocker_id IN (u.id, actor.id)))
       AND (${view !== "saved"} OR EXISTS (SELECT 1 FROM post_saves s WHERE s.post_id = p.id AND s.user_id = ${userId}::uuid))
       AND (${view !== "following"} OR EXISTS (SELECT 1 FROM follows f WHERE f.follower_id = ${userId}::uuid AND f.following_id = e.actor_id))
       AND (${before === undefined} OR (e.event_at, e.event_kind, e.event_id) < (SELECT event_at, event_kind, event_id FROM cursor_event))
@@ -74,6 +75,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
       select r.id, r.body, u.display_name as name, u.username, r.created_at
       from post_replies r join users u on u.id = r.author_id
       where r.post_id = p.id and r.deleted_at is null and u.status = 'active' and u.deleted_at is null
+        and not exists (select 1 from user_blocks b where (b.blocker_id = ${userId}::uuid and b.blocked_id = u.id) or (b.blocked_id = ${userId}::uuid and b.blocker_id = u.id))
       order by r.created_at desc, r.id desc limit 2
     ) r where p.id in (${sql.join(ids.map(id => sql`${id}::uuid`), sql`, `)})
     order by p.id, r.created_at, r.id

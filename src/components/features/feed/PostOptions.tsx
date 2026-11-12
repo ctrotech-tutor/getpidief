@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { DotsThree } from "@phosphor-icons/react";
+import { BookmarkSimple, DotsThree, Flag, LinkSimple, UserMinus, UserPlus } from "@phosphor-icons/react";
 import { toggleSave } from "@/app/(app)/home/actions";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import styles from "./feed.module.css";
@@ -52,10 +52,10 @@ export function PostOptions({ postId, authorId, author, ownPost, initiallyFollow
     <DropdownMenu>
       <DropdownMenuTrigger asChild><button type="button" className={styles.postMenuTrigger} aria-label={`More options for post by ${author}`}><DotsThree size={24} weight="bold" aria-hidden="true" /></button></DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={6} className={styles.postMenu}>
-        <DropdownMenuItem className={styles.menuItem} onSelect={() => void copyLink()}>Copy link</DropdownMenuItem>
-        {!ownPost && <DropdownMenuItem className={styles.menuItem} disabled={pending} onSelect={() => void updateFollow()}>{following ? "Unfollow" : "Follow"} {author}</DropdownMenuItem>}
-        <DropdownMenuItem className={styles.menuItem} disabled={pending} onSelect={() => void updateSave()}>{saved ? "Remove from saved posts" : "Save post"}</DropdownMenuItem>
-        {!ownPost && <DropdownMenuItem asChild className={styles.menuItem}><Link href={`/home/post/${postId}#report-post`}>Report post</Link></DropdownMenuItem>}
+        <DropdownMenuItem className={styles.menuItem} onSelect={() => void copyLink()}><LinkSimple aria-hidden="true" />Copy link</DropdownMenuItem>
+        {!ownPost && <DropdownMenuItem className={styles.menuItem} disabled={pending} onSelect={() => void updateFollow()}>{following ? <UserMinus aria-hidden="true" /> : <UserPlus aria-hidden="true" />}{following ? "Unfollow" : "Follow"}</DropdownMenuItem>}
+        <DropdownMenuItem className={styles.menuItem} disabled={pending} onSelect={() => void updateSave()}><BookmarkSimple weight={saved ? "fill" : "regular"} aria-hidden="true" />{saved ? "Remove from saved posts" : "Save post"}</DropdownMenuItem>
+        {!ownPost && <DropdownMenuItem asChild className={styles.menuItem}><Link href={`/home/post/${postId}#report-post`}><Flag aria-hidden="true" />Report post</Link></DropdownMenuItem>}
       </DropdownMenuContent>
     </DropdownMenu>
     <span role="status" className={styles.optionStatus}>{message}</span>

@@ -10,9 +10,12 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.clearAllMocks(
 describe("post options", () => {
   it("offers real actions and a report link while not pretending block or repost exists", async () => {
     render(<PostOptions {...base} />); openMenu();
-    expect(await screen.findByRole("menuitem", { name: "Follow Ada" })).toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: "Follow" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Save post" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Report post" })).toHaveAttribute("href", `/home/post/${base.postId}#report-post`);
+    for (const label of ["Copy link", "Follow", "Save post", "Report post"]) {
+      expect(screen.getByRole("menuitem", { name: label }).querySelector('svg[aria-hidden="true"]')).toBeInTheDocument();
+    }
     expect(screen.queryByRole("menuitem", { name: /block/i })).not.toBeInTheDocument();
   });
   it("follows through the real API and refreshes the feed", async () => {
@@ -21,7 +24,7 @@ describe("post options", () => {
     fireEvent.click(screen.getByRole("button", { name: "Follow Ada" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/follows", expect.objectContaining({ method: "POST", body: JSON.stringify({ followingId: base.authorId }) })));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Follow Ada" })).not.toBeInTheDocument());
-    openMenu(); expect(await screen.findByRole("menuitem", { name: "Unfollow Ada" })).toBeInTheDocument();
+    openMenu(); expect(await screen.findByRole("menuitem", { name: "Unfollow" })).toBeInTheDocument();
     expect(mocks.refresh).toHaveBeenCalled();
   });
   it("reports a failed follow without pretending it succeeded", async () => {

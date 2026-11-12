@@ -86,3 +86,11 @@
 .actions form:first-child .action{margin-left:-8px}
 .replies{margin:12px 0 0 51px}
 @media(max-width:767px){.post{border-radius:0;padding:18px 0 20px}.post:first-child{padding-top:6px}}
+
+.postAvatar{width:40px;height:40px;flex:none;border-radius:14px;overflow:hidden}
+.postAvatar img,.postAvatarFallback{border-radius:14px}
+.postAvatarFallback{background:#dbeae0;color:#285b43;font-size:14px;font-weight:750}
+.shareWrap{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;min-width:0}
+.shareStatus{font-size:11px;color:#286644}
+.shareInput{max-width:100%;width:210px;font-size:12px;color:#315f45;background:#fff;border:1px solid #cbdcca;border-radius:8px;padding:7px}
+.shareInput:focus-visible{outline:2px solid #337353;outline-offset:2px}

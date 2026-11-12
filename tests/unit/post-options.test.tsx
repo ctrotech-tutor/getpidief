@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 const mocks = vi.hoisted(() => ({ refresh: vi.fn(), save: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mocks.refresh }) }));
 vi.mock("@/app/(app)/home/actions", () => ({ toggleSave: mocks.save }));
@@ -40,6 +40,23 @@ describe("post options", () => {
     const form = mocks.save.mock.calls[0][0] as FormData;
     expect(form.get("postId")).toBe(base.postId); expect(form.get("active")).toBe("false");
     openMenu(); expect(await screen.findByRole("menuitem", { name: "Remove from saved posts" })).toBeInTheDocument();
+  });
+  it("clears successful copy feedback after a short delay", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    render(<PostOptions {...base} />); openMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Copy link" }));
+    expect(await screen.findByText("Link copied")).toBeInTheDocument();
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/home/post/${base.postId}`);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 3100)); });
+    expect(screen.queryByText("Link copied")).not.toBeInTheDocument();
+  });
+  it("keeps the manual copy fallback available when clipboard access fails", async () => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn().mockRejectedValue(new Error("denied")) } });
+    render(<PostOptions {...base} />); openMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Copy link" }));
+    expect(await screen.findByLabelText("Post link to copy")).toHaveValue(`${window.location.origin}/home/post/${base.postId}`);
+    expect(screen.getByText("Copy the link below")).toBeInTheDocument();
   });
   it("does not offer follow or report for your own post", async () => {
     render(<PostOptions {...base} ownPost />); openMenu();

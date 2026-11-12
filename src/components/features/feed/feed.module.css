@@ -137,3 +137,5 @@
 
 .discardDialog{display:block;width:calc(100% - 32px);max-width:400px;padding:22px;background:#fff;color:#1b342a;border:1px solid #dce5da;border-radius:16px;box-shadow:0 20px 70px rgba(18,40,25,.2)}
 .discardTitle{font-size:17px;font-weight:750}.discardDescription{margin-top:8px;color:#718579;font-size:14px;line-height:1.5}.discardActions{display:flex;justify-content:flex-end;gap:9px;margin-top:22px}.discardActions .composeCancel,.discardButton{min-height:40px;padding:0 16px;border-radius:10px;font-size:13px;font-weight:700}.discardButton{background:#a83f38;color:#fff}.discardButton:hover{background:#8c302c}.discardButton:focus-visible{outline:2px solid #a83f38;outline-offset:3px}
+
+.clickablePost{cursor:pointer}.postBodyLink{color:inherit;text-decoration:none}.postBodyLink:focus-visible{outline:2px solid #337353;outline-offset:3px;border-radius:3px}

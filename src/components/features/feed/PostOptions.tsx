@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BookmarkSimple, DotsThree, Flag, LinkSimple, UserMinus, UserPlus } from "@phosphor-icons/react";
@@ -16,12 +16,16 @@ export function PostOptions({ postId, authorId, author, ownPost, initiallyFollow
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [manualUrl, setManualUrl] = useState("");
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copiedTimer.current) clearTimeout(copiedTimer.current); }, []);
+  function clearCopiedTimer() { if (copiedTimer.current) clearTimeout(copiedTimer.current); copiedTimer.current = null; }
+
   useEffect(() => setFollowing(initiallyFollowing), [initiallyFollowing]);
   useEffect(() => setSaved(initiallySaved), [initiallySaved]);
 
   async function updateFollow() {
     if (pending) return;
-    setPending(true); setMessage("");
+    clearCopiedTimer(); setPending(true); setMessage("");
     try {
       const response = await fetch("/api/follows", { method: following ? "DELETE" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ followingId: authorId }) });
       if (!response.ok) throw new Error("Follow request failed");
@@ -31,7 +35,7 @@ export function PostOptions({ postId, authorId, author, ownPost, initiallyFollow
   }
   async function updateSave() {
     if (pending) return;
-    setPending(true); setMessage("");
+    clearCopiedTimer(); setPending(true); setMessage("");
     try {
       const form = new FormData(); form.set("postId", postId); form.set("active", String(saved));
       await toggleSave(form); setSaved(!saved); router.refresh();
@@ -41,10 +45,11 @@ export function PostOptions({ postId, authorId, author, ownPost, initiallyFollow
   }
   async function copyLink() {
     const url = new URL(`/home/post/${postId}`, window.location.origin).href;
-    setManualUrl("");
+    clearCopiedTimer(); setMessage(""); setManualUrl("");
     try {
       if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
       await navigator.clipboard.writeText(url); setMessage("Link copied");
+      copiedTimer.current = setTimeout(() => { setMessage(""); copiedTimer.current = null; }, 3000);
     } catch { setManualUrl(url); setMessage("Copy the link below"); }
   }
   return <div className={styles.postOptions}>

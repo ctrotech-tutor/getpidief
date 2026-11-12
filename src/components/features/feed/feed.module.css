@@ -124,7 +124,7 @@
 
 /* Compact feed prompt and focused post editor. */
 .composerSection{margin-bottom:26px}
-.composerPrompt{width:100%;min-height:70px;display:flex;align-items:center;gap:13px;text-align:left;padding:14px 16px;border:1px solid #dce5da;border-radius:13px;background:#fff;color:#7b8d80;font-size:15px;cursor:text}
+.composerPrompt{width:100%;min-height:70px;display:flex;align-items:center;gap:13px;text-align:left;padding:14px 16px;border:1px solid #dce5da;border-radius:13px;background:#fff;color:#7b8d80;font-size:15px;cursor:default}
 .composerPrompt:hover{border-color:#b9cfbd}.composerPrompt:focus-visible{outline:2px solid #337353;outline-offset:3px}
 .composerPrompt .postAvatar,.composeIdentity .postAvatar{border-radius:50%}.composerPrompt .postAvatar img,.composerPrompt .postAvatarFallback,.composeIdentity .postAvatar img,.composeIdentity .postAvatarFallback{border-radius:50%}
 .composerOverlay{background:rgba(16,28,21,.55)}

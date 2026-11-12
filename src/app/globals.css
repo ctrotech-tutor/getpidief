@@ -4,6 +4,13 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Buttons indicate an available action; component styles can override this for special cases. */
+@layer base {
+  :where(button:not(:disabled):not([aria-disabled="true"]), input:is([type="button"], [type="submit"], [type="reset"]):not(:disabled)) { cursor: pointer; }
+  :where(button:disabled, button[aria-disabled="true"], input:is([type="button"], [type="submit"], [type="reset"]):disabled) { cursor: not-allowed; }
+}
+
+
 @theme inline {
   /* Core System Colors */
   --color-background: var(--background);

@@ -14,7 +14,3 @@
 .following{display:grid;gap:14px;margin-top:20px}.followAvatar{width:36px;height:36px;border-radius:50%}
 
 .composerPrompt{margin-bottom:26px;height:70px;display:flex;align-items:center;gap:13px;padding:14px 16px;border:1px solid #dce5da;border-radius:13px;background:#fff}.promptAvatar{width:40px;height:40px;border-radius:50%}.promptText{width:160px;max-width:60%;height:10px}@media(max-width:767px){.composerPrompt{height:64px}}
-
-/* Match the loaded feed's first row and tab/composer order. */
-.tabs{height:46px;align-items:center}
-@media(min-width:768px){.brand{margin-top:5px}}

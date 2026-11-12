@@ -121,3 +121,16 @@
 /* Hide scrollbar chrome while keeping the rail scrollable and keyboard accessible. */
 .right{scrollbar-width:none;-ms-overflow-style:none}.right::-webkit-scrollbar{display:none}.right:focus-visible{outline:2px solid #337353;outline-offset:4px}
 .suggestionRow{display:flex;align-items:center;gap:8px}.suggestionRow .followingItem{flex:1}.suggestionAction{flex:none;text-align:right}.suggestionFollow{border:1px solid #c5d9c8;border-radius:999px;padding:6px 11px;color:#215d3c;font-size:12px;font-weight:700;cursor:pointer}.suggestionFollow:hover:not(:disabled){background:#edf5ed}.suggestionFollow:disabled{opacity:.6;cursor:default}.suggestionFollow:focus-visible{outline:2px solid #337353;outline-offset:2px}.suggestionError{display:block;max-width:100px;margin-top:4px;color:#a12d2d;font-size:11px}
+
+/* Compact feed prompt and focused post editor. */
+.composerSection{margin-bottom:26px}
+.composerPrompt{width:100%;min-height:70px;display:flex;align-items:center;gap:13px;text-align:left;padding:14px 16px;border:1px solid #dce5da;border-radius:13px;background:#fff;color:#7b8d80;font-size:15px;cursor:text}
+.composerPrompt:hover{border-color:#b9cfbd}.composerPrompt:focus-visible{outline:2px solid #337353;outline-offset:3px}
+.composerPrompt .postAvatar,.composeIdentity .postAvatar{border-radius:50%}.composerPrompt .postAvatar img,.composerPrompt .postAvatarFallback,.composeIdentity .postAvatar img,.composeIdentity .postAvatarFallback{border-radius:50%}
+.composerOverlay{background:rgba(16,28,21,.55)}
+.composerDialog{display:block;width:calc(100% - 32px);max-width:600px;padding:20px;background:#fff;color:#1b342a;border:1px solid #dce5da;border-radius:18px;box-shadow:0 20px 70px rgba(18,40,25,.2)}
+.composerForm{display:flex;flex-direction:column;min-height:260px}.composeIdentity{display:flex;align-items:flex-start;gap:12px;flex:1}.composeWriting{display:flex;flex:1;min-width:0;flex-direction:column}.composeWriting strong{font-size:14px;font-weight:750;line-height:1.4;padding-top:2px}
+.composeTextarea{display:block;width:100%;min-height:160px;flex:1;resize:vertical;padding:5px 0 0;background:transparent;color:#1b342a;font-size:15px;line-height:1.55;border:0;outline:none}.composeTextarea::placeholder{color:#819188}
+.composeFooter{display:flex;justify-content:flex-end;gap:9px;margin-top:16px}.composeCancel,.composePublish{min-height:40px;padding:0 17px;border-radius:10px;font-size:13px;font-weight:700}.composeCancel{background:#edf2ec;color:#405a4b}.composeCancel:hover:not(:disabled){background:#e2ebe1}.composePublish{background:#1f6546;color:#fff}.composePublish:hover:not(:disabled){background:#164f37}.composeCancel:disabled,.composePublish:disabled{opacity:.5;cursor:not-allowed}.composeCancel:focus-visible,.composePublish:focus-visible{outline:2px solid #337353;outline-offset:3px}
+.composeError{margin:10px 0 0 52px;color:#a12d2d;font-size:13px}.composePublished{margin:8px 0 0;color:#286644;font-size:12px}
+@media(max-width:767px){.composerDialog{padding:16px}.composerForm{min-height:240px}.composerPrompt{min-height:64px}}

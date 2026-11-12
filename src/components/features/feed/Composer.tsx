@@ -1,28 +1,68 @@
 "use client";
-import { useActionState, useState } from "react";
-import { useFormStatus } from "react-dom";
-import { ChatCircle as MessageCircle, PencilSimpleLine as PenLine } from "@phosphor-icons/react";
+import { useState, useTransition, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { createPost } from "@/app/(app)/home/actions";
+import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { FeedProfileAvatar } from "./FeedProfileAvatar";
 import styles from "./feed.module.css";
 
-export function Composer({ name }: { name: string }) {
+export function Composer({ name, avatarUrl = null }: { name: string; avatarUrl?: string | null }) {
+  const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
-  const [kind, setKind] = useState<"thought" | "question">("thought");
-  const [state, action, pending] = useActionState(async (_: { error: string; success: boolean }, data: FormData) => {
-    try { await createPost(data); setText(""); setKind("thought"); return { error: "", success: true }; }
-    catch (error) { return { error: error instanceof Error ? error.message : "Could not publish your post. Please try again.", success: false }; }
-  }, { error: "", success: false });
-  return <section className={styles.composer} aria-labelledby="composer-title">
-    <div className={styles.composerHeader}><span className={styles.avatar} aria-hidden="true">{name.trim().charAt(0).toUpperCase() || "?"}</span><div><h2 id="composer-title">Start something good.</h2><p>A thought, a question, a new idea.</p></div></div>
-    <form action={action}>
-      <label className="sr-only" htmlFor="feed-body">Your post</label>
-      <textarea id="feed-body" name="body" disabled={pending} required maxLength={3000} rows={3} placeholder="What’s on your mind?" value={text} onChange={event => setText(event.target.value)} className={styles.textarea} />
-      <div className={styles.composerBottom}><div className={styles.kindGroup} aria-label="Post type">
-        <label className={kind === "thought" ? styles.kindSelected : ""}><input type="radio" name="kind" value="thought" disabled={pending} checked={kind === "thought"} onChange={() => setKind("thought")} /><PenLine size={15} aria-hidden="true" /> Thought</label>
-        <label className={kind === "question" ? styles.kindSelected : ""}><input type="radio" name="kind" value="question" disabled={pending} checked={kind === "question"} onChange={() => setKind("question")} /><MessageCircle size={15} aria-hidden="true" /> Question</label>
-      </div><Publish /></div>
-      {state.error && <p role="alert" className={styles.error}>{state.error}</p>}{state.success && <p role="status" className={styles.success}>Your post is published.</p>}
-    </form>
+  const [error, setError] = useState("");
+  const [published, setPublished] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const router = useRouter();
+
+  function changeOpen(next: boolean) {
+    if (pending) return;
+    if (next) { setError(""); setPublished(false); }
+    setOpen(next);
+  }
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending || !text.trim()) return;
+    const data = new FormData(event.currentTarget);
+    setError("");
+    startTransition(async () => {
+      try {
+        await createPost(data);
+        setText(""); setOpen(false); setPublished(true);
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not publish your post. Please try again.");
+      }
+    });
+  }
+  return <section className={styles.composerSection} aria-label="Create a post">
+    <Dialog open={open} onOpenChange={changeOpen}>
+      <DialogTrigger asChild>
+        <button type="button" className={styles.composerPrompt}>
+          <FeedProfileAvatar name={name} avatarUrl={avatarUrl} post />
+          <span>What’s on your mind?</span>
+        </button>
+      </DialogTrigger>
+      <DialogContent className={styles.composerDialog} overlayClassName={styles.composerOverlay} showCloseButton={false} onEscapeKeyDown={event => { if (pending) event.preventDefault(); }} onInteractOutside={event => { if (pending) event.preventDefault(); }}>
+        <DialogTitle className="sr-only">Create a post</DialogTitle>
+        <DialogDescription className="sr-only">Write a post to share with the community.</DialogDescription>
+        <form onSubmit={submit} className={styles.composerForm}>
+          <div className={styles.composeIdentity}>
+            <FeedProfileAvatar name={name} avatarUrl={avatarUrl} post />
+            <div className={styles.composeWriting}>
+              <strong>{name}</strong>
+              <label className="sr-only" htmlFor="feed-body">Your post</label>
+              <textarea id="feed-body" name="body" disabled={pending} required maxLength={3000} placeholder="What’s on your mind?" value={text} onChange={event => setText(event.target.value)} className={styles.composeTextarea} autoFocus />
+              <input type="hidden" name="kind" value="thought" />
+            </div>
+          </div>
+          {error && <p role="alert" className={styles.composeError}>{error}</p>}
+          <div className={styles.composeFooter}>
+            <button type="button" className={styles.composeCancel} disabled={pending} onClick={() => changeOpen(false)}>Cancel</button>
+            <button type="submit" className={styles.composePublish} disabled={pending || !text.trim()}>{pending ? "Posting…" : "Post"}</button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+    {published && <p role="status" className={styles.composePublished}>Your post is published.</p>}
   </section>;
 }
-function Publish() { const { pending } = useFormStatus(); return <button className={styles.publish} disabled={pending}>{pending ? "Posting…" : "Post"}</button>; }

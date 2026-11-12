@@ -100,3 +100,11 @@
 .author a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .postTime{flex:none;white-space:nowrap;color:#718579;font-size:12px}
 .postTime:before{content:"·";margin-right:8px;color:#9aab9c}
+
+.postOptions{display:flex;align-items:center;gap:4px;position:relative;flex:none}
+.followPost{color:#26714d;font-size:12px;font-weight:750;padding:8px;border-radius:8px}.followPost:hover{background:#e5f0e5}.followPost:disabled{opacity:.5}
+.postMenuTrigger{display:grid;place-items:center;width:36px;height:36px;border-radius:9px;color:#688073}.postMenuTrigger:hover,.postMenuTrigger[data-state="open"]{background:#e8f0e7;color:#174a36}
+.followPost:focus-visible,.postMenuTrigger:focus-visible,.optionInput:focus-visible{outline:2px solid #337353;outline-offset:2px}
+.postMenu{width:220px;min-width:220px;padding:7px;background:#fff;border:1px solid #dde7dc;border-radius:13px;box-shadow:0 14px 38px rgba(26,53,38,.14);z-index:400}
+.optionStatus:not(:empty){position:absolute;right:0;top:100%;z-index:2;width:max-content;max-width:220px;padding:7px 9px;border:1px solid #dce8d9;border-radius:8px;background:#fff;color:#315f45;font-size:11px;box-shadow:0 5px 15px rgba(26,53,38,.08)}
+.optionInput{position:absolute;right:0;top:calc(100% + 34px);z-index:3;width:220px;max-width:70vw;font-size:12px;padding:8px;border:1px solid #cbdcca;border-radius:8px;background:#fff;color:#315f45}

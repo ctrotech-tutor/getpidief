@@ -1,0 +1,47 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+const mocks = vi.hoisted(() => ({ refresh: vi.fn(), save: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mocks.refresh }) }));
+vi.mock("@/app/(app)/home/actions", () => ({ toggleSave: mocks.save }));
+import { PostOptions } from "@/components/features/feed/PostOptions";
+const base = { postId: "12345678-1234-1234-1234-123456789abc", authorId: "23456789-1234-1234-1234-123456789abc", author: "Ada", ownPost: false, initiallyFollowing: false, initiallySaved: false };
+function openMenu() { fireEvent.keyDown(screen.getByRole("button", { name: "More options for post by Ada" }), { key: "Enter" }); }
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
+describe("post options", () => {
+  it("offers real actions and a report link while not pretending block or repost exists", async () => {
+    render(<PostOptions {...base} />); openMenu();
+    expect(await screen.findByRole("menuitem", { name: "Follow Ada" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Save post" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Report post" })).toHaveAttribute("href", `/home/post/${base.postId}#report-post`);
+    expect(screen.queryByRole("menuitem", { name: /block/i })).not.toBeInTheDocument();
+  });
+  it("follows through the real API and refreshes the feed", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true }); vi.stubGlobal("fetch", fetchMock);
+    render(<PostOptions {...base} />);
+    fireEvent.click(screen.getByRole("button", { name: "Follow Ada" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/follows", expect.objectContaining({ method: "POST", body: JSON.stringify({ followingId: base.authorId }) })));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Follow Ada" })).not.toBeInTheDocument());
+    openMenu(); expect(await screen.findByRole("menuitem", { name: "Unfollow Ada" })).toBeInTheDocument();
+    expect(mocks.refresh).toHaveBeenCalled();
+  });
+  it("reports a failed follow without pretending it succeeded", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+    render(<PostOptions {...base} />); fireEvent.click(screen.getByRole("button", { name: "Follow Ada" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Could not update follow");
+    expect(screen.getByRole("button", { name: "Follow Ada" })).toBeInTheDocument();
+  });
+  it("saves with the existing server action and changes menu state", async () => {
+    mocks.save.mockResolvedValue(undefined);
+    render(<PostOptions {...base} />); openMenu(); fireEvent.click(await screen.findByRole("menuitem", { name: "Save post" }));
+    await waitFor(() => expect(mocks.save).toHaveBeenCalled());
+    const form = mocks.save.mock.calls[0][0] as FormData;
+    expect(form.get("postId")).toBe(base.postId); expect(form.get("active")).toBe("false");
+    openMenu(); expect(await screen.findByRole("menuitem", { name: "Remove from saved posts" })).toBeInTheDocument();
+  });
+  it("does not offer follow or report for your own post", async () => {
+    render(<PostOptions {...base} ownPost />); openMenu();
+    expect(await screen.findByRole("menuitem", { name: "Save post" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /follow/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /report/i })).not.toBeInTheDocument();
+  });
+});

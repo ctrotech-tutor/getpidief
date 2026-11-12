@@ -19,7 +19,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { CheckCircle, Eye, EyeOff, Loader2 } from "lucide-react";
+import { CheckCircle, Eye, EyeSlash as EyeOff, CircleNotch as Loader2 } from "@phosphor-icons/react";
 
 // Form schema
 const resetPasswordSchema = z.object({

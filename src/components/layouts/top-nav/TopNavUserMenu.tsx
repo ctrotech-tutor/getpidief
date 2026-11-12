@@ -17,17 +17,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { SessionUser } from "@/hooks/useSession"
 import { TopNavAvatar } from "./TopNavAvatar"
 import { TopNavReputationBadge } from "./TopNavReputationBadge"
-import {
-  LayoutGrid,
-  User,
-  Upload,
-  Settings,
-  LogOut,
-  Bookmark,
-  Sparkles,
-  Shield,
-  Command,
-} from "lucide-react"
+import { SquaresFour as LayoutGrid, User, UploadSimple as Upload, GearSix as Settings, SignOut as LogOut, BookmarkSimple as Bookmark, BookOpenText as Sparkles, Shield, Command } from "@phosphor-icons/react"
 
 interface TopNavUserMenuProps {
   user: SessionUser | null

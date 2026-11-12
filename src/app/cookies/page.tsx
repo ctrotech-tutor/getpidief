@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { PublicShell } from "@/components/public/PublicShell";
 import styles from "@/components/public/pages.module.css";
-import { Cookie, Shield, Eye, Settings } from "lucide-react";
+import { Cookie, Shield, Eye, GearSix as Settings } from "@phosphor-icons/react/ssr";
 
 export const metadata: Metadata = { title: "Cookie Policy | getpidief", description: "The existing policy on cookies and similar technologies." };
 export default function PolicyPage() {
@@ -24,7 +24,7 @@ export default function PolicyPage() {
                   <h2>Types of Cookies We Use</h2>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="glass-card border border-border/50 bg-surface/60 backdrop-blur-20 rounded-xl p-6">
+                    <div className="glass-card border border-border/50 bg-surface rounded-xl p-6">
                       <div className="flex items-center mb-4">
                         <Settings className="w-6 h-6 text-primary mr-3" />
                         <h3 className="text-lg font-semibold text-foreground">Essential Cookies</h3>
@@ -39,7 +39,7 @@ export default function PolicyPage() {
                       </ul>
                     </div>
 
-                    <div className="glass-card border border-border/50 bg-surface/60 backdrop-blur-20 rounded-xl p-6">
+                    <div className="glass-card border border-border/50 bg-surface rounded-xl p-6">
                       <div className="flex items-center mb-4">
                         <Eye className="w-6 h-6 text-primary mr-3" />
                         <h3 className="text-lg font-semibold text-foreground">Analytics Cookies</h3>
@@ -54,7 +54,7 @@ export default function PolicyPage() {
                       </ul>
                     </div>
 
-                    <div className="glass-card border border-border/50 bg-surface/60 backdrop-blur-20 rounded-xl p-6">
+                    <div className="glass-card border border-border/50 bg-surface rounded-xl p-6">
                       <div className="flex items-center mb-4">
                         <Cookie className="w-6 h-6 text-primary mr-3" />
                         <h3 className="text-lg font-semibold text-foreground">Functional Cookies</h3>
@@ -69,7 +69,7 @@ export default function PolicyPage() {
                       </ul>
                     </div>
 
-                    <div className="glass-card border border-border/50 bg-surface/60 backdrop-blur-20 rounded-xl p-6">
+                    <div className="glass-card border border-border/50 bg-surface rounded-xl p-6">
                       <div className="flex items-center mb-4">
                         <Shield className="w-6 h-6 text-primary mr-3" />
                         <h3 className="text-lg font-semibold text-foreground">Security Cookies</h3>

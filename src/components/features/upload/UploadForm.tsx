@@ -53,9 +53,9 @@ const LANGUAGES = [
 ];
 
 const LICENSES = [
-  { value: "cc_by",              label: "CC BY — Attribution"                       },
-  { value: "cc_by_sa",           label: "CC BY-SA — Attribution + ShareAlike"       },
-  { value: "cc_by_nc",           label: "CC BY-NC — Attribution, Non-Commercial"    },
+  { value: "cc_by",              label: "CC BY - Attribution"                       },
+  { value: "cc_by_sa",           label: "CC BY-SA - Attribution + ShareAlike"       },
+  { value: "cc_by_nc",           label: "CC BY-NC - Attribution, Non-Commercial"    },
   { value: "all_rights_reserved",label: "All Rights Reserved"                       },
   { value: "public_domain",      label: "Public Domain"                             },
 ];
@@ -302,7 +302,7 @@ export function UploadForm({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Visibility" error={errors.visibility?.message}>
             <select {...register("visibility")} className={inputClass()}>
-              <option value="public">Public — Anyone can find it</option>
+              <option value="public">Public - Anyone can find it</option>
 
             </select>
           </FormField>

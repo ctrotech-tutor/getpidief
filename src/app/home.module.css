@@ -17,3 +17,11 @@
 @media(max-width:900px){ .nav { display:none; }.hero { gap:2%; }.hero h1 { font-size:clamp(48px,7vw,72px); }.heroVisual { margin-left:0; }.floatingNote { left:-25px; }.manifesto,.howHeader { grid-template-columns:1fr 2fr; }.manifestoAside,.howHeader>p { grid-column:2; }.manifestoAside { max-width:250px; }.ctaMark { margin-right:0; } }
 @media(max-width:650px){ .announcement { font-size:9px; }.announcement a { margin-left:0; }.header { height:70px; padding:0 6%; }.signIn { display:none; }.smallButton { padding:11px 12px; }.hero { display:flex; flex-direction:column; align-items:stretch; padding:61px 6% 65px; gap:34px; }.heroCopy { padding:0; }.hero h1 { font-size:clamp(49px,11.7vw,72px); margin:23px 0 18px; }.heroCopy>p { font-size:14px; }.heroActions { gap:19px; flex-wrap:wrap; }.heroNote { margin-top:30px; }.heroVisual { min-height:390px; margin:0 0 0 12px; }.imageWrap { inset:0 0 35px 35px; border-radius:3px 3px 45px 3px; }.floatingNote { width:210px; top:105px; left:-12px; }.paperTag { right:0; bottom:45px; }.scrollCue { display:none; }.manifesto,.howHeader { display:block; }.manifesto { padding:70px 6%; }.manifesto .sectionLabel,.howHeader .sectionLabel { margin-bottom:25px; }.manifesto h2,.how h2,.finalCta h2 { font-size:42px; }.manifestoAside { margin-top:35px; }.how { padding:75px 6%; }.steps { grid-template-columns:1fr; gap:32px; margin-top:42px; }.steps h3 { margin-top:18px; }.finalCta { padding:75px 6%; }.ctaMark { display:none; }.footer { flex-wrap:wrap; gap:16px; padding:30px 6%; }.footer>p { width:calc(100% - 150px); margin:0; }.footer small { width:100%; } }
 @media(prefers-reduced-motion:reduce){ .page * { transition:none!important; } }
+
+/* An editorial index rather than a row of feature cards. */
+@media (min-width: 651px) {
+  .steps { display:block; max-width: 800px; margin-left:auto; }
+  .steps article { display:grid; grid-template-columns: 100px minmax(180px, 1fr) minmax(200px, 1fr); gap:24px; align-items:baseline; padding:24px 0; }
+  .steps h3 { margin:0; }
+  .steps p { margin:0; }
+}

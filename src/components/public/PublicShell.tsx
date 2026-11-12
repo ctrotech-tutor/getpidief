@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight } from "lucide-react";
+import { ArrowRight, ArrowUpRight } from "@phosphor-icons/react/ssr";
 import { Brand } from "@/components/brand/Brand";
 import { PageContainer } from "@/components/layouts/PageContainer/PageContainer";
 import styles from "./public.module.css";
@@ -25,7 +25,7 @@ export function PublicHeader() {
 }
 
 export function PublicFooter() {
-  return <footer className={styles.footer}><div className={styles.footerTop}><div className={styles.footerIntro}><Brand /><p>A social home for learning.<br />For the curious, everywhere.</p></div><div className={styles.footerGroup}><span>EXPLORE</span><Link href="/about">Our story</Link><Link href="/feed-preview">Explore preview</Link><Link href="/contact">Get in touch</Link></div><div className={styles.footerGroup}><span>THE DETAILS</span><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/cookies">Cookies</Link></div><div className={styles.footerGroup}><span>YOUR ACCOUNT</span><Link href="/login">Log in</Link><Link href="/register">Create account <ArrowRight size={13} /></Link></div></div><div className={styles.footerBottom}><span>© {new Date().getFullYear()} getpidief</span><span>MADE FOR SHARING WHAT YOU KNOW <span aria-hidden="true">✳</span></span></div></footer>;
+  return <footer className={styles.footer}><div className={styles.footerTop}><div className={styles.footerIntro}><Brand /><p>A social home for learning.<br />For the curious, everywhere.</p></div><div className={styles.footerGroup}><span>EXPLORE</span><Link href="/about">Our story</Link><Link href="/feed-preview">Explore preview</Link><Link href="/contact">Get in touch</Link></div><div className={styles.footerGroup}><span>THE DETAILS</span><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/cookies">Cookies</Link></div><div className={styles.footerGroup}><span>YOUR ACCOUNT</span><Link href="/login">Log in</Link><Link href="/register">Create account <ArrowRight size={13} /></Link></div></div><div className={styles.footerBottom}><span>© {new Date().getFullYear()} getpidief</span><span>MADE FOR SHARING WHAT YOU KNOW <span aria-hidden="true">•</span></span></div></footer>;
 }
 
 export function PublicShell({ children }: { children: React.ReactNode }) {

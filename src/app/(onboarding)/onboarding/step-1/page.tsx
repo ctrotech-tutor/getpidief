@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth/auth";
 import styles from "../../onboarding.module.css";
 
-export const metadata: Metadata = { title: "Step 1 — Your Institution" };
+export const metadata: Metadata = { title: "Step 1 | Your Institution" };
 
 export default async function OnboardingStep1Page() {
   const step = await resolveOnboardingStep();

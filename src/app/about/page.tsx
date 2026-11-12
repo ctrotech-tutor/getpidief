@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight } from "@phosphor-icons/react/ssr";
 import { PublicShell } from "@/components/public/PublicShell";
 import styles from "@/components/public/pages.module.css";
 

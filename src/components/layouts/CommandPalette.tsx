@@ -19,20 +19,7 @@ import {
 import { DialogTitle, DialogDescription } from "@/components/ui/dialog"
 
 // Icons
-import {
-  Search,
-  Clock,
-  TrendingUp,
-  FileText,
-  LayoutGrid,
-  ArrowRight,
-  Loader2,
-  Home,
-  User,
-  Upload,
-  Settings,
-  BookOpen,
-} from "lucide-react"
+import { MagnifyingGlass as Search, Clock, TrendUp as TrendingUp, FileText, SquaresFour as LayoutGrid, ArrowRight, CircleNotch as Loader2, House as Home, User, UploadSimple as Upload, GearSix as Settings, BookOpen } from "@phosphor-icons/react"
 
 type ResultType = "recent" | "popular" | "document" | "category" | "navigate"
 

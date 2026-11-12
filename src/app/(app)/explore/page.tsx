@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Search, Filter, TrendingUp, Clock, Star, BookOpen, Users, Zap } from "lucide-react";
+import { MagnifyingGlass as Search, Funnel as Filter, TrendUp as TrendingUp, Clock, Star, BookOpen, UsersThree as Users, Lightning as Zap } from "@phosphor-icons/react/ssr";
 import { motion } from "framer-motion";
 import { ExploreHeroSection } from "@/components/features/explore/ExploreHeroSection";
 import { ExploreCategoriesSection } from "@/components/features/explore/ExploreCategoriesSection";
@@ -54,7 +54,7 @@ type ExploreCategory = {
 };
 
 export const metadata: Metadata = {
-  title:       "Explore — getpidief",
+  title:       "Explore - getpidief",
   description: "Discover millions of verified academic resources.",
 };
 
@@ -154,7 +154,7 @@ function ResourceSection({
   docs: DocumentCard[];
 }) {
   return (
-    <Card className="border-border/50 bg-background/60 backdrop-blur-sm">
+    <Card className="border-border/50 bg-background">
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between">
           <CardTitle className="text-xl font-heading flex items-center gap-2">
@@ -178,7 +178,7 @@ function ResourceSection({
 
 function ResourceGridSkeleton({ title }: { title: string }) {
   return (
-    <Card className="border-border/50 bg-background/60 backdrop-blur-sm">
+    <Card className="border-border/50 bg-background">
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between">
           <div className="skeleton h-7 w-64 rounded" aria-label={title} />

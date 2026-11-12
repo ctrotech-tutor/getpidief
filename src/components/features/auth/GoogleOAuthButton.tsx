@@ -20,7 +20,9 @@ export function GoogleOAuthButton({
     setLoading(true);
     setError(false);
     try {
-      await signInWithGoogle();
+      const url = await signInWithGoogle();
+      if (!url) throw new Error("Google sign-in did not return a redirect URL");
+      window.location.assign(url);
     } catch {
       setLoading(false);
       setError(true);

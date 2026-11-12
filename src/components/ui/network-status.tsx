@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Wifi, WifiOff, AlertTriangle, Loader2 } from "lucide-react";
+import { WifiHigh as Wifi, WifiSlash as WifiOff, Warning as AlertTriangle, CircleNotch as Loader2 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils/cn";
 
 interface NetworkStatus {

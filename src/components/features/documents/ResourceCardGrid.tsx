@@ -12,7 +12,7 @@ import type { DocumentCard } from "@/lib/db/repositories/documents";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Bookmark, Share2, Eye, Download, Calendar, FileText } from "lucide-react";
+import { BookmarkSimple as Bookmark, ShareNetwork as Share2, Eye, DownloadSimple as Download, CalendarBlank as Calendar, FileText } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 
 interface ResourceCardGridProps {
@@ -50,7 +50,7 @@ export function ResourceCardGrid({
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
     >
       <Card className={cn(
-        "group overflow-hidden border-border/50 bg-background/60 backdrop-blur-sm",
+        "group overflow-hidden border-border/50 bg-background",
         "transition-all duration-300 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5",
         className
       )}>
@@ -73,7 +73,7 @@ export function ResourceCardGrid({
             {doc.pageCount && (
               <Badge 
                 variant="secondary" 
-                className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm text-white border-0 text-xs"
+                className="absolute top-2 right-2 bg-black/60 text-white border-0 text-xs"
               >
                 {doc.pageCount}p
               </Badge>
@@ -82,7 +82,7 @@ export function ResourceCardGrid({
             {/* Resource type badge */}
             <Badge
               variant="outline"
-              className="absolute top-2 left-2 bg-background/80 backdrop-blur-sm text-xs font-semibold uppercase tracking-wide"
+              className="absolute top-2 left-2 bg-background text-xs font-semibold uppercase tracking-wide"
               style={{
                 borderColor: typeColor,
                 color: typeColor,
@@ -97,7 +97,7 @@ export function ResourceCardGrid({
                 <Button
                   size="icon"
                   variant="secondary"
-                  className="h-8 w-8 bg-background/80 backdrop-blur-sm"
+                  className="h-8 w-8 bg-background"
                   onClick={handleBookmark}
                 >
                   <Bookmark className={cn("h-4 w-4", isBookmarked ? "fill-current" : "")} />
@@ -105,7 +105,7 @@ export function ResourceCardGrid({
                 <Button
                   size="icon"
                   variant="secondary"
-                  className="h-8 w-8 bg-background/80 backdrop-blur-sm"
+                  className="h-8 w-8 bg-background"
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShareModal(doc.id); }}
                 >
                   <Share2 className="h-4 w-4" />

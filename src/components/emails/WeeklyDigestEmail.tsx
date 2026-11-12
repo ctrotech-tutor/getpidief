@@ -48,7 +48,7 @@ export function WeeklyDigestEmail({
 
   return (
     <BaseEmailLayout
-      preview={`Your weekly academic digest — ${totalNewDocs} new resource${totalNewDocs !== 1 ? "s" : ""} from people you follow.`}
+      preview={`Your weekly academic digest - ${totalNewDocs} new resource${totalNewDocs !== 1 ? "s" : ""} from people you follow.`}
       footerText="You receive this weekly digest because you have follows on getpidief. Adjust in Settings → Notifications."
     >
       <EmailHeading>Your Weekly Archive Digest 📚</EmailHeading>
@@ -56,7 +56,7 @@ export function WeeklyDigestEmail({
         Good morning, {firstName}. Here's your personalised academic summary for {weekLabel}.
         {totalNewDocs > 0
           ? ` ${totalNewDocs} new resource${totalNewDocs !== 1 ? "s" : ""} from contributors you follow.`
-          : " Nothing new from your follows this week — time to discover more contributors."}
+          : " Nothing new from your follows this week - time to discover more contributors."}
       </EmailBody>
 
       {/* From followed contributors */}
@@ -141,7 +141,7 @@ WeeklyDigestEmail.PreviewProps = {
       displayName: "Charles Babbage",
       username:    "cbabbage",
       documents: [
-        { title: "Mechanical Computing — Lecture 4 Notes", slug: "mech-computing-lec4", resourceType: "lecture_notes", authorName: "Charles Babbage", downloadCount: 142 },
+        { title: "Mechanical Computing - Lecture 4 Notes", slug: "mech-computing-lec4", resourceType: "lecture_notes", authorName: "Charles Babbage", downloadCount: 142 },
         { title: "Difference Engine Design Thesis 2025",   slug: "diff-engine-thesis",  resourceType: "thesis",         authorName: "Charles Babbage", downloadCount: 89  },
       ],
     },

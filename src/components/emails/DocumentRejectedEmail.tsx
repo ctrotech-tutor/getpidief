@@ -30,7 +30,7 @@ export function DocumentRejectedEmail({ contributorName, documentTitle, rejectio
     >
       <EmailHeading>Document needs attention.</EmailHeading>
       <EmailBody>
-        Hi {firstName} — your submission has been reviewed and requires some changes before it can be published.
+        Hi {firstName} - your submission has been reviewed and requires some changes before it can be published.
       </EmailBody>
       <Text style={{ color: "#F1F5F9", fontSize: "15px", fontWeight: 600, margin: "0 0 8px" }}>
         "{documentTitle}"

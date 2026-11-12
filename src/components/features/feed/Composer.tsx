@@ -1,7 +1,7 @@
 "use client";
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { MessageCircle, PenLine } from "lucide-react";
+import { ChatCircle as MessageCircle, PencilSimpleLine as PenLine } from "@phosphor-icons/react";
 import { createPost } from "@/app/(app)/home/actions";
 import styles from "./feed.module.css";
 

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Star, TrendingUp, Clock, Users } from "lucide-react"
+import { Star, TrendUp as TrendingUp, Clock, UsersThree as Users } from "@phosphor-icons/react"
 import { cn } from "@/lib/utils/cn"
 
 export function LiveMetrics() {

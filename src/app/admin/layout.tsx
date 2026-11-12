@@ -36,7 +36,7 @@ export default async function AdminLayout({
   return (
     <div className="min-h-screen bg-background flex">
       {/* Admin sidebar */}
-      <aside className="w-64 shrink-0 border-r border-border bg-background/95 sticky top-0 h-screen
+      <aside className="w-64 shrink-0 border-r border-border bg-background sticky top-0 h-screen
                         overflow-y-auto flex flex-col">
         {/* Logo + badge */}
         <div className="px-4 py-5 border-b border-border">

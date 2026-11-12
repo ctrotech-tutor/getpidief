@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowDown, ArrowRight, Bookmark, FileText, MessageCircle, Sparkles } from "lucide-react";
+import { ArrowDown, ArrowRight, BookmarkSimple as Bookmark, FileText, ChatCircle as MessageCircle, BookOpenText as Sparkles } from "@phosphor-icons/react/ssr";
 import { PublicHeader, PublicFooter } from "@/components/public/PublicShell";
 import styles from "./home.module.css";
 
@@ -30,14 +30,14 @@ export default function HomePage() {
       <section id="the-idea" className={styles.manifesto}>
         <div className={styles.sectionLabel}><span>01</span> THE IDEA</div>
         <div><h2>Good ideas shouldn&apos;t<br />{" "}study alone<span>.</span></h2><p>The best learning often starts with someone else&apos;s question, a useful note, or a conversation that makes something click. getpidief brings those moments together.</p></div>
-        <div className={styles.manifestoAside}><span>✳</span><p>Less searching alone.<br />More figuring it out together.</p></div>
+        <div className={styles.manifestoAside}><span>•</span><p>Less searching alone.<br />More figuring it out together.</p></div>
       </section>
 
       <section id="how-it-works" className={styles.how}>
         <div className={styles.howHeader}><div className={styles.sectionLabel}><span>02</span> HOW IT FITS TOGETHER</div><h2>A social space<br />{" "}<em>with a purpose.</em></h2><p>Bring your curiosity. Leave with something useful.</p></div>
         <div className={styles.steps}>
           <article><div className={styles.stepNumber}>01 <span>↗</span></div><h3>Find your people.</h3><p>Discover learners, perspectives and conversations around the things you care about.</p></article>
-          <article><div className={styles.stepNumber}>02 <span>✳</span></div><h3>Share what helps.</h3><p>Put a question out there, share an idea, or pass along notes worth keeping.</p></article>
+          <article><div className={styles.stepNumber}>02 <span>•</span></div><h3>Share what helps.</h3><p>Put a question out there, share an idea, or pass along notes worth keeping.</p></article>
           <article><div className={styles.stepNumber}>03 <span>↙</span></div><h3>Keep learning.</h3><p>Save the useful bits, come back to them, and keep the conversation going.</p></article>
         </div>
       </section>

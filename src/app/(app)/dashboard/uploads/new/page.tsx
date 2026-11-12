@@ -28,7 +28,7 @@ export default function UploadNewPage() {
   const [uploadError,  setUploadError]  = useState<string | null>(null);
   const [submittedSlug,setSubmittedSlug]= useState<string | null>(null);
 
-  // Categories + institutions — loaded once
+  // Categories + institutions - loaded once
   const [categories,   setCategories]   = useState<any[]>([]);
   const [institutions, setInstitutions] = useState<any[]>([]);
   const [dataLoaded,   setDataLoaded]   = useState(false);
@@ -133,7 +133,7 @@ export default function UploadNewPage() {
             Upload Document
           </h1>
           <p className="text-sm text-muted-foreground">
-            Contribute to the archive — earn reputation and help fellow scholars.
+            Contribute to the archive - earn reputation and help fellow scholars.
           </p>
         </div>
       </div>

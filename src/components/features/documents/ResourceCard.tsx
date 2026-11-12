@@ -5,7 +5,7 @@ import { ResourceCardGrid } from "./ResourceCardGrid";
 import { ResourceCardList } from "./ResourceCardList";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RESOURCE CARD — MAIN COMPONENT
+// RESOURCE CARD - MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface ResourceCardProps {
@@ -27,7 +27,7 @@ export function ResourceCard({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SKELETON CARD — exact-shape shimmer while loading
+// SKELETON CARD - exact-shape shimmer while loading
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function ResourceCardSkeleton({ variant = "grid" }: { variant?: "grid" | "list" }) {

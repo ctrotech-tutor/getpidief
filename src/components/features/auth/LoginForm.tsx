@@ -20,7 +20,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Eye, EyeOff, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
+import { Eye, EyeSlash as EyeOff, WarningCircle as AlertCircle, CheckCircle, CircleNotch as Loader2 } from "@phosphor-icons/react";
 
 // ── Form schema (client-side, mirrors server loginSchema) ────────────────────
 const loginFormSchema = z.object({
@@ -33,8 +33,14 @@ type LoginFormValues = z.infer<typeof loginFormSchema>;
 // ── OAuth error messages ──────────────────────────────────────────────────────
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   OAuthAccountNotLinked:
-    "This email is already registered with a password. Please sign in with email instead.",
-  OAuthCallbackError: "Google sign-in failed. Please try again.",
+    "An account with this email already exists. Please use your original sign-in method.",
+  OAuthCallbackError: "Google sign-in could not be completed. Please try again.",
+  OAuthCallback: "Google sign-in could not be completed. Please try again.",
+  CallbackRouteError: "Google sign-in could not be completed. Please try again or contact support.",
+  OAuthSignin: "Could not start Google sign-in. Please try again.",
+  AccessDenied: "Sign-in was denied. Check that your Google email is verified and your account is active.",
+  Configuration: "Sign-in is not configured correctly. Please contact support.",
+  Verification: "The sign-in request expired or could not be verified. Start again from this page.",
   EmailSignin:        "Could not send verification email. Please try again.",
   CredentialsSignin:  "Invalid email or password.",
   EmailNotVerified:    "Please verify your email address. Check your inbox or resend verification.",

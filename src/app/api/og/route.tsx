@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
           fontSize:    "13px",
         }}>
           <span>🎓</span>
-          <span>getpidief.me — The Archive That Thinks.</span>
+          <span>getpidief.me - The Archive That Thinks.</span>
         </div>
       </div>
     ),

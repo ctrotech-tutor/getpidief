@@ -86,7 +86,7 @@ export function TagInput({
       if (cursor >= 0 && suggestions[cursor]) {
         addTag(suggestions[cursor]!);
       } else if (query.trim().length >= 2) {
-        // Create new tag inline — temporary ID, server resolves
+        // Create new tag inline - temporary ID, server resolves
         addTag({
           id:   `new:${query.trim().toLowerCase().replace(/\s+/g, "-")}`,
           name: query.trim(),

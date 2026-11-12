@@ -114,7 +114,7 @@ function CategoryChip({
           "hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           isActive 
             ? "text-white border-0 shadow-lg" 
-            : "bg-background/80 backdrop-blur-sm border-border/50 hover:bg-background hover:border-primary/30"
+            : "bg-background border-border/50 hover:bg-background hover:border-primary/30"
         )}
         style={isActive ? { backgroundColor: color } : undefined}
         onClick={onSelect}

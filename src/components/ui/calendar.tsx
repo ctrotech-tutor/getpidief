@@ -10,7 +10,7 @@ import {
 
 import { cn } from "@/lib/utils/cn"
 import { Button, buttonVariants } from "@/components/ui/button"
-import { ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon } from "lucide-react"
+import { CaretLeft as ChevronLeftIcon, CaretRight as ChevronRightIcon, CaretDown as ChevronDownIcon } from "@phosphor-icons/react"
 
 function Calendar({
   className,

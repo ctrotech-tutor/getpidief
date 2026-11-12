@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpen, Bookmark, Compass, Heart, Home as HomeIcon, MessageCircle, Search, Sparkles, Users } from "lucide-react";
+import { BookOpen, BookmarkSimple as Bookmark, Compass, Heart, House as HomeIcon, ChatCircle as MessageCircle, MagnifyingGlass as Search, BookOpenText as Sparkles, UsersThree as Users } from "@phosphor-icons/react/ssr";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
 import { users, posts } from "@/lib/db/schema";

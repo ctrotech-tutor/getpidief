@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Trophy, BookOpen, Search, Archive, Star, Crown } from "lucide-react"
+import { Trophy, BookOpen, MagnifyingGlass as Search, Archive, Star, Crown } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils/cn"
 

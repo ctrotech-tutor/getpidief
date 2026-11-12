@@ -19,7 +19,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Mail, Loader2 } from "lucide-react";
+import { EnvelopeSimple as Mail, CircleNotch as Loader2 } from "@phosphor-icons/react";
 
 // Form schema
 const forgotPasswordSchema = z.object({

@@ -105,25 +105,9 @@ export const EVENTS = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type PusherPayloads = {
-  [EVENTS.DOCUMENT_PUBLISHED]: {
-    documentId: string;
-    slug: string;
-    title: string;
-    authorId: string;
-    thumbnailUrl: string | null;
-    categoryId: string | null;
-    institutionId: string | null;
-    publishedAt: string;
-  };
-
-  [EVENTS.NOTIFICATION]: {
-    id: string;
-    type: string;
-    title: string;
-    message: string;
-    metadata: Record<string, unknown>;
-    createdAt: string;
-  };
+  // Public and private notifications carry signals, not potentially stale content.
+  [EVENTS.DOCUMENT_PUBLISHED]: Record<string, never>;
+  [EVENTS.NOTIFICATION]: Record<string, never>;
 
   [EVENTS.UPLOAD_STATUS]: {
     documentId: string;
@@ -152,16 +136,7 @@ export type PusherPayloads = {
     userReaction: "like" | "dislike" | null;
   };
 
-  [EVENTS.PULSE_ACTIVITY]: {
-    type: "upload" | "follow" | "milestone";
-    actorId: string;
-    actorName: string;
-    actorAvatarUrl: string | null;
-    institutionId: string | null;
-    description: string;
-    entityId: string;
-    createdAt: string;
-  };
+  [EVENTS.PULSE_ACTIVITY]: Record<string, never>;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

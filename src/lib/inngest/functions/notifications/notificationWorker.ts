@@ -267,16 +267,7 @@ export const handleUserFollowed = inngest.createFunction(
     });
 
     await step.run("broadcast-follow-to-pulse", async () => {
-      await pusherServer.trigger(CHANNELS.EXPLORE, EVENTS.PULSE_ACTIVITY, {
-        type: "follow",
-        actorId: followerId,
-        actorName: follower.displayName ?? follower.username ?? "Scholar",
-        actorAvatarUrl: follower.avatarUrl ?? null,
-        institutionId: null,
-        description: "Started following a contributor",
-        entityId: followingId,
-        createdAt: new Date().toISOString(),
-      });
+      await pusherServer.trigger(CHANNELS.EXPLORE, EVENTS.PULSE_ACTIVITY, {});
     });
 
     return { followerId, followingId, processed: true };
@@ -401,16 +392,7 @@ export const handleCommentPosted = inngest.createFunction(
     });
 
     await step.run("broadcast-comment-to-pulse", async () => {
-      await pusherServer.trigger(CHANNELS.EXPLORE, EVENTS.PULSE_ACTIVITY, {
-        type: "milestone",
-        actorId: authorId,
-        actorName: author.displayName ?? author.username ?? "Scholar",
-        actorAvatarUrl: author.avatarUrl ?? null,
-        institutionId: null,
-        description: "Started a new discussion",
-        entityId: commentId,
-        createdAt: new Date().toISOString(),
-      });
+      await pusherServer.trigger(CHANNELS.EXPLORE, EVENTS.PULSE_ACTIVITY, {});
     });
 
     return { commentId, processed: true };

@@ -6,7 +6,7 @@ const url = process.env.TEST_DATABASE_URL;
 const enabled = !!url && process.env.TEST_DATABASE_WRITE === "yes";
 const mock = vi.hoisted(() => ({ id: "", send: vi.fn(), searchRor: vi.fn(async () => []), getRor: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-vi.mock("@/lib/auth/auth", () => ({ requireAuth: async () => mock.id, auth: async () => ({ user: { id: mock.id } }) }));
+vi.mock("@/lib/auth/auth", () => ({ requireAuth: async () => mock.id, auth: async () => ({ user: { id: mock.id } }), unstable_update: vi.fn(async () => null) }));
 vi.mock("@/lib/institutions/ror", () => ({ searchRor: mock.searchRor, getRor: mock.getRor }));
 vi.mock("@/lib/redis/client", () => ({ redis: null, redisRateLimit: null, rateLimiters: { search: { limit: async () => ({ success: true }) } }, KEYS: { onboardingState: () => "state", recommended: () => "recommended" } }));
 vi.mock("@/lib/inngest/client", () => ({ inngest: { send: mock.send } }));

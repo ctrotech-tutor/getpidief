@@ -1,15 +1,12 @@
 "use client";
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { saveOnboardingStep3, saveInterestSettings } from "@/lib/auth/onboardingActions";
 import type { TopicChoice } from "@/lib/interests/catalog";
 import styles from "@/app/(onboarding)/onboarding.module.css";
 
 export function InterestTagsStep({ allTags, initialSelected = [], settings = false }: { allTags: TopicChoice[]; initialSelected?: string[]; settings?: boolean }) {
-  const router = useRouter(); const { update } = useSession();
   const [selected, setSelected] = useState(initialSelected); const [query, setQuery] = useState("");
   const [state, action] = useActionState(async (_: { error: string; message: string }, data: FormData) => {
     try {
@@ -18,7 +15,7 @@ export function InterestTagsStep({ allTags, initialSelected = [], settings = fal
         return result.success ? { error: "", message: result.data.message } : { error: result.error, message: "" };
       }
       const result = await saveOnboardingStep3(null, data);
-      if (result.success) { try { await update(); } catch { /* Database is authoritative. */ } router.replace(result.data.next); router.refresh(); return { error: "", message: "" }; }
+      if (result.success) { window.location.assign(result.data.next); return { error: "", message: "" }; }
       return { error: result.error, message: "" };
     } catch { return { error: "Couldn’t save your interests. Please try again.", message: "" }; }
   }, { error: "", message: "" });

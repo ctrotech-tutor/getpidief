@@ -62,8 +62,7 @@ export const authConfig: NextAuthConfig = {
   ],
 
   // ── Session & JWT strategy ────────────────────────────────────────────────
-  // We use "database" strategy for the full server auth,
-  // but middleware reads JWT tokens for edge-compatible session checks.
+  // The edge proxy reads JWTs for routing; server authorization rechecks the database.
   session: { strategy: "jwt" },
 
   callbacks: {

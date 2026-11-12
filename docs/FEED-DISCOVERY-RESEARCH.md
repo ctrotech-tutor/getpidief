@@ -2,9 +2,9 @@
 
 ## Problem and current behavior
 
-The `Latest` feed is reverse chronological, 20 events at a time. Its “Older posts” link navigates to a separate page instead of appending content. Reopening it returns to the newest eligible events; if no one has posted, the same items appear. Reposts are separate events, so a post may appear multiple times. `Following` is intentionally chronological and only includes followed actors. Neither feed currently tracks views or personalizes recommendations.
+The `Latest` feed is reverse chronological, 20 events at a time. It now appends additional pages automatically, with a Load more fallback and an option to pause automatic loading. Reopening it returns to the newest eligible events; if no one has posted, the same items appear. Reposts are separate events, so a post may appear multiple times. `Following` is intentionally chronological and only includes followed actors. Neither feed currently tracks views or personalizes recommendations.
 
-The current cursor is an event ID plus event kind, resolved against the database for its timestamp. This retains PostgreSQL microsecond precision, but deleting the cursor event between requests can terminate pagination. Sorting and filtering happen in a union of original and repost events, with viewer-specific visibility checks and per-post aggregates. Indexes exist, but performance has not been measured at production-like sizes. Do not claim constant-time queries without `EXPLAIN (ANALYZE, BUFFERS)` and realistic data.
+New cursors carry the exact event timestamp, kind and ID; old ID-only links still resolve the timestamp in the database and can terminate if that event is deleted. Sorting and filtering happen in a union of original and repost events, with viewer-specific visibility checks and per-post aggregates. Indexes exist, but performance has not been measured at production-like sizes. Do not claim constant-time queries without `EXPLAIN (ANALYZE, BUFFERS)` and realistic data.
 
 ## Research and implications
 
@@ -39,3 +39,7 @@ The current cursor is an event ID plus event kind, resolved against the database
 - Browser tests: mouse, keyboard, screen reader/live-region flow, scroll position/back navigation, tab changes and pending responses, initial short/empty feeds, offline/error/retry, slow connections, disabled auto-load, and mobile. Verify interactive post controls continue working on appended pages.
 - Performance: profile first and deep pages with realistic distributions and `EXPLAIN (ANALYZE, BUFFERS)`; measure p50/p95/p99, query count, payload, client memory and network use. Add indexes or caching only when plans support them. Test with an isolated database; no production seed or unapproved production migration.
 - Product quality: measure repetition, author/content diversity, freshness and user feedback in addition to performance. Do not optimize only for session length or clicks.
+
+## Current implementation status
+
+Continuous loading, manual fallback and precise cursors are implemented. The discovery feed and seen-item strategy below are not yet implemented: Latest still repeats its newest eligible events on revisit when nothing new is published. The client currently discards appended pages when fresh server data arrives, so scroll restoration, consistent interaction updates without resetting the stream, bounded manual-page memory and real-browser/accessibility verification remain before treating the browsing experience as complete. No production-scale query benchmarks have been run.

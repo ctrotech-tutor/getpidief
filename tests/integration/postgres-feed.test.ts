@@ -86,6 +86,27 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
     expect(names).toHaveLength(24);
     expect(new Set(names).size).toBe(24);
   });
+  it("continues pagination from the exact event timestamp after the cursor is deleted", async () => {
+    const { readFeed } = await import("@/lib/feed/read");
+    const created: string[] = [];
+    try {
+      for (let i = 0; i < 25; i++) {
+        const result = await db.execute<{ id: string }>(sql`INSERT INTO posts (author_id, kind, body, created_at) VALUES (${ids.author}::uuid, 'thought', ${`Deletion cursor ${i}`}, '2099-01-01 00:00:00.123456+00'::timestamptz) RETURNING id`);
+        created.push(result.rows[0].id);
+      }
+      const first = await readFeed(ids.reader, "latest");
+      expect(first.hasMore).toBe(true);
+      const cursor = first.items.at(-1)!;
+      expect(cursor.eventAt).toBe("2099-01-01T00:00:00.123456Z");
+      await db.execute(sql`DELETE FROM posts WHERE id = ${cursor.id}::uuid`);
+      const second = await readFeed(ids.reader, "latest", cursor.eventId, cursor.eventKind, cursor.eventAt);
+      const found = [...first.items, ...second.items].filter(item => item.body.startsWith("Deletion cursor"));
+      expect(found).toHaveLength(25);
+      expect(new Set(found.map(item => item.eventId)).size).toBe(25);
+    } finally {
+      if (created.length) await db.execute(sql`DELETE FROM posts WHERE id IN (${sql.join(created.map(id => sql`${id}::uuid`), sql`, `)})`);
+    }
+  });
   it("shows only followed authors in the following feed and preserves the view when paging", async () => {
     as(ids.reader);
     const empty = renderToStaticMarkup(await home({ searchParams: Promise.resolve({ view: "following" }) }));

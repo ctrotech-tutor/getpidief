@@ -5,7 +5,7 @@ import type { MouseEvent, ReactNode } from "react";
 import styles from "./feed.module.css";
 
 /** Non-interactive areas open the post; links and controls retain their native behavior. */
-export function ClickablePost({ postId, children }: { postId: string; children: ReactNode }) {
+export function ClickablePost({ postId, children, id }: { postId: string; children: ReactNode; id?: string }) {
   const router = useRouter();
   function openPost(event: MouseEvent<HTMLElement>) {
     const target = event.target;
@@ -15,5 +15,5 @@ export function ClickablePost({ postId, children }: { postId: string; children: 
     if (window.getSelection()?.toString()) return;
     router.push(`/home/post/${postId}`);
   }
-  return <article className={`${styles.post} ${styles.clickablePost}`} onClick={openPost}>{children}</article>;
+  return <article id={id} tabIndex={id ? -1 : undefined} className={`${styles.post} ${styles.clickablePost}`} onClick={openPost}>{children}</article>;
 }

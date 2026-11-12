@@ -2,7 +2,8 @@ import { sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 
 export type FeedView = "latest" | "following" | "saved";
-export async function readFeed(userId: string, view: FeedView, before?: string, beforeKind?: string, beforeAt?: string) {
+export type FeedEventKey = { id: string; kind: "post" | "repost" };
+export async function readFeed(userId: string, view: FeedView, before?: string, beforeKind?: string, beforeAt?: string, refreshKeys?: FeedEventKey[]) {
   // Saved is a collection of originals; Following includes posts and reposts by followed people.
   type FeedEvent = { eventId: string; eventKind: "post" | "repost"; id: string; authorId: string; body: string; kind: string; createdAt: string; eventAt: string; name: string; username: string; avatarUrl: string | null; likeCount: number; liked: boolean; saved: boolean; following: boolean; replyCount: number; reposted: boolean; repostCount: number; reposterName: string | null; reposterUsername: string | null };
   const cursorKind = beforeKind === "repost" ? "repost" : "post";
@@ -34,11 +35,12 @@ export async function readFeed(userId: string, view: FeedView, before?: string, 
       AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE (b.blocker_id = ${userId}::uuid AND b.blocked_id IN (u.id, actor.id)) OR (b.blocked_id = ${userId}::uuid AND b.blocker_id IN (u.id, actor.id)))
       AND (${view !== "saved"} OR EXISTS (SELECT 1 FROM post_saves s WHERE s.post_id = p.id AND s.user_id = ${userId}::uuid))
       AND (${view !== "following"} OR EXISTS (SELECT 1 FROM follows f WHERE f.follower_id = ${userId}::uuid AND f.following_id = e.actor_id))
+      ${refreshKeys ? sql`AND (e.event_kind, e.event_id) IN (${sql.join(refreshKeys.map(key => sql`(${key.kind}::text, ${key.id}::uuid)`), sql`, `)})` : sql``}
       AND (${before === undefined} OR (e.event_at, e.event_kind, e.event_id) < (COALESCE(${beforeAt ?? null}::timestamptz, (SELECT event_at FROM cursor_event)), ${cursorKind}, ${before ?? null}::uuid))
-    ORDER BY e.event_at DESC, e.event_kind DESC, e.event_id DESC LIMIT 21
+    ORDER BY e.event_at DESC, e.event_kind DESC, e.event_id DESC LIMIT ${refreshKeys ? refreshKeys.length : 21}
   `);
   const rows = events.rows.map(event => ({ ...event, createdAt: new Date(event.createdAt) }));
-  const visible = rows.slice(0, 20); const ids = [...new Set(visible.map(x => x.id))];
+  const visible = refreshKeys ? rows : rows.slice(0, 20); const ids = [...new Set(visible.map(x => x.id))];
   const replies = ids.length ? await db.execute<{ id: string; post_id: string; body: string; name: string; username: string }>(sql`
     select r.id, p.id as post_id, r.body, r.name, r.username from posts p
     cross join lateral (
@@ -50,6 +52,6 @@ export async function readFeed(userId: string, view: FeedView, before?: string, 
     ) r where p.id in (${sql.join(ids.map(id => sql`${id}::uuid`), sql`, `)})
     order by p.id, r.created_at, r.id
   `) : { rows: [] };
-  return { items: visible.map(item => ({ ...item, createdAt: item.createdAt.toISOString(), replies: replies.rows.filter(reply => reply.post_id === item.id) })), hasMore: rows.length > 20 };
+  return { items: visible.map(item => ({ ...item, createdAt: item.createdAt.toISOString(), replies: replies.rows.filter(reply => reply.post_id === item.id) })), hasMore: !refreshKeys && rows.length > 20 };
 }
 export type FeedItem = Awaited<ReturnType<typeof readFeed>>["items"][number];

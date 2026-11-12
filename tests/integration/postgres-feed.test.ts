@@ -107,6 +107,26 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
       if (created.length) await db.execute(sql`DELETE FROM posts WHERE id IN (${sql.join(created.map(id => sql`${id}::uuid`), sql`, `)})`);
     }
   });
+  it("rechecks loaded events against current interactions and visibility", async () => {
+    const { readFeed } = await import("@/lib/feed/read");
+    const otherPost = randomUUID();
+    try {
+      await db.execute(sql`INSERT INTO posts (id, author_id, kind, body) VALUES (${otherPost}::uuid, ${ids.moderator}::uuid, 'thought', 'Still visible')`);
+      await db.execute(sql`INSERT INTO post_likes (post_id, user_id) VALUES (${postId}::uuid, ${ids.reader}::uuid) ON CONFLICT DO NOTHING`);
+      const keys = [{ id: postId, kind: "post" as const }, { id: otherPost, kind: "post" as const }];
+      const refreshed = await readFeed(ids.reader, "latest", undefined, undefined, undefined, keys);
+      expect(refreshed.items.find(item => item.id === postId)?.liked).toBe(true);
+      expect(refreshed.items.map(item => item.id)).toContain(otherPost);
+      await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${ids.reader}::uuid, ${ids.author}::uuid)`);
+      const blocked = await readFeed(ids.reader, "latest", undefined, undefined, undefined, keys);
+      expect(blocked.items.map(item => item.id)).not.toContain(postId);
+      expect(blocked.items.map(item => item.id)).toContain(otherPost);
+    } finally {
+      await db.execute(sql`DELETE FROM user_blocks WHERE blocker_id = ${ids.reader}::uuid AND blocked_id = ${ids.author}::uuid`);
+      await db.execute(sql`DELETE FROM post_likes WHERE post_id = ${postId}::uuid AND user_id = ${ids.reader}::uuid`);
+      await db.execute(sql`DELETE FROM posts WHERE id = ${otherPost}::uuid`);
+    }
+  });
   it("shows only followed authors in the following feed and preserves the view when paging", async () => {
     as(ids.reader);
     const empty = renderToStaticMarkup(await home({ searchParams: Promise.resolve({ view: "following" }) }));

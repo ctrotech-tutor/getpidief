@@ -21,5 +21,13 @@ describe("feed API", () => {
     const response = await GET(new Request(url));
     expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(m.read).toHaveBeenCalledWith("user", "latest", "12345678-1234-1234-1234-123456789abc", "post", "2026-01-01T00:00:00.123456Z");
+  });  it("bounds and validates event refreshes while still using the viewer's filtered query", async () => {
+    m.auth.mockResolvedValue({ user: { id: "user" } }); m.limit.mockResolvedValue([{ status: "active", onboarded: true }]);
+    m.read.mockResolvedValue({ items: [], hasMore: false });
+    const valid = "https://example.test/api/feed?view=following&events=post%3A12345678-1234-1234-1234-123456789abc";
+    expect((await GET(new Request(valid))).status).toBe(200);
+    expect(m.read).toHaveBeenCalledWith("user", "following", undefined, undefined, undefined, [{ kind: "post", id: "12345678-1234-1234-1234-123456789abc" }]);
+    expect((await GET(new Request(valid.replace("post%3A", "invalid%3A")))).status).toBe(400);
   });
+
 });

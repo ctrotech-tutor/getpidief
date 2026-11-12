@@ -46,14 +46,19 @@ describe("feed stream", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Post two").closest("article")).not.toHaveFocus();
   });
-  it("drops stale appended content when fresh server data arrives", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [item("two")], hasMore: true }) }));
+  it("preserves eligible appended posts and removes unavailable ones on refresh", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ items: [item("two"), item("three")], hasMore: true }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ items: [{ ...item("two"), liked: true }], hasMore: false }) });
+    vi.stubGlobal("fetch", fetchMock);
     const { rerender } = render(<FeedStream initial={{ items: [item("one")], hasMore: true }} view="latest" userId="reader" now="2026-01-02T00:00:00.000Z" />);
     fireEvent.click(screen.getByRole("link", { name: "Load more" }));
-    expect(await screen.findByText("Post two")).toBeInTheDocument();
-    rerender(<FeedStream initial={{ items: [item("new")], hasMore: false }} view="latest" userId="reader" now="2026-01-02T00:00:00.000Z" />);
-    await waitFor(() => expect(screen.queryByText("Post two")).not.toBeInTheDocument());
-    expect(screen.getByText("Post new")).toBeInTheDocument();
+    expect(await screen.findByText("Post three")).toBeInTheDocument();
+    rerender(<FeedStream initial={{ items: [item("new")], hasMore: true }} view="latest" userId="reader" now="2026-01-02T00:00:00.000Z" />);
+    await waitFor(() => expect(screen.queryByText("Post three")).not.toBeInTheDocument());
+    expect(screen.getByText("Post two")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unlike post by Ada" })).toBeInTheDocument();
+    expect(fetchMock.mock.calls[1][0]).toContain("events=");
   });
 
 });

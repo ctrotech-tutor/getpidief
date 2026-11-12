@@ -2,16 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Heart, ChatCircle, Repeat } from "@phosphor-icons/react";
+import { ChatCircle, Repeat } from "@phosphor-icons/react";
 import type { FeedItem, FeedView } from "@/lib/feed/read";
 import { formatPostTime } from "@/lib/feed/post-time";
-import { deletePost, toggleLike } from "@/app/(app)/home/actions";
+import { deletePost } from "@/app/(app)/home/actions";
 import { PostSkeleton } from "./PostSkeleton";
 import { ClickablePost } from "./ClickablePost";
 import { FeedProfileAvatar } from "./FeedProfileAvatar";
 import { PostOptions } from "./PostOptions";
 import { PostShare } from "./PostShare";
-import { RepostButton } from "./RepostButton";
+import { InstantReaction } from "./InstantReaction";
 import styles from "./feed.module.css";
 
 type Page = { items: FeedItem[]; hasMore: boolean };
@@ -25,9 +25,9 @@ export function FeedCard({ post, userId, now, refreshing }: { post: FeedItem; us
     {post.eventKind === "repost" && <div className={styles.repostAttribution}><Repeat size={15} aria-hidden="true" /><Link href={`/u/${post.reposterUsername}`}>{post.reposterName}</Link> reposted</div>}
     <div className={styles.postTop}><FeedProfileAvatar name={post.name} avatarUrl={post.avatarUrl} post /><div className={styles.author}><Link href={`/u/${post.username}`}>{post.name}</Link><time className={styles.postTime} dateTime={date.toISOString()} title={date.toLocaleDateString("en-US", { dateStyle: "long", timeZone: "UTC" })}>{formatPostTime(date, new Date(now))}</time></div><PostOptions postId={post.id} authorId={post.authorId} author={post.name} ownPost={post.authorId === userId} initiallyFollowing={post.following} initiallySaved={post.saved} /></div>
     <p className={styles.postBody}><Link href={`/home/post/${post.id}`} className={styles.postBodyLink} aria-label={`Open post by ${post.name}`}>{post.body}</Link></p>
-    <div className={styles.actions}><form action={toggleLike}><input type="hidden" name="postId" value={post.id}/><input type="hidden" name="active" value={String(post.liked)}/><button className={`${styles.action} ${post.liked ? styles.actionActive : ""}`} aria-pressed={post.liked} aria-label={`${post.liked ? "Unlike" : "Like"} post by ${post.name}`}><Heart size={19} aria-hidden="true" weight={post.liked ? "fill" : "regular"}/><span>{post.likeCount}</span></button></form>
+    <div className={styles.actions}><InstantReaction kind="like" postId={post.id} author={post.name} initialActive={post.liked} count={post.likeCount} />
       <Link className={styles.action} href={`/home/post/${post.id}`} aria-label={`Open discussion on post by ${post.name}, ${post.replyCount} replies`}><ChatCircle size={17} aria-hidden="true" />{post.replyCount}</Link>
-      <RepostButton postId={post.id} author={post.name} initiallyReposted={post.reposted} count={post.repostCount} /><PostShare postId={post.id} author={post.name} />
+      <InstantReaction kind="repost" postId={post.id} author={post.name} initialActive={post.reposted} count={post.repostCount} /><PostShare postId={post.id} author={post.name} />
       {post.authorId === userId && <form action={deletePost} className={styles.delete}><input type="hidden" name="postId" value={post.id}/><button>Delete</button></form>}
     </div>
     {post.replies.length > 0 && <div className={styles.replies}>{post.replies.map(r => <p key={r.id} className={styles.reply}><Link href={`/u/${r.username}`}><strong>{r.name}</strong></Link> {r.body}</p>)}<Link className={styles.action} href={`/home/post/${post.id}`}>{post.replyCount > 2 ? `View all ${post.replyCount} replies` : "Join the conversation"}</Link></div>}

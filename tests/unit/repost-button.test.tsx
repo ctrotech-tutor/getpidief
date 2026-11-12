@@ -13,6 +13,7 @@ describe("reposting", () => {
     const undo = await screen.findByRole("button", { name: "Undo repost of post by Ada" });
     expect(undo).toHaveAttribute("aria-pressed", "true"); expect(undo).toHaveTextContent("4");
     expect((m.setRepost.mock.calls[0][0] as FormData).get("repost")).toBe("true");
+    await waitFor(() => expect(undo).toHaveAttribute("aria-disabled", "false"));
     fireEvent.click(undo);
     await waitFor(() => expect(screen.getByRole("button", { name: "Repost post by Ada" })).toHaveTextContent("3"));
     expect((m.setRepost.mock.calls[1][0] as FormData).get("repost")).toBe("false");

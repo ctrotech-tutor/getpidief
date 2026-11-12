@@ -68,8 +68,6 @@ export async function toggleLike(form: FormData) {
     if (form.get("active") === "true") await tx.delete(postLikes).where(and(eq(postLikes.postId, id), eq(postLikes.userId, userId)));
     else await tx.insert(postLikes).values({ postId: id, userId }).onConflictDoNothing();
   });
-  revalidatePath("/");
-  revalidatePath("/home");
 }
 export async function toggleSave(form: FormData) {
   const userId = await currentUser(); const id = await postId(form, userId);
@@ -120,5 +118,4 @@ export async function setRepost(form: FormData) {
     if (desired === "true") await tx.insert(postReposts).values({ postId: id, userId }).onConflictDoNothing();
     else await tx.delete(postReposts).where(and(eq(postReposts.postId, id), eq(postReposts.userId, userId)));
   });
-  revalidatePath("/"); revalidatePath("/home");
 }

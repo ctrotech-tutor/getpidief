@@ -142,7 +142,8 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
       const delivered = await readFeed(ids.reader, "latest", undefined, undefined, undefined, [{ id: other, kind: "post" }]);
       expect(delivered.items).toHaveLength(0);
       const markup = renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) }));
-      expect(markup).toContain("Discover"); expect(markup).not.toContain("Visible discovery");
+      expect(markup).toContain("For you"); expect(markup).not.toContain("Visible discovery");
+      expect(markup).not.toContain(">Discover</a>");
     } finally {
       await db.execute(sql`DELETE FROM user_blocks WHERE blocker_id = ${ids.reader}::uuid AND blocked_id = ${ids.author}::uuid`);
       await db.execute(sql`DELETE FROM posts WHERE id = ${other}::uuid`);

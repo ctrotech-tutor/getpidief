@@ -145,6 +145,5 @@
 .postMenu .menuItem:is(:hover,:focus,[data-highlighted]) svg,.postMenu .menuItem:is(:hover,:focus,[data-highlighted]) svg *{color:#174a36 !important}
 .feedPagination{text-align:center;color:#718579;font-size:13px;padding:12px 0 24px}.feedPagination [role=status]{display:block}.feedPagination .more{margin:8px 0}.feedPagination .more:focus-visible,.autoToggle:focus-visible{outline:2px solid #337353;outline-offset:3px}.autoToggle{display:block;margin:10px auto 0;color:#617b6c;font-size:12px;text-decoration:underline;text-underline-offset:3px}
 .refreshingPost{visibility:hidden}
-.discoveryControls{display:flex;align-items:start;justify-content:space-between;gap:12px;color:#718579;font-size:12px;line-height:1.45;padding:0 0 12px}.discoveryControls span{max-width:400px}.discoveryControls button{flex:none;color:#315f45;text-decoration:underline;text-underline-offset:3px}.discoveryControls button:focus-visible{outline:2px solid #337353;outline-offset:3px}
 /* Keep announcements available to assistive technology without visual loading copy. */
 .feedAnnouncement,.feedAssistControl:not(:focus){position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}

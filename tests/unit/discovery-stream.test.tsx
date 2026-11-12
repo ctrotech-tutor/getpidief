@@ -20,7 +20,8 @@ describe("discovery feed", () => {
     render(<DiscoveryStream userId="reader" now="2026-01-02T00:00:00.000Z" seed={seed} />);
     await waitFor(() => expect(fetcher).toHaveBeenCalled());
     await waitFor(() => expect(screen.getAllByRole("article")[0]).toHaveTextContent(`Post ${ids[1]}`));
-    expect(screen.getByText(/Viewed posts on this device/)).toBeInTheDocument();
+    expect(screen.queryByText(/Viewed posts on this device/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear viewed history" })).not.toBeInTheDocument();
   });
   it("records a post only after sustained visibility, not merely when loaded", async () => {
     const callbacks: IntersectionObserverCallback[] = [];

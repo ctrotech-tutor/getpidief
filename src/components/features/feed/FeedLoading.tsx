@@ -18,7 +18,7 @@ export function FeedLoading() {
       <div className={styles.feedColumn}>
         <div className={loading.mobileBar}><span className={`${loading.block} ${loading.mobileLogo}`} /><span className={`${loading.block} ${loading.navIcon}`} /></div>
         <div className={loading.composerPrompt}><span className={`${loading.block} ${loading.promptAvatar}`} /><span className={`${loading.block} ${loading.promptText}`} /></div>
-        <div className={loading.tabs}><span className={`${loading.block} ${loading.tab}`} /><span className={`${loading.block} ${loading.tab}`} /><span className={`${loading.block} ${loading.tab}`} /></div>
+        <div className={loading.tabs}><span className={`${loading.block} ${loading.tab}`} /><span className={`${loading.block} ${loading.tab}`} /></div>
         <PostSkeleton count={3} />
       </div>
       <div className={styles.right}>

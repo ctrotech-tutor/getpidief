@@ -1,3 +1,4 @@
+import { SeenHistorySettings } from "@/components/features/feed/SeenHistorySettings";
 import { auth } from "@/lib/auth/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db/client";
@@ -105,6 +106,7 @@ export default async function PrivacySettingsPage() {
           </button>
         </div>
       </form>
+      <SeenHistorySettings userId={session.user.id} />
     </div>
   );
 }

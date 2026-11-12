@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { FeedItem } from "@/lib/feed/read";
 import { arrangeDiscovery, type DiscoveryCandidate } from "@/lib/feed/discovery-ranking";
 import { saveDiscoveryReturn, takeDiscoveryReturn, type DiscoveryReturn } from "@/lib/feed/discovery-restore";
-import { clearSeen, readSeen, recordSeen } from "@/lib/feed/seen-posts";
+import { readSeen, recordSeen } from "@/lib/feed/seen-posts";
 import { PostSkeleton } from "./PostSkeleton";
 import { FeedCard } from "./FeedStream";
 import styles from "./feed.module.css";
@@ -79,7 +79,7 @@ export function DiscoveryStream({ userId, now, seed }: { userId: string; now: st
         if (version > 0) {
           setLoading(true);
           const response = await fetch("/api/feed/discovery", { cache: "no-store", signal: active.signal });
-          if (!response.ok) throw new Error("Unable to load discovery.");
+          if (!response.ok) throw new Error("Unable to load posts.");
           pool = ((await response.json()) as { candidates: DiscoveryCandidate[] }).candidates;
         }
         const seen = new Set(readSeen(userId).map(entry => entry.id));
@@ -90,7 +90,7 @@ export function DiscoveryStream({ userId, now, seed }: { userId: string; now: st
         if (active.signal.aborted) return;
         candidates.current = ordered; pendingOwn.current = []; offset.current = Math.min(20, ordered.length);
         setItems(first); setHasMore(offset.current < ordered.length);
-      } catch { if (!active.signal.aborted) { restoreSnapshot.current = null; setError("Couldn’t load discovery. Please try again."); } }
+      } catch { if (!active.signal.aborted) { restoreSnapshot.current = null; setError("Couldn’t load posts. Please try again."); } }
       finally { if (controller.current === active) { busy.current = false; controller.current = null; if (!active.signal.aborted) setLoading(false); } }
     })();
     return () => { active.abort(); };
@@ -176,19 +176,14 @@ export function DiscoveryStream({ userId, now, seed }: { userId: string; now: st
     return () => { clear(); observer.disconnect(); document.removeEventListener("visibilitychange", clear); };
   }, [items, userId, loading, refreshing]);
   return <>
-    <div className={styles.discoveryControls}>
-      <span>Based on recent posts, follows and discussion. Viewed posts on this device are used for up to 7 days.</span>
-      <button type="button" onClick={() => { clearSeen(userId); restart(); }}>Clear viewed history</button>
-    </div>
-    <noscript><p>For more posts, <Link href="/?view=latest">view the latest feed</Link>.</p></noscript>
+    <noscript><p>For more posts, <Link href="/?view=latest">browse posts without JavaScript</Link>.</p></noscript>
     <div className={styles.posts} onClickCapture={rememberReturn}>{items.map(item => <FeedCard key={item.id} post={item} userId={userId} now={now} refreshing={refreshing} />)}</div>
     {loading && <PostSkeleton />}
     <div ref={sentinel} className={styles.feedPagination}>
       <span role="status" aria-live="polite" className={styles.feedAnnouncement}>{refreshing ? "Refreshing posts…" : loading ? "Loading posts…" : message}</span>
       {error && <p role="alert">{error}</p>}
-      {error ? <button type="button" className={styles.more} onClick={restart}>Try again</button> : hasMore ? <button type="button" className={`${styles.more} ${supportsAuto && automatic ? styles.feedAssistControl : ""}`} disabled={loading || refreshing} onClick={() => void load(false)}>Load more</button> : !loading && <p>{items.length ? "You’ve reached the end of this discovery batch." : "No posts to discover yet."} {items.length > 0 && <Link href="/?view=latest">Browse latest posts</Link>}</p>}
+      {error ? <button type="button" className={styles.more} onClick={restart}>Try again</button> : hasMore ? <button type="button" className={`${styles.more} ${supportsAuto && automatic ? styles.feedAssistControl : ""}`} disabled={loading || refreshing} onClick={() => void load(false)}>Load more</button> : !loading && <p>{items.length ? "You’re all caught up." : "No posts to show yet."}</p>}
       {hasMore && supportsAuto && <button type="button" className={`${styles.autoToggle} ${automatic ? styles.feedAssistControl : ""}`} onClick={() => setAutomatic(value => !value)}>{automatic ? "Pause automatic loading" : "Resume automatic loading"}</button>}
-      {items.length > 0 && <button type="button" className={styles.autoToggle} onClick={restart}>Refresh discovery</button>}
     </div>
   </>;
 }

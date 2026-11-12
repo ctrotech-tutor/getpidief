@@ -16,6 +16,6 @@ export function recordSeen(userId: string, id: string, now = Date.now()): void {
   if (!FEED_UUID.test(id)) return;
   try { localStorage.setItem(keyFor(userId), JSON.stringify([...readSeen(userId, now).filter(entry => entry.id !== id), { id, at: now }].slice(-MAX_ENTRIES))); } catch { /* Storage is optional. */ }
 }
-export function clearSeen(userId: string): void {
-  try { localStorage.removeItem(keyFor(userId)); } catch { /* Storage is optional. */ }
+export function clearSeen(userId: string): boolean {
+  try { localStorage.removeItem(keyFor(userId)); sessionStorage.removeItem(`feed-return-v1:${userId}`); return true; } catch { return false; }
 }

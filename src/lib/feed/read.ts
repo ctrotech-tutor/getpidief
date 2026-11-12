@@ -7,6 +7,8 @@ export async function readFeed(userId: string, view: FeedView, before?: string, 
   // Saved is a collection of originals; Following includes posts and reposts by followed people.
   type FeedEvent = { eventId: string; actorId: string; eventKind: "post" | "repost"; id: string; authorId: string; body: string; kind: string; createdAt: string; eventAt: string; name: string; username: string; avatarUrl: string | null; likeCount: number; liked: boolean; saved: boolean; following: boolean; replyCount: number; reposted: boolean; repostCount: number; reposterName: string | null; reposterUsername: string | null };
   const cursorKind = beforeKind === "repost" ? "repost" : "post";
+  // Resolve legacy ID-only cursors directly. Referencing feed_events twice
+  // materializes the entire union on PostgreSQL and makes bounded reads scan it.
   const events = await db.execute<FeedEvent>(sql`
     WITH feed_events AS (
       SELECT p.id AS event_id, 'post'::text AS event_kind, p.created_at AS event_at, p.id AS post_id, p.author_id AS actor_id
@@ -15,8 +17,11 @@ export async function readFeed(userId: string, view: FeedView, before?: string, 
       SELECT r.id, 'repost'::text, r.created_at, r.post_id, r.user_id
       FROM post_reposts r WHERE ${view !== "saved"}
     ), cursor_event AS (
-      SELECT event_at, event_kind, event_id FROM feed_events
-      WHERE event_id = ${before ?? null}::uuid AND event_kind = ${cursorKind}
+      SELECT created_at AS event_at FROM posts
+      WHERE ${cursorKind === "post"} AND id = ${before ?? null}::uuid AND deleted_at IS NULL
+      UNION ALL
+      SELECT created_at FROM post_reposts
+      WHERE ${cursorKind === "repost" && view !== "saved"} AND id = ${before ?? null}::uuid
     )
     SELECT e.event_id AS "eventId", e.actor_id AS "actorId", e.event_kind AS "eventKind", p.id, p.author_id AS "authorId", p.body, p.kind,
       p.created_at AS "createdAt", to_char(e.event_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "eventAt", u.display_name AS name, u.username, u.avatar_url AS "avatarUrl",

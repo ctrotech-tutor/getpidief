@@ -2,7 +2,7 @@ import { inngest } from "../../client";
 import { db } from "@/lib/db/client";
 import { notifications, users, pushSubscriptions, documents, comments, userActivityLog } from "@/lib/db/schema";
 import { eq, and, sql } from "drizzle-orm";
-import { redis, KEYS, incrCounter, invalidateCache } from "@/lib/redis/client";
+import { insertVisibleNotification, canDeliverNotification } from "@/lib/notifications/delivery";
 import { pusherServer, CHANNELS, EVENTS } from "@/lib/pusher/server";
 import { getEmailClient } from "@/lib/email/client";
 import webpush from "web-push";
@@ -82,47 +82,26 @@ export const sendNotification = inngest.createFunction(
 
     // ── Step 2: Insert in-app notification ────────────────────────────────────
     const notifId = await step.run("insert-notification", async () => {
-      const [notif] = await db
-        .insert(notifications)
-        .values({
-          recipientId,
-          senderId: senderId ?? null,
-          type: type as typeof notifications.$inferInsert["type"],
-          entityType: (entityType ?? null) as typeof notifications.$inferInsert["entityType"],
-          entityId: entityId ?? null,
-          title,
-          message,
-          metadata: metadata ?? {},
-        })
-        .returning({ id: notifications.id });
-
-      return notif.id;
+      return insertVisibleNotification({
+        recipientId,
+        senderId: senderId ?? null,
+        type: type as typeof notifications.$inferInsert["type"],
+        entityType: (entityType ?? null) as typeof notifications.$inferInsert["entityType"],
+        entityId: entityId ?? null,
+        title,
+        message,
+        metadata: metadata ?? {},
+      });
     });
+    if (!notifId) return { skipped: true, reason: "Notification unavailable" };
 
     // ── Step 3: Deliver via Pusher (real-time in-app) ─────────────────────────
     if (prefs[`${typeKey}_inapp`] !== false) {
       await step.run("push-via-pusher", async () => {
-        await pusherServer.trigger(
-          CHANNELS.privateUser(recipientId),
-          EVENTS.NOTIFICATION,
-          {
-            id: notifId,
-            type,
-            title,
-            message,
-            metadata,
-            createdAt: new Date().toISOString(),
-          }
-        );
-
-        // Increment unread count in Redis
-        if (redis) {
-          try {
-            await incrCounter(KEYS.unreadNotifCount(recipientId));
-          } catch (error) {
-            console.warn("[Inngest] Failed to increment unread count:", error);
-          }
-        }
+        if (!await canDeliverNotification(recipientId, senderId)) return;
+        // A signal only: clients fetch the current, filtered count, rather than
+        // receiving potentially stale sender content from a queued event.
+        await pusherServer.trigger(CHANNELS.privateUser(recipientId), EVENTS.NOTIFICATION, {});
       });
     }
 
@@ -139,7 +118,7 @@ export const sendNotification = inngest.createFunction(
           metadata,
         });
 
-        if (!emailTemplate) return;
+        if (!emailTemplate || !await canDeliverNotification(recipientId, senderId)) return;
 
         await getEmailClient().send({
           from: "getpidief <notifications@getpidief.me>",
@@ -184,6 +163,7 @@ export const sendNotification = inngest.createFunction(
         await Promise.allSettled(
           subs.map(async (sub) => {
             try {
+              if (!await canDeliverNotification(recipientId, senderId)) return;
               await webpush.sendNotification(
                 {
                   endpoint: sub.endpoint,
@@ -211,7 +191,8 @@ export const sendNotification = inngest.createFunction(
       });
     }
 
-    return { notifId, delivered: { inapp: true, email: shouldEmail, push: shouldPush } };
+    // Provider delivery can be skipped or fail; preferences are not delivery receipts.
+    return { notifId, processed: true };
   }
 );
 

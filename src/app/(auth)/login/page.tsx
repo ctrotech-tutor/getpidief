@@ -1,9 +1,11 @@
+import { redirectSignedInFromAuth } from "@/lib/auth/redirect-signed-in";
 import type { Metadata } from "next";
 import { LoginForm } from "@/components/features/auth/LoginForm";
 
 export const metadata: Metadata = { title: "Sign In" };
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  await redirectSignedInFromAuth();
   return (
     <div className="space-y-8">
       {/* Header */}

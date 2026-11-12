@@ -6,7 +6,7 @@ import { users, posts, documents, categories } from "@/lib/db/schema";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { toggleLike, toggleSave, deletePost } from "./actions";
 import { Composer } from "@/components/features/feed/Composer";
-import { Brand } from "@/components/brand/Brand";
+import { Brand, BrandMark } from "@/components/brand/Brand";
 import styles from "@/components/features/feed/feed.module.css";
 
 export const dynamic = "force-dynamic";
@@ -47,16 +47,16 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
     ) r where p.id in (${sql.join(ids.map(id => sql`${id}::uuid`), sql`, `)})
     order by p.id, r.created_at, r.id
   `) : { rows: [] };
-  const tabs: { view: View; label: string; href: string }[] = [{ view: "latest", label: "Latest", href: "/" }, { view: "following", label: "Following", href: "/?view=following" }, { view: "saved", label: "Saved", href: "/?view=saved" }];
+  const tabs: { view: View; label: string; href: string }[] = [{ view: "latest", label: "Latest", href: "/" }, { view: "following", label: "Following", href: "/?view=following" }];
   return <div className={styles.shell}><div className={styles.layout}>
     <aside className={styles.left} aria-label="Main navigation">
-      <div className={styles.sidebarBrand}><Brand /></div>
+      <div className={styles.sidebarBrand}><BrandMark /></div>
       <nav className={styles.sideNav} aria-label="Main navigation">
-        <Link className={`${styles.sideLink} ${view !== "saved" ? styles.sideActive : ""}`} href="/" aria-current={view !== "saved" ? "page" : undefined}><HomeIcon size={21} aria-hidden="true" /> Home</Link>
+        <Link className={`${styles.sideLink} ${view !== "saved" ? styles.sideActive : ""}`} href="/" aria-current={view !== "saved" ? "page" : undefined}><HomeIcon size={21} weight={view !== "saved" ? "fill" : "regular"} aria-hidden="true" /> Home</Link>
         <Link className={styles.sideLink} href="/search"><Search size={21} aria-hidden="true" /> Search</Link>
         <Link className={styles.sideLink} href="/explore"><Compass size={21} aria-hidden="true" /> Explore</Link>
         <Link className={styles.sideLink} href="/notifications"><Bell size={21} aria-hidden="true" /> Notifications</Link>
-        <Link className={`${styles.sideLink} ${view === "saved" ? styles.sideActive : ""}`} href="/?view=saved" aria-current={view === "saved" ? "page" : undefined}><Bookmark size={21} aria-hidden="true" /> Saved posts</Link>
+        <Link className={`${styles.sideLink} ${view === "saved" ? styles.sideActive : ""}`} href="/?view=saved" aria-current={view === "saved" ? "page" : undefined}><Bookmark size={21} weight={view === "saved" ? "fill" : "regular"} aria-hidden="true" /> Saved posts</Link>
         <Link className={styles.sideLink} href="/dashboard/library"><BookOpen size={21} aria-hidden="true" /> Library</Link>
         <Link className={styles.sideLink} href="/dashboard/uploads"><UploadSimple size={21} aria-hidden="true" /> Uploads</Link>
         <Link className={styles.sideLink} href="/dashboard"><SquaresFour size={21} aria-hidden="true" /> Dashboard</Link>
@@ -66,8 +66,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
       </nav>
     </aside>
     <section aria-labelledby="feed-title" className={styles.feedColumn}>
-      <div className={styles.mobileHeader}><Brand /><Link href="/settings" className={styles.mobileSettings} aria-label="Settings"><GearSix size={22} aria-hidden="true" /></Link></div>
-      <header className={styles.header}><h1 id="feed-title">Home</h1></header>
+      <div className={styles.mobileHeader}><Brand /><div className={styles.mobileHeaderActions}><Link href="/?view=saved" className={styles.mobileSettings} aria-label="Saved posts" aria-current={view === "saved" ? "page" : undefined}><Bookmark size={22} weight={view === "saved" ? "fill" : "regular"} aria-hidden="true" /></Link><Link href="/settings" className={styles.mobileSettings} aria-label="Settings"><GearSix size={22} aria-hidden="true" /></Link></div></div>
+      <header className={styles.header}><h1 id="feed-title">{view === "saved" ? "Saved posts" : "Home"}</h1></header>
       <Composer name={profile?.name ?? "You"} />
       <nav aria-label="Feed views" className={styles.tabs}>{tabs.map(tab => <Link key={tab.view} href={tab.href} aria-current={view === tab.view ? "page" : undefined} className={`${styles.tab} ${view === tab.view ? styles.activeTab : ""}`}>{tab.label}</Link>)}</nav>
       <div className={styles.feedIntro}><strong>{view === "following" ? "From people you follow" : view === "saved" ? "Your saved posts" : "The latest conversations"}</strong><span>Newest first</span></div>
@@ -93,7 +93,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
         <div className={styles.discoveryHeading}><div><span className={styles.discoveryEyebrow}>THE LIBRARY</span><h2 id="recent-resources-title">Recently added</h2></div><Link href="/explore">Explore <ArrowUpRight size={15} aria-hidden="true" /></Link></div>
         {recentResources.length ? <ul className={styles.resourceList}>{recentResources.map(resource => <li key={resource.id}><Link href={`/d/${resource.slug}`} className={styles.resourceItem}><span className={styles.resourceIcon}><FileText size={19} aria-hidden="true" /></span><span className={styles.resourceDetails}><strong>{resource.title}</strong><small>{resource.category ?? "Resource"}</small></span><ArrowUpRight className={styles.resourceArrow} size={16} aria-hidden="true" /></Link></li>)}</ul> : <div className={styles.resourceEmpty}><p>No public resources yet.</p><Link href="/dashboard/uploads">Share a resource <ArrowUpRight size={15} aria-hidden="true" /></Link></div>}
       </section>
-      <div className={styles.rightSmall}><Link href="/about">About</Link> <Link href="/privacy">Privacy</Link> <Link href="/terms">Terms</Link></div>
     </aside>
   </div></div>;
 }

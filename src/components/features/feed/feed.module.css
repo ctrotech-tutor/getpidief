@@ -108,3 +108,5 @@
 .postMenu{width:220px;min-width:220px;padding:7px;background:#fff;border:1px solid #dde7dc;border-radius:13px;box-shadow:0 14px 38px rgba(26,53,38,.14);z-index:400}
 .optionStatus:not(:empty){position:absolute;right:0;top:100%;z-index:2;width:max-content;max-width:220px;padding:7px 9px;border:1px solid #dce8d9;border-radius:8px;background:#fff;color:#315f45;font-size:11px;box-shadow:0 5px 15px rgba(26,53,38,.08)}
 .optionInput{position:absolute;right:0;top:calc(100% + 34px);z-index:3;width:220px;max-width:70vw;font-size:12px;padding:8px;border:1px solid #cbdcca;border-radius:8px;background:#fff;color:#315f45}
+.repostAttribution{display:flex;align-items:center;gap:5px;margin:0 0 12px 51px;color:#718579;font-size:12px;font-weight:600}.repostAttribution a{color:#506b5b}.repostAttribution a:hover{text-decoration:underline}
+.repostControl{display:inline-flex;align-items:center;flex-wrap:wrap}.repostControl button:disabled{opacity:.55}.repostError{color:#a12d2d;font-size:12px}

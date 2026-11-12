@@ -1,18 +1,14 @@
 # Reposts and blocking: implementation groundwork
 
-**Status: database groundwork only. Neither feature is usable yet.** Do not add a Block or Repost control until its server-side behavior and tests are complete. The migration is additive, but should be reviewed with the complete feature before being applied to a shared or production database. No production migration or seed is part of this work.
+**Status: reposts implemented for local testing; blocking is database groundwork only.** The migration is additive, but should be reviewed with the complete feature before being applied to a shared or production database. No production migration or seed is part of this work.
 
 ## Reposts
 
 `post_reposts` stores an attributed event pointing to an original post, rather than duplicating the body. A user can have at most one active repost of the same original; deleting the repost leaves the original untouched. Hard deletion of either the original or the reposting user cascades to the event.
 
-Remaining work:
+Current behavior: an authenticated, active user can repost or undo a repost with an idempotent server action. The original post is never copied. Latest shows both original and attributed repost events; Following includes events by followed accounts; Saved shows original posts only. Pagination uses the event timestamp, type and ID in PostgreSQL. Inactive actors and removed originals are hidden. Creation uses the feed posting rate limit. A removed cursor may end pagination, as with the previous feed cursor.
 
-- Authorize and rate-limit creation and undo on the server, validate the original and both account states, and avoid races with removal/moderation. Ensure repeated submissions are safe.
-- Merge original-post and repost events into chronological Latest and Following feeds, retaining original author attribution and displaying who reposted it. Specify behavior for the user's own reposts and saved posts.
-- Replace the original-post-only cursor with a stable composite event cursor. Test identical timestamps, post/repost tie-breakers, undo/deletion, view filtering and pagination without gaps or duplicates.
-- Hide events for removed posts and inactive users, and apply the eventual blocking rules to both original author and reposter. Handle stale links and concurrent removal safely.
-- Add clear Repost/Undo controls with pending and error states, and tests against disposable PostgreSQL plus browser tests.
+Remaining work: apply eventual blocking rules to originals, actors, counts and write paths; exercise the UI and rate-limiter failure cases in a browser; review event query performance with realistic production data and check concurrent account moderation. Reposting is not a quote post, does not provide notifications, and does not imply public unauthenticated access.
 
 ## Blocking
 

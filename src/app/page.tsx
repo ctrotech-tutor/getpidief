@@ -7,7 +7,7 @@ import LandingPage from "./LandingPage";
 
 // The root is personalized. Never statically cache one visitor's view for another.
 export const dynamic = "force-dynamic";
-export default async function RootPage({ searchParams }: { searchParams: Promise<{ view?: string; before?: string }> }) {
+export default async function RootPage({ searchParams }: { searchParams: Promise<{ view?: string; before?: string; beforeKind?: string }> }) {
   const session = await auth();
   if (!session?.user?.id) return <LandingPage />;
   return <AppLayout><Suspense fallback={<FeedLoading />}><Feed searchParams={searchParams} /></Suspense></AppLayout>;

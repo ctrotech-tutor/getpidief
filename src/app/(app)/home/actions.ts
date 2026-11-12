@@ -1,7 +1,7 @@
 "use server";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
-import { users, posts, postReplies, postLikes, postSaves, feedReports } from "@/lib/db/schema";
+import { users, posts, postReplies, postLikes, postSaves, postReposts, feedReports } from "@/lib/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -113,4 +113,20 @@ export async function deleteReply(form: FormData) {
   if (typeof replyId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(replyId)) throw new Error("Invalid reply.");
   await db.update(postReplies).set({ deletedAt: new Date() }).where(and(eq(postReplies.id, replyId), eq(postReplies.postId, id), eq(postReplies.authorId, userId), isNull(postReplies.deletedAt)));
   revalidatePath("/"); revalidatePath("/home"); revalidatePath(`/home/post/${id}`);
+}
+
+/** Idempotent desired-state repost; post lock serializes against soft deletion. */
+export async function setRepost(form: FormData) {
+  const userId = await currentUser();
+  const id = await postId(form);
+  const desired = form.get("repost");
+  if (desired !== "true" && desired !== "false") throw new Error("Invalid repost request.");
+  if (desired === "true") await limit(userId, "feedPost");
+  await db.transaction(async tx => {
+    const [post] = await tx.select({ id: posts.id }).from(posts).where(and(eq(posts.id, id), isNull(posts.deletedAt))).for("update");
+    if (!post) throw new Error("Post unavailable.");
+    if (desired === "true") await tx.insert(postReposts).values({ postId: id, userId }).onConflictDoNothing();
+    else await tx.delete(postReposts).where(and(eq(postReposts.postId, id), eq(postReposts.userId, userId)));
+  });
+  revalidatePath("/"); revalidatePath("/home");
 }

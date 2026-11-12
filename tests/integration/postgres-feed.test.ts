@@ -8,7 +8,7 @@ const enabled = !!url && process.env.TEST_DATABASE_WRITE === "yes";
 const m = vi.hoisted(() => ({ auth: vi.fn(), revalidate: vi.fn() }));
 vi.mock("@/lib/auth/auth", () => ({ auth: m.auth }));
 vi.mock("next/cache", () => ({ revalidatePath: m.revalidate }));
-vi.mock("next/navigation", () => ({ redirect: (path: string) => { throw new Error(`REDIRECT:${path}`); }, notFound: () => { throw new Error("NOT_FOUND"); } }));
+vi.mock("next/navigation", () => ({ redirect: (path: string) => { throw new Error(`REDIRECT:${path}`); }, notFound: () => { throw new Error("NOT_FOUND"); }, useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/redis/client", () => ({ redisRateLimit: {}, rateLimiters: { feedPost: { limit: async () => ({ success: true }) }, comment: { limit: async () => ({ success: true }) }, report: { limit: async () => ({ success: true }) } } }));
 
 describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
@@ -72,6 +72,44 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
     expect(first).toContain("Cursor fixture");
     expect(first).toContain("view=following&amp;before=");
     await db.execute(sql`DELETE FROM follows WHERE follower_id = ${ids.reader}::uuid AND following_id = ${ids.author}::uuid`);
+  });
+  it("reposts idempotently, attributes the event, and allows undo", async () => {
+    as(ids.reader);
+    await Promise.all(Array.from({ length: 4 }, () => actions.setRepost(form({ postId, repost: "true" }))));
+    expect((await db.execute<{ n: number }>(sql`SELECT count(*)::int as n FROM post_reposts WHERE post_id = ${postId}::uuid AND user_id = ${ids.reader}::uuid`)).rows[0].n).toBe(1);
+    const feed = renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) }));
+    expect(feed).toContain("reader</a> reposted");
+    as(ids.moderator);
+    await db.execute(sql`INSERT INTO follows (follower_id, following_id) VALUES (${ids.moderator}::uuid, ${ids.reader}::uuid)`);
+    const following = renderToStaticMarkup(await home({ searchParams: Promise.resolve({ view: "following" }) }));
+    expect(following).toContain("reader</a> reposted");
+    expect(following).toContain("What is a useful way to learn?");
+    as(ids.reader);
+    await actions.setRepost(form({ postId, repost: "false" }));
+    await actions.setRepost(form({ postId, repost: "false" }));
+    expect((await db.execute<{ n: number }>(sql`SELECT count(*)::int as n FROM post_reposts WHERE post_id = ${postId}::uuid`)).rows[0].n).toBe(0);
+    await expect(actions.setRepost(form({ postId, repost: "invalid" }))).rejects.toThrow("Invalid repost");
+  });
+  it("paginates mixed posts and reposts sharing a timestamp", async () => {
+    const timestamp = "2026-02-01 00:00:00.123456+00";
+    for (let i = 0; i < 24; i++) {
+      const id = randomUUID();
+      await db.execute(sql`INSERT INTO posts (id, author_id, kind, body, created_at) VALUES (${id}::uuid, ${ids.author}::uuid, 'thought', ${`Mixed fixture ${i}`}, ${timestamp}::timestamptz)`);
+      await db.execute(sql`INSERT INTO post_reposts (post_id, user_id, created_at) VALUES (${id}::uuid, ${ids.reader}::uuid, ${timestamp}::timestamptz)`);
+    }
+    as(ids.moderator);
+    let params: { before?: string; beforeKind?: string } = {};
+    const seen: string[] = [];
+    for (let page = 0; page < 4; page++) {
+      const markup = renderToStaticMarkup(await home({ searchParams: Promise.resolve(params) }));
+      seen.push(...Array.from(markup.matchAll(/Mixed fixture (\d+)/g), m => m[1]));
+      const match = markup.match(/before=([0-9a-f-]{36})(?:&amp;beforeKind=(repost))?/i);
+      if (!match) break;
+      params = { before: match[1], beforeKind: match[2] };
+    }
+    expect(seen).toHaveLength(48);
+    for (let i = 0; i < 24; i++) expect(seen.filter(x => x === String(i))).toHaveLength(2);
+    await db.execute(sql`DELETE FROM posts WHERE body LIKE 'Mixed fixture %' AND author_id = ${ids.author}::uuid`);
   });
   it("makes repeated likes and saves idempotent and blocks another user deleting the post", async () => {
     as(ids.reader);

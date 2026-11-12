@@ -47,3 +47,16 @@ export const feedReports = pgTable("feed_reports", {
   reasonCheck: check("feed_reports_reason_check", sql`${table.reason} in ('spam', 'harassment', 'misinformation', 'other')`),
   statusCheck: check("feed_reports_status_check", sql`${table.status} in ('open', 'dismissed', 'removed')`),
 }));
+
+// A repost is an attributed event, not a copied post. Removing the event never
+// deletes the original; deleting the original or account removes the event.
+export const postReposts = pgTable("post_reposts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  postId: uuid("post_id").notNull().references(() => posts.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  userPostUnique: uniqueIndex("post_reposts_user_post_idx").on(table.userId, table.postId),
+  feedIdx: index("post_reposts_feed_idx").on(table.createdAt, table.id),
+  postIdx: index("post_reposts_post_idx").on(table.postId),
+}));

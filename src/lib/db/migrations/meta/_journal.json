@@ -43,6 +43,13 @@
       "when": 1794410827683,
       "tag": "0005_huge_malcolm_colcord",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794509511584,
+      "tag": "0006_nervous_lethal_legion",
+      "breakpoints": true
     }
   ]
 }

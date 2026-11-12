@@ -1,12 +1,11 @@
 import Link from "next/link";
-import { BookOpen, BookmarkSimple as Bookmark, Compass, Heart, House as HomeIcon, ChatCircle as MessageCircle, MagnifyingGlass as Search, BookOpenText as Sparkles, Bell, GearSix, SquaresFour, UploadSimple, ShieldCheck } from "@phosphor-icons/react/ssr";
+import { BookOpen, BookmarkSimple as Bookmark, Compass, Heart, House as HomeIcon, ChatCircle as MessageCircle, MagnifyingGlass as Search, BookOpenText as Sparkles, Bell, GearSix, SquaresFour, UploadSimple, ShieldCheck, UserCircle, ArrowUpRight, FileText } from "@phosphor-icons/react/ssr";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
-import { users, posts } from "@/lib/db/schema";
+import { users, posts, documents, categories } from "@/lib/db/schema";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { toggleLike, toggleSave, deletePost } from "./actions";
 import { Composer } from "@/components/features/feed/Composer";
-import { FeedSignOut } from "@/components/features/feed/FeedSignOut";
 import { Brand } from "@/components/brand/Brand";
 import styles from "@/components/features/feed/feed.module.css";
 
@@ -21,6 +20,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   const view: View = params.view === "saved" || params.view === "following" ? params.view : "latest";
   const before = params.before && uuid.test(params.before) ? params.before : undefined;
   const [profile] = await db.select({ name: users.displayName, username: users.username }).from(users).where(eq(users.id, userId)).limit(1);
+  // Only publicly visible, approved resources appear here; this is not a recommendation ranking.
+  const recentResources = await db.select({ id: documents.id, title: documents.title, slug: documents.slug, category: categories.name })
+    .from(documents).leftJoin(categories, eq(documents.categoryId, categories.id))
+    .where(and(eq(documents.status, "approved"), eq(documents.visibility, "public"), isNull(documents.deletedAt)))
+    .orderBy(sql`${documents.publishedAt} desc nulls last`, desc(documents.createdAt), desc(documents.id)).limit(4);
   // The cursor is resolved by PostgreSQL to preserve timestamp precision.
   const rows = await db.select({ id: posts.id, authorId: posts.authorId, body: posts.body, kind: posts.kind, createdAt: posts.createdAt, name: users.displayName, username: users.username,
     likeCount: sql<number>`(select count(*)::int from post_likes where post_id = ${posts.id})`,
@@ -56,13 +60,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
         <Link className={styles.sideLink} href="/dashboard/library"><BookOpen size={21} aria-hidden="true" /> Library</Link>
         <Link className={styles.sideLink} href="/dashboard/uploads"><UploadSimple size={21} aria-hidden="true" /> Uploads</Link>
         <Link className={styles.sideLink} href="/dashboard"><SquaresFour size={21} aria-hidden="true" /> Dashboard</Link>
+        {profile?.username && <Link className={styles.sideLink} href={`/u/${profile.username}`}><UserCircle size={21} aria-hidden="true" /> Profile</Link>}
         <Link className={styles.sideLink} href="/settings"><GearSix size={21} aria-hidden="true" /> Settings</Link>
         {["admin", "super_admin", "moderator"].includes(session?.user?.role ?? "") && <Link className={styles.sideLink} href="/admin"><ShieldCheck size={21} aria-hidden="true" /> Moderation</Link>}
       </nav>
-      <div className={styles.sidebarBottom}>
-        {profile?.username && <Link className={styles.account} href={`/u/${profile.username}`}><span className={styles.accountAvatar} aria-hidden="true">{profile.name.trim().charAt(0).toUpperCase() || "?"}</span><span className={styles.accountText}><strong>{profile.name}</strong><small>@{profile.username}</small></span></Link>}
-        <FeedSignOut />
-      </div>
     </aside>
     <section aria-labelledby="feed-title" className={styles.feedColumn}>
       <div className={styles.mobileHeader}><Brand /><Link href="/settings" className={styles.mobileSettings} aria-label="Settings"><GearSix size={22} aria-hidden="true" /></Link></div>
@@ -81,9 +82,18 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
       </article>)}</div>}
       {rows.length > 20 && <Link className={styles.more} href={`/?${view !== "latest" ? `view=${view}&` : ""}before=${visible[visible.length - 1].id}`}>Older posts</Link>}
     </section>
-    <aside className={styles.right} aria-label="Resources">
-      <div className={styles.rightCard}><h2>Explore resources</h2><p>Find notes, papers and other materials shared by the community.</p><Link href="/explore">Browse resources <span aria-hidden="true">↗</span></Link></div>
-      <div className={styles.rightSmall}><Link href="/about">About</Link> · <Link href="/privacy">Privacy</Link> · <Link href="/terms">Terms</Link></div>
+    <aside className={styles.right} aria-label="Discover resources">
+      <form action="/search" className={styles.resourceSearch} role="search">
+        <Search size={20} aria-hidden="true" />
+        <label htmlFor="feed-resource-search" className="sr-only">Search resources</label>
+        <input id="feed-resource-search" name="q" type="search" placeholder="Search resources" />
+        <button type="submit" className="sr-only">Search</button>
+      </form>
+      <section className={styles.discoveryCard} aria-labelledby="recent-resources-title">
+        <div className={styles.discoveryHeading}><div><span className={styles.discoveryEyebrow}>THE LIBRARY</span><h2 id="recent-resources-title">Recently added</h2></div><Link href="/explore">Explore <ArrowUpRight size={15} aria-hidden="true" /></Link></div>
+        {recentResources.length ? <ul className={styles.resourceList}>{recentResources.map(resource => <li key={resource.id}><Link href={`/d/${resource.slug}`} className={styles.resourceItem}><span className={styles.resourceIcon}><FileText size={19} aria-hidden="true" /></span><span className={styles.resourceDetails}><strong>{resource.title}</strong><small>{resource.category ?? "Resource"}</small></span><ArrowUpRight className={styles.resourceArrow} size={16} aria-hidden="true" /></Link></li>)}</ul> : <div className={styles.resourceEmpty}><p>No public resources yet.</p><Link href="/dashboard/uploads">Share a resource <ArrowUpRight size={15} aria-hidden="true" /></Link></div>}
+      </section>
+      <div className={styles.rightSmall}><Link href="/about">About</Link> <Link href="/privacy">Privacy</Link> <Link href="/terms">Terms</Link></div>
     </aside>
   </div></div>;
 }

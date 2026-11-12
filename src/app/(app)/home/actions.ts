@@ -95,7 +95,7 @@ export async function reportFeedContent(form: FormData) {
     if (!post) throw new Error("Post unavailable.");
     let authorId = post.authorId;
     if (typeof replyId === "string") {
-      const [target] = await tx.select({ authorId: postReplies.authorId }).from(postReplies).where(and(eq(postReplies.id, replyId), eq(postReplies.postId, id), isNull(postReplies.deletedAt))).for("update");
+      const [target] = await tx.select({ authorId: postReplies.authorId }).from(postReplies).where(and(eq(postReplies.id, replyId), eq(postReplies.postId, id), isNull(postReplies.deletedAt), sql`not exists (select 1 from user_blocks b where (b.blocker_id = ${userId}::uuid and b.blocked_id = ${postReplies.authorId}) or (b.blocked_id = ${userId}::uuid and b.blocker_id = ${postReplies.authorId}))`)).for("update");
       if (!target) throw new Error("Reply unavailable.");
       authorId = target.authorId;
     }

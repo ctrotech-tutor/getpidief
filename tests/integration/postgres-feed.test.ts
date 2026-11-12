@@ -65,6 +65,16 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
     }
     await db.execute(sql`DELETE FROM user_blocks WHERE blocker_id = ${ids.reader}::uuid AND blocked_id = ${ids.author}::uuid`);
   });
+  it("does not let a viewer report a blocked person's reply through a direct ID", async () => {
+    const otherPost = randomUUID(), otherReply = randomUUID();
+    await db.execute(sql`INSERT INTO posts (id, author_id, kind, body) VALUES (${otherPost}::uuid, ${ids.moderator}::uuid, 'thought', 'Another post')`);
+    await db.execute(sql`INSERT INTO post_replies (id, post_id, author_id, body) VALUES (${otherReply}::uuid, ${otherPost}::uuid, ${ids.author}::uuid, 'A blocked reply')`);
+    await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${ids.reader}::uuid, ${ids.author}::uuid)`);
+    as(ids.reader);
+    await expect(actions.reportFeedContent(form({ postId: otherPost, replyId: otherReply, reason: "spam" }))).rejects.toThrow("Reply unavailable");
+    await db.execute(sql`DELETE FROM user_blocks WHERE blocker_id = ${ids.reader}::uuid AND blocked_id = ${ids.author}::uuid`);
+    await db.execute(sql`DELETE FROM posts WHERE id = ${otherPost}::uuid`);
+  });
   it("paginates posts that share a timestamp without losing or duplicating rows", async () => {
     for (let i = 0; i < 24; i++) await db.execute(sql`INSERT INTO posts (author_id, kind, body, created_at) VALUES (${ids.author}::uuid, 'thought', ${`Cursor fixture ${i}`}, '2026-01-01 00:00:00.123456+00'::timestamptz)`);
     as(ids.reader);

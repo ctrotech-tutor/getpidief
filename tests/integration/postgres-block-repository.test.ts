@@ -31,6 +31,13 @@ describe.skipIf(!enabled)("block and follow serialization on disposable PostgreS
     expect(await blocks.block(a, b)).toEqual({ changed: true });
     expect(await blocks.block(a, b)).toEqual({ changed: false });
     expect(await blocks.between(a, b)).toBe(true);
+    const usernameA = "test" + a.replaceAll("-", "");
+    const usernameB = "test" + b.replaceAll("-", "");
+    expect(await users.getPublicProfile(usernameA, b)).toBeNull();
+    expect(await users.getPublicProfile(usernameB, a)).toBeNull();
+    expect(await users.getPublicProfile(usernameA, a)).not.toBeNull();
+    // Public content remains available without a viewer: a block is not privacy.
+    expect(await users.getPublicProfile(usernameA)).not.toBeNull();
     const rows = await db.execute<{ follower_count: number; following_count: number }>(sql`SELECT follower_count, following_count FROM users WHERE id IN (${a}::uuid, ${b}::uuid)`);
     expect(rows.rows.every(row => row.follower_count === 0 && row.following_count === 0)).toBe(true);
     await expect(users.follow(a, b)).rejects.toThrow("NOT_FOUND");

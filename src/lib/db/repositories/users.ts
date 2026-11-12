@@ -53,7 +53,8 @@ export const usersRepository = {
       where: and(
         eq(users.username, username),
         eq(users.status, "active"),
-        sql`${users.deletedAt} IS NULL`
+        sql`${users.deletedAt} IS NULL`,
+        requestingUserId ? sql`not exists (select 1 from user_blocks b where (b.blocker_id = ${requestingUserId}::uuid and b.blocked_id = ${users.id}) or (b.blocked_id = ${requestingUserId}::uuid and b.blocker_id = ${users.id}))` : undefined
       ),
       columns: {
         id: true, username: true, displayName: true, bio: true,

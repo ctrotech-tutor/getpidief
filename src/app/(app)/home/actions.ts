@@ -1,10 +1,11 @@
 "use server";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
-import { users, posts, postReplies, postLikes, postSaves, postReposts, feedReports } from "@/lib/db/schema";
+import { users, posts, postReplies, postLikes, postSaves, postReposts } from "@/lib/db/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { createFeedReport } from "@/lib/feed/report-transaction";
 import { withPostInteraction } from "@/lib/feed/interaction-transaction";
 import { rateLimiters, redisRateLimit } from "@/lib/redis/client";
 
@@ -93,18 +94,7 @@ export async function reportFeedContent(form: FormData) {
   const replyId = form.get("replyId");
   if (replyId !== null && (typeof replyId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(replyId))) throw new Error("Invalid reply.");
   await limit(userId, "report");
-  await db.transaction(async tx => {
-    const [post] = await tx.select({ authorId: posts.authorId }).from(posts).where(and(eq(posts.id, id), isNull(posts.deletedAt))).for("update");
-    if (!post) throw new Error("Post unavailable.");
-    let authorId = post.authorId;
-    if (typeof replyId === "string") {
-      const [target] = await tx.select({ authorId: postReplies.authorId }).from(postReplies).where(and(eq(postReplies.id, replyId), eq(postReplies.postId, id), isNull(postReplies.deletedAt), sql`not exists (select 1 from user_blocks b where (b.blocker_id = ${userId}::uuid and b.blocked_id = ${postReplies.authorId}) or (b.blocked_id = ${userId}::uuid and b.blocker_id = ${postReplies.authorId}))`)).for("update");
-      if (!target) throw new Error("Reply unavailable.");
-      authorId = target.authorId;
-    }
-    if (authorId === userId) throw new Error("You cannot report your own content.");
-    await tx.insert(feedReports).values({ reporterId: userId, postId: id, replyId: typeof replyId === "string" ? replyId : null, reason }).onConflictDoNothing();
-  });
+  await createFeedReport(userId, id, typeof replyId === "string" ? replyId : null, reason);
   revalidatePath("/admin/feed-reports");
   redirect(`/home/post/${id}?reported=1`);
 }

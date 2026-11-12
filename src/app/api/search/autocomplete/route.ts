@@ -5,7 +5,7 @@ import { getAutocomplete } from "@/lib/search/search";
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get("q") ?? "";
   if (q.trim().length < 2) {
-    return NextResponse.json({ data: [] });
+    return NextResponse.json({ data: [] }, { headers: { "Cache-Control": "private, no-store" } });
   }
 
   const session = await auth();
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     { data: results },
     {
       headers: {
-        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+        "Cache-Control": "private, no-store",
       },
     }
   );

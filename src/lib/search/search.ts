@@ -1,7 +1,7 @@
 import { db } from "@/lib/db/client";
-import { documents, users, institutions, categories } from "@/lib/db/schema";
+import { notBlockedByEither } from "@/lib/blocks/visibility";
 import { sql } from "drizzle-orm";
-import { redis, KEYS, TTL, setCache, getCache, zincrby } from "@/lib/redis/client";
+import { redis, KEYS, getCache, zincrby } from "@/lib/redis/client";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SEARCH FILTERS TYPE
@@ -121,6 +121,8 @@ export async function searchDocuments(
   const conditions = [
     sql`d.status = 'approved'`,
     sql`d.deleted_at IS NULL`,
+    sql`u.status = 'active' AND u.deleted_at IS NULL`,
+    notBlockedByEither(requestingUserId, sql`d.author_id`),
     institutionScoped
       ? sql`(d.visibility = 'public' OR (d.visibility = 'institution' AND d.institution_id = ${institutionScoped}))`
       : sql`d.visibility = 'public'`,
@@ -273,10 +275,7 @@ export async function getAutocomplete(
 ): Promise<AutocompleteResult[]> {
   if (!prefix || prefix.trim().length < 2) return [];
 
-  const cacheKey = KEYS.autocomplete(`${prefix}:${userId ?? "anon"}`);
-  const cached = await getCache<AutocompleteResult[]>(cacheKey);
-  if (cached) return cached;
-
+  // Avoid cached personalized results: block state can change during a cache fill.
   const results: AutocompleteResult[] = [];
   const q = prefix.toLowerCase().trim();
 
@@ -337,8 +336,11 @@ export async function getAutocomplete(
   }>(sql`
     SELECT d.id, d.slug, d.title, i.name AS institution_name
     FROM documents d
+    JOIN users u ON u.id = d.author_id
     LEFT JOIN institutions i ON i.id = d.institution_id
-    WHERE d.status = 'approved'
+    WHERE u.status = 'active' AND u.deleted_at IS NULL
+      AND ${notBlockedByEither(userId, sql`d.author_id`)}
+      AND d.status = 'approved'
       AND d.visibility = 'public'
       AND d.deleted_at IS NULL
       AND d.search_vector @@ to_tsquery('english', ${q + ":*"})
@@ -365,8 +367,6 @@ export async function getAutocomplete(
     )
     .slice(0, limit);
 
-  await setCache(cacheKey, unique, TTL.autocomplete);
-
   return unique;
 }
 
@@ -375,15 +375,18 @@ export async function getAutocomplete(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getSpellingSuggestion(
-  query: string
+  query: string,
+  requestingUserId?: string
 ): Promise<string | null> {
   if (query.length < 4) return null;
 
   const result = await db.execute<{ suggestion: string; similarity: number }>(sql`
-    SELECT title AS suggestion, similarity(title, ${query}) AS similarity
-    FROM documents
-    WHERE status = 'approved'
-      AND similarity(title, ${query}) > 0.3
+    SELECT d.title AS suggestion, similarity(d.title, ${query}) AS similarity
+    FROM documents d JOIN users u ON u.id = d.author_id
+    WHERE d.status = 'approved' AND d.visibility = 'public' AND d.deleted_at IS NULL
+      AND u.status = 'active' AND u.deleted_at IS NULL
+      AND ${notBlockedByEither(requestingUserId, sql`d.author_id`)}
+      AND similarity(d.title, ${query}) > 0.3
     ORDER BY similarity DESC
     LIMIT 1
   `);

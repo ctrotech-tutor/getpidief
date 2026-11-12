@@ -58,5 +58,5 @@ export async function GET(req: NextRequest) {
     }).catch(() => {});
   }
 
-  return NextResponse.json({ data: results }, { status: 200 });
+  return NextResponse.json({ data: results }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
 }

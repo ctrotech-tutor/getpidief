@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BookOpen, Compass, Heart, House as HomeIcon, ChatCircle as MessageCircle, MagnifyingGlass as Search, BookOpenText as Sparkles, Bell, GearSix, SquaresFour, UploadSimple, ArrowUpRight, FileText, Repeat } from "@phosphor-icons/react/ssr";
+import { notBlockedByEither } from "@/lib/blocks/visibility";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
 import { users, posts, documents, categories } from "@/lib/db/schema";
@@ -28,8 +29,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   const [profile] = await db.select({ name: users.displayName, username: users.username, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, userId)).limit(1);
   // Only publicly visible, approved resources appear here; this is not a recommendation ranking.
   const recentResources = await db.select({ id: documents.id, title: documents.title, slug: documents.slug, category: categories.name })
-    .from(documents).leftJoin(categories, eq(documents.categoryId, categories.id))
-    .where(and(eq(documents.status, "approved"), eq(documents.visibility, "public"), isNull(documents.deletedAt)))
+    .from(documents).innerJoin(users, eq(users.id, documents.authorId)).leftJoin(categories, eq(documents.categoryId, categories.id))
+    .where(and(eq(documents.status, "approved"), eq(documents.visibility, "public"), isNull(documents.deletedAt), eq(users.status, "active"), isNull(users.deletedAt), notBlockedByEither(userId, sql`${documents.authorId}`)))
     .orderBy(sql`${documents.publishedAt} desc nulls last`, desc(documents.createdAt), desc(documents.id)).limit(4);
   // Event cursors are resolved in PostgreSQL, preserving microsecond precision.
   // Saved is a collection of originals; Following includes posts and reposts by followed people.

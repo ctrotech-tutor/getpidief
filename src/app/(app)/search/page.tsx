@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { notBlockedByEither } from "@/lib/blocks/visibility";
 import { searchDocuments } from "@/lib/search/search";
 import { auth } from "@/lib/auth/auth";
 import { searchQuerySchema } from "@/lib/validations/schemas";
@@ -82,8 +83,10 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       .limit(20),
     db.execute<{ category_id: string; count: number }>(sql`
       select d.category_id, count(*)::int as count
-      from ${documents} d
-      where d.status = 'approved'
+      from ${documents} d join users u on u.id = d.author_id
+      where u.status = 'active' and u.deleted_at is null
+        and ${notBlockedByEither(user?.id, sql`d.author_id`)}
+        and d.status = 'approved'
         and d.visibility = 'public'
         and d.deleted_at is null
         and d.category_id is not null

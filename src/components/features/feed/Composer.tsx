@@ -4,11 +4,13 @@ import { useRouter } from "next/navigation";
 import { POST_MAX_LENGTH, postLength, limitPostText } from "@/lib/feed/post-length";
 import { createPost } from "@/app/(app)/home/actions";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogContent, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { FeedProfileAvatar } from "./FeedProfileAvatar";
 import styles from "./feed.module.css";
 
 export function Composer({ name, avatarUrl = null }: { name: string; avatarUrl?: string | null }) {
   const [open, setOpen] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const [published, setPublished] = useState(false);
@@ -25,8 +27,16 @@ export function Composer({ name, avatarUrl = null }: { name: string; avatarUrl?:
 
   function changeOpen(next: boolean) {
     if (pending) return;
-    if (next) { setError(""); setPublished(false); }
-    setOpen(next);
+    if (next) {
+      setError(""); setPublished(false); setOpen(true);
+    } else if (text.trim()) {
+      setConfirmDiscard(true);
+    } else {
+      setText(""); setError(""); setOpen(false);
+    }
+  }
+  function discardPost() {
+    setText(""); setError(""); setConfirmDiscard(false); setOpen(false);
   }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -71,6 +81,16 @@ export function Composer({ name, avatarUrl = null }: { name: string; avatarUrl?:
             <button type="submit" className={styles.composePublish} disabled={pending || !text.trim()}>{pending ? "Posting…" : "Post"}</button>
           </div>
         </form>
+        <AlertDialog open={confirmDiscard} onOpenChange={setConfirmDiscard}>
+          <AlertDialogContent className={styles.discardDialog}>
+            <AlertDialogTitle className={styles.discardTitle}>Discard this post?</AlertDialogTitle>
+            <AlertDialogDescription className={styles.discardDescription}>Your post hasn’t been published. If you discard it, your text will be lost.</AlertDialogDescription>
+            <div className={styles.discardActions}>
+              <AlertDialogCancel className={styles.composeCancel}>Keep writing</AlertDialogCancel>
+              <AlertDialogAction className={styles.discardButton} onClick={discardPost}>Discard</AlertDialogAction>
+            </div>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
     {published && <p role="status" className={styles.composePublished}>Your post is published.</p>}

@@ -18,7 +18,7 @@ The first phase supplies a responsive feed shell, composer, post anatomy, discus
 
 ## Delivery and verification
 
-The feed remains server-rendered, with only the composer client-side. It retains explicit older-post navigation for keyboard and low-bandwidth use instead of adding uncontrolled infinite scrolling. Error handling preserves drafts. New feed posts are limited to 280 Unicode code points on both client and server; existing longer posts are unchanged. Production safety behavior, abuse limits, report/review paths and row visibility remain in force.
+The feed remains server-rendered, with only the composer client-side. It retains explicit older-post navigation for keyboard and low-bandwidth use instead of adding uncontrolled infinite scrolling. An unpublished post stays in the editor after an error; closing a non-empty editor asks to discard or keep writing. There is no persistent drafts feature yet, so navigation or refresh can lose unfinished text. New feed posts are limited to 280 Unicode code points on both client and server; existing longer posts are unchanged. Production safety behavior, abuse limits, report/review paths and row visibility remain in force.
 
 Next phases: topic-aware posts and candidate ranking; real follow/discovery controls and people search; PDF attachments; richer conversation and actions; safe consolidation of /explore. Browser-test mobile, keyboard, screen reader, zoom and slow connections, and measure real latency and interaction performance before making performance claims. Existing resource search is resource-focused, not yet people/post search.
 

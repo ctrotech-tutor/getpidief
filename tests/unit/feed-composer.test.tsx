@@ -46,14 +46,43 @@ describe("feed composer", () => {
     expect(input.style.height).toBe("160px");
     expect(screen.getByLabelText("5 of 280 characters")).toBeInTheDocument();
   });
-  it("keeps an unfinished draft when closed and reopened", async () => {
+  it("asks before discarding and keeps the text when choosing to continue", async () => {
     render(<Composer name="Ada" />);
     fireEvent.click(screen.getByRole("button", { name: "What’s on your mind?" }));
     fireEvent.change(screen.getByLabelText("Your post"), { target: { value: "Draft idea" } });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("alertdialog", { name: "Discard this post?" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Keep writing" }));
+    expect(await screen.findByLabelText("Your post")).toHaveValue("Draft idea");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "What’s on your mind?" }));
-    expect(screen.getByLabelText("Your post")).toHaveValue("Draft idea");
+    expect(screen.getByLabelText("Your post")).toHaveValue("");
     expect(m.create).not.toHaveBeenCalled();
   });
+  it("asks before closing non-empty content with Escape and closes empty content directly", async () => {
+    render(<Composer name="Ada" />);
+    fireEvent.click(screen.getByRole("button", { name: "What’s on your mind?" }));
+    fireEvent.change(screen.getByLabelText("Your post"), { target: { value: "Draft idea" } });
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(await screen.findByRole("alertdialog", { name: "Discard this post?" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "What’s on your mind?" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });  it("asks before closing from an outside click", async () => {
+    render(<Composer name="Ada" />);
+    fireEvent.click(screen.getByRole("button", { name: "What’s on your mind?" }));
+    fireEvent.change(screen.getByLabelText("Your post"), { target: { value: "Unposted text" } });
+    // Radix registers its outside-pointer listener after the opening event.
+    await new Promise(resolve => setTimeout(resolve, 10));
+    fireEvent.pointerDown(document.body, { button: 0, ctrlKey: false });
+    expect(await screen.findByRole("alertdialog", { name: "Discard this post?" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Keep writing" }));
+    expect(await screen.findByLabelText("Your post")).toHaveValue("Unposted text");
+  });
+
 });

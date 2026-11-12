@@ -5,6 +5,7 @@ import { users, posts, postReplies, postLikes, postSaves, postReposts } from "@/
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { POST_MAX_LENGTH, postLength } from "@/lib/feed/post-length";
 import { createFeedReport } from "@/lib/feed/report-transaction";
 import { withPostInteraction } from "@/lib/feed/interaction-transaction";
 import { rateLimiters, redisRateLimit } from "@/lib/redis/client";
@@ -27,9 +28,9 @@ async function limit(userId: string, kind: "feedPost" | "comment" | "report") {
     throw new Error("Posting is temporarily unavailable.");
   }
 }
-function body(form: FormData, limit: number) {
+function body(form: FormData, limit: number, length = (text: string) => text.length) {
   const value = form.get("body");
-  if (typeof value !== "string" || !value.trim() || value.trim().length > limit) throw new Error(`Please enter between 1 and ${limit} characters.`);
+  if (typeof value !== "string" || !value.trim() || length(value.trim()) > limit) throw new Error(`Please enter between 1 and ${limit} characters.`);
   return value.trim();
 }
 async function postId(form: FormData, viewerId: string) {
@@ -43,7 +44,7 @@ export async function createPost(form: FormData) {
   const userId = await currentUser();
   const kind = form.get("kind");
   if (kind !== "thought" && kind !== "question") throw new Error("Invalid post type.");
-  const text = body(form, 3000);
+  const text = body(form, POST_MAX_LENGTH, postLength);
   await limit(userId, "feedPost");
   await db.insert(posts).values({ authorId: userId, kind, body: text });
   revalidatePath("/");

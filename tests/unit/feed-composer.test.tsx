@@ -32,6 +32,20 @@ describe("feed composer", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Please try again later.");
     expect(screen.getByLabelText("Your post")).toHaveValue("A useful idea");
   });
+  it("grows with input and limits typed or pasted text to 280 Unicode code points", () => {
+    render(<Composer name="Ada" />);
+    fireEvent.click(screen.getByRole("button", { name: "What’s on your mind?" }));
+    const input = screen.getByLabelText("Your post") as HTMLTextAreaElement;
+    Object.defineProperty(input, "scrollHeight", { configurable: true, value: 230 });
+    fireEvent.change(input, { target: { value: "😀".repeat(281) } });
+    expect(input.value).toBe("😀".repeat(280));
+    expect(input.style.height).toBe("230px");
+    expect(screen.getByLabelText("280 of 280 characters")).toBeInTheDocument();
+    Object.defineProperty(input, "scrollHeight", { configurable: true, value: 160 });
+    fireEvent.change(input, { target: { value: "Short" } });
+    expect(input.style.height).toBe("160px");
+    expect(screen.getByLabelText("5 of 280 characters")).toBeInTheDocument();
+  });
   it("keeps an unfinished draft when closed and reopened", async () => {
     render(<Composer name="Ada" />);
     fireEvent.click(screen.getByRole("button", { name: "What’s on your mind?" }));

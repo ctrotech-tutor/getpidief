@@ -30,10 +30,15 @@ describe("home feed mutations", () => {
   it("validates post types and length and observes rate limits", async () => {
     await expect(createPost(form({ kind: "resource", body: "hello" }))).rejects.toThrow("Invalid post type");
     await expect(createPost(form({ kind: "thought", body: " ".repeat(4) }))).rejects.toThrow("between 1");
-    await expect(createPost(form({ kind: "thought", body: "a".repeat(3001) }))).rejects.toThrow("between 1");
+    await expect(createPost(form({ kind: "thought", body: "a".repeat(281) }))).rejects.toThrow("between 1");
     m.limitPost.mockResolvedValueOnce({ success: false });
     await expect(createPost(form({ kind: "thought", body: "hello" }))).rejects.toThrow("Too many");
     expect(m.insert).not.toHaveBeenCalled();
+  });
+  it("accepts up to 280 Unicode code points and rejects longer posts server-side", async () => {
+    await createPost(form({ kind: "thought", body: "😀".repeat(280) }));
+    expect(m.insert).toHaveBeenCalledWith(posts);
+    await expect(createPost(form({ kind: "thought", body: "😀".repeat(281) }))).rejects.toThrow("between 1 and 280");
   });
   it("inserts a reply only to an available post and refreshes both views", async () => {
     await expect(reply(form({ postId: "bad", body: "answer" }))).rejects.toThrow("Invalid post");

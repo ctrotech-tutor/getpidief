@@ -1,6 +1,7 @@
 "use client";
-import { useState, useTransition, type FormEvent } from "react";
+import { useLayoutEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { POST_MAX_LENGTH, postLength, limitPostText } from "@/lib/feed/post-length";
 import { createPost } from "@/app/(app)/home/actions";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { FeedProfileAvatar } from "./FeedProfileAvatar";
@@ -13,6 +14,14 @@ export function Composer({ name, avatarUrl = null }: { name: string; avatarUrl?:
   const [published, setPublished] = useState(false);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const input = textareaRef.current;
+    if (!open || !input) return;
+    // Reset before measuring so the editor shrinks when text is removed.
+    input.style.height = "auto";
+    input.style.height = `${input.scrollHeight}px`;
+  }, [text, open]);
 
   function changeOpen(next: boolean) {
     if (pending) return;
@@ -51,12 +60,13 @@ export function Composer({ name, avatarUrl = null }: { name: string; avatarUrl?:
             <div className={styles.composeWriting}>
               <strong>{name}</strong>
               <label className="sr-only" htmlFor="feed-body">Your post</label>
-              <textarea id="feed-body" name="body" disabled={pending} required maxLength={3000} placeholder="What’s on your mind?" value={text} onChange={event => setText(event.target.value)} className={styles.composeTextarea} autoFocus />
+              <textarea ref={textareaRef} id="feed-body" name="body" disabled={pending} required aria-describedby="post-character-limit" placeholder="What’s on your mind?" value={text} onChange={event => setText(limitPostText(event.target.value))} className={styles.composeTextarea} autoFocus />
               <input type="hidden" name="kind" value="thought" />
             </div>
           </div>
           {error && <p role="alert" className={styles.composeError}>{error}</p>}
           <div className={styles.composeFooter}>
+            <span id="post-character-limit" className={styles.composeCount} aria-label={`${postLength(text)} of ${POST_MAX_LENGTH} characters`}>{postLength(text)} / {POST_MAX_LENGTH}</span>
             <button type="button" className={styles.composeCancel} disabled={pending} onClick={() => changeOpen(false)}>Cancel</button>
             <button type="submit" className={styles.composePublish} disabled={pending || !text.trim()}>{pending ? "Posting…" : "Post"}</button>
           </div>

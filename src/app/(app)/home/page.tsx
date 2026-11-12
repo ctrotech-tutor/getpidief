@@ -1,11 +1,10 @@
 import Link from "next/link";
-import { BookOpen, Compass, Heart, House as HomeIcon, ChatCircle as MessageCircle, MagnifyingGlass as Search, BookOpenText as Sparkles, Bell, GearSix, SquaresFour, UploadSimple, ArrowUpRight, FileText, Repeat } from "@phosphor-icons/react/ssr";
-import { notBlockedByEither } from "@/lib/blocks/visibility";
+import { BookOpen, Compass, Heart, House as HomeIcon, ChatCircle as MessageCircle, MagnifyingGlass as Search, BookOpenText as Sparkles, Bell, GearSix, SquaresFour, UploadSimple, ArrowUpRight, Repeat } from "@phosphor-icons/react/ssr";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
 import { usersRepository } from "@/lib/db/repositories/users";
-import { users, posts, documents, categories } from "@/lib/db/schema";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { users, posts } from "@/lib/db/schema";
+import { eq, sql } from "drizzle-orm";
 import { toggleLike, deletePost } from "./actions";
 import { formatPostTime } from "@/lib/feed/post-time";
 import { Composer } from "@/components/features/feed/Composer";
@@ -13,6 +12,7 @@ import { RepostButton } from "@/components/features/feed/RepostButton";
 import { PostOptions } from "@/components/features/feed/PostOptions";
 import { PostShare } from "@/components/features/feed/PostShare";
 import { FeedMoreMenu } from "@/components/features/feed/FeedMoreMenu";
+import { FollowSuggestion } from "@/components/features/feed/FollowSuggestion";
 import { FeedProfileAvatar } from "@/components/features/feed/FeedProfileAvatar";
 import { Brand, BrandMark } from "@/components/brand/Brand";
 import styles from "@/components/features/feed/feed.module.css";
@@ -29,11 +29,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   const before = params.before && uuid.test(params.before) ? params.before : undefined;
   const [profile] = await db.select({ name: users.displayName, username: users.username, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, userId)).limit(1);
   const following = await usersRepository.getFollowing(userId, { viewerId: userId, limit: 3 });
-  // Only publicly visible, approved resources appear here; this is not a recommendation ranking.
-  const recentResources = await db.select({ id: documents.id, title: documents.title, slug: documents.slug, category: categories.name })
-    .from(documents).innerJoin(users, eq(users.id, documents.authorId)).leftJoin(categories, eq(documents.categoryId, categories.id))
-    .where(and(eq(documents.status, "approved"), eq(documents.visibility, "public"), isNull(documents.deletedAt), eq(users.status, "active"), isNull(users.deletedAt), notBlockedByEither(userId, sql`${documents.authorId}`)))
-    .orderBy(sql`${documents.publishedAt} desc nulls last`, desc(documents.createdAt), desc(documents.id)).limit(4);
+  const suggestions = await usersRepository.getFollowSuggestions(userId, 3);
   // Event cursors are resolved in PostgreSQL, preserving microsecond precision.
   // Saved is a collection of originals; Following includes posts and reposts by followed people.
   type FeedEvent = { eventId: string; eventKind: "post" | "repost"; id: string; authorId: string; body: string; kind: string; createdAt: string; name: string; username: string; avatarUrl: string | null; likeCount: number; liked: boolean; saved: boolean; following: boolean; replyCount: number; reposted: boolean; repostCount: number; reposterName: string | null; reposterUsername: string | null };
@@ -118,7 +114,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
       </article>)}</div>}
       {rows.length > 20 && <Link className={styles.more} href={`/?${view !== "latest" ? `view=${view}&` : ""}before=${visible[visible.length - 1].eventId}${visible[visible.length - 1].eventKind === "repost" ? "&beforeKind=repost" : ""}`}>Older posts</Link>}
     </section>
-    <aside className={styles.right} aria-label="Discover resources">
+    <aside className={styles.right} aria-label="Discover people and resources" tabIndex={0}>
       <form action="/search" className={styles.resourceSearch} role="search">
         <Search size={20} aria-hidden="true" />
         <label htmlFor="feed-resource-search" className="sr-only">Search resources</label>
@@ -129,9 +125,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
         <div className={styles.discoveryHeading}><h2 id="following-accounts-title">Following</h2>{following.total > 0 && <Link href="/dashboard/following">See all <ArrowUpRight size={15} aria-hidden="true" /></Link>}</div>
         {following.following.length ? <ul className={styles.followingList}>{following.following.map(account => <li key={account.id}><Link className={styles.followingItem} href={`/u/${account.username}`}><FeedProfileAvatar name={account.displayName} avatarUrl={account.avatarUrl} post /><span className={styles.followingDetails}><strong>{account.displayName}</strong><small>@{account.username}</small></span></Link></li>)}</ul> : <div className={styles.resourceEmpty}><p>You’re not following anyone yet.</p><Link href="/explore">Explore <ArrowUpRight size={15} aria-hidden="true" /></Link></div>}
       </section>
-      <section className={styles.discoveryCard} aria-labelledby="recent-resources-title">
-        <div className={styles.discoveryHeading}><h2 id="recent-resources-title">Recently added</h2><Link href="/explore">Explore <ArrowUpRight size={15} aria-hidden="true" /></Link></div>
-        {recentResources.length ? <ul className={styles.resourceList}>{recentResources.map(resource => <li key={resource.id}><Link href={`/d/${resource.slug}`} className={styles.resourceItem}><span className={styles.resourceIcon}><FileText size={19} aria-hidden="true" /></span><span className={styles.resourceDetails}><strong>{resource.title}</strong><small>{resource.category ?? "Resource"}</small></span><ArrowUpRight className={styles.resourceArrow} size={16} aria-hidden="true" /></Link></li>)}</ul> : <div className={styles.resourceEmpty}><p>No public resources yet.</p><Link href="/dashboard/uploads">Share a resource <ArrowUpRight size={15} aria-hidden="true" /></Link></div>}
+      <section className={styles.discoveryCard} aria-labelledby="follow-suggestions-title">
+        <div className={styles.discoveryHeading}><h2 id="follow-suggestions-title">Who to follow</h2></div>
+        {suggestions.rows.length ? <ul className={styles.followingList}>{suggestions.rows.map(account => <li key={account.id} className={styles.suggestionRow}><Link className={styles.followingItem} href={`/u/${account.username}`}><FeedProfileAvatar name={account.display_name} avatarUrl={account.avatar_url} post /><span className={styles.followingDetails}><strong>{account.display_name}</strong><small>@{account.username}</small></span></Link><FollowSuggestion id={account.id} name={account.display_name} /></li>)}</ul> : <div className={styles.resourceEmpty}><p>No suggestions right now.</p></div>}
       </section>
     </aside>
   </div></div>;

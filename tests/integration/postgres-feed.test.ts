@@ -113,7 +113,7 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
       expect(rail).toContain('/u/rail' + person.replaceAll('-', ''));
       expect(rail).toContain('/dashboard/following');
       expect(rail).not.toContain('Rail Hidden');
-      expect(markup.indexOf('following-accounts-title')).toBeLessThan(markup.indexOf('recent-resources-title'));
+      expect(markup.indexOf('following-accounts-title')).toBeLessThan(markup.indexOf('follow-suggestions-title'));
       await db.execute(sql`DELETE FROM follows WHERE follower_id = ${ids.reader}::uuid AND following_id = ${person}::uuid`);
       const empty = renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) }));
       const emptyRail = empty.split('aria-labelledby="following-accounts-title"')[1].split('</section>')[0];
@@ -126,6 +126,25 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
     } finally {
       for (const id of [person, hidden]) await db.execute(sql`DELETE FROM auth_users WHERE id = ${id}::uuid`);
     }
+  });
+  it("suggests eligible unfollowed people even without an institution and removes them after following", async () => {
+    const candidate = randomUUID(), hidden = randomUUID(), inactive = randomUUID();
+    try {
+      for (const [id, name] of [[candidate, "Suggested Person"], [hidden, "Blocked Suggestion"], [inactive, "Inactive Suggestion"]]) {
+        await db.execute(sql`INSERT INTO auth_users (id, email) VALUES (${id}::uuid, ${id + "@example.test"})`);
+        await db.execute(sql`INSERT INTO users (id, username, display_name, role, onboarding_complete, follower_count) VALUES (${id}::uuid, ${"sug" + id.replaceAll("-", "")}, ${name}, 'student'::user_role, true, 10000)`);
+      }
+      await db.execute(sql`UPDATE users SET status = 'suspended' WHERE id = ${inactive}::uuid`);
+      await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${hidden}::uuid, ${ids.reader}::uuid)`);
+      as(ids.reader);
+      const section = (html: string) => html.split('aria-labelledby="follow-suggestions-title"')[1].split('</section>')[0];
+      const markup = section(renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) })));
+      expect(markup).toContain('Suggested Person'); expect(markup).toContain('Follow Suggested Person');
+      expect(markup).not.toContain('Blocked Suggestion'); expect(markup).not.toContain('Inactive Suggestion');
+      expect(markup).not.toContain('reader');
+      await db.execute(sql`INSERT INTO follows (follower_id, following_id) VALUES (${ids.reader}::uuid, ${candidate}::uuid)`);
+      expect(section(renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) })))).not.toContain('Suggested Person');
+    } finally { for (const id of [candidate, hidden, inactive]) await db.execute(sql`DELETE FROM auth_users WHERE id = ${id}::uuid`); }
   });
   it("reposts idempotently, attributes the event, and allows undo", async () => {
     as(ids.reader);

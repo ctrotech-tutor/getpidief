@@ -117,3 +117,7 @@
 .followingItem:hover strong{color:#2a7650}.followingItem:focus-visible{outline:2px solid #337353;outline-offset:3px;border-radius:4px}
 .followingItem .postAvatar{width:36px;height:36px;border-radius:50%}.followingItem .postAvatar img,.followingItem .postAvatarFallback{border-radius:50%}
 .followingDetails{min-width:0;display:grid;gap:2px}.followingDetails strong,.followingDetails small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.followingDetails strong{font-size:13px;line-height:1.35}.followingDetails small{font-size:12px;color:#84958a}
+
+/* Hide scrollbar chrome while keeping the rail scrollable and keyboard accessible. */
+.right{scrollbar-width:none;-ms-overflow-style:none}.right::-webkit-scrollbar{display:none}.right:focus-visible{outline:2px solid #337353;outline-offset:4px}
+.suggestionRow{display:flex;align-items:center;gap:8px}.suggestionRow .followingItem{flex:1}.suggestionAction{flex:none;text-align:right}.suggestionFollow{border:1px solid #c5d9c8;border-radius:999px;padding:6px 11px;color:#215d3c;font-size:12px;font-weight:700;cursor:pointer}.suggestionFollow:hover:not(:disabled){background:#edf5ed}.suggestionFollow:disabled{opacity:.6;cursor:default}.suggestionFollow:focus-visible{outline:2px solid #337353;outline-offset:2px}.suggestionError{display:block;max-width:100px;margin-top:4px;color:#a12d2d;font-size:11px}

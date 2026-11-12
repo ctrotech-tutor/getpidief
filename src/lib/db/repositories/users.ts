@@ -312,15 +312,13 @@ export const usersRepository = {
         AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE
           (b.blocker_id = ${userId}::uuid AND b.blocked_id = u.id) OR
           (b.blocked_id = ${userId}::uuid AND b.blocker_id = u.id))
-        -- Same institution
-        AND u.institution_id = (SELECT institution_id FROM users WHERE id = ${userId})
-        -- Not already following
-        AND u.id NOT IN (
-          SELECT following_id FROM follows WHERE follower_id = ${userId}
-        )
-        -- Has at least 1 document
-        AND u.document_count > 0
-      ORDER BY u.reputation_score DESC
+        AND u.onboarding_complete = true
+        AND NOT EXISTS (SELECT 1 FROM follows WHERE follower_id = ${userId}::uuid AND following_id = u.id)
+      ORDER BY
+        CASE WHEN u.institution_id IS NOT NULL AND u.institution_id = (SELECT institution_id FROM users WHERE id = ${userId}::uuid) THEN 1 ELSE 0 END DESC,
+        (SELECT count(*) FROM user_interests candidate JOIN user_interests viewer ON viewer.tag_id = candidate.tag_id
+          WHERE candidate.user_id = u.id AND viewer.user_id = ${userId}::uuid) DESC,
+        u.follower_count DESC, u.id ASC
       LIMIT ${limit}
     `);
   },

@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
-import { renderToStaticMarkup } from "react-dom/server";
 const url = process.env.TEST_DATABASE_URL;
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), getCache: vi.fn().mockResolvedValue(null) }));
 vi.mock("@/lib/auth/auth", () => ({ auth: mocks.auth }));
@@ -13,13 +12,11 @@ describe.skipIf(!url || process.env.TEST_DATABASE_WRITE !== "yes")("resource dis
   const ids = [viewer, hidden, visible];
   let db: typeof import("@/lib/db/client").db;
   let search: typeof import("@/lib/search/search");
-  let home: typeof import("@/app/(app)/home/page").default;
   beforeAll(async () => {
     const parsed = new URL(url!);
     if (!["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname) || !parsed.pathname.endsWith("_test")) throw new Error("Requires a local disposable _test database");
     process.env.DATABASE_URL = url;
     ({ db } = await import("@/lib/db/client")); search = await import("@/lib/search/search");
-    ({ default: home } = await import("@/app/(app)/home/page"));
     for (const id of ids) {
       await db.execute(sql`INSERT INTO auth_users (id, email) VALUES (${id}::uuid, ${id + "@example.test"})`);
       await db.execute(sql`INSERT INTO users (id, username, display_name, role, onboarding_complete) VALUES (${id}::uuid, ${"test" + id.replaceAll("-", "")}, 'Test', 'student'::user_role, true)`);
@@ -36,7 +33,7 @@ describe.skipIf(!url || process.env.TEST_DATABASE_WRITE !== "yes")("resource dis
     try { for (const id of ids) await db.execute(sql`DELETE FROM auth_users WHERE id = ${id}::uuid`); }
     finally { await db.$client.end(); }
   });
-  it("filters both directions before search counts, autocomplete limits and the resource rail", async () => {
+  it("filters both directions before search counts and autocomplete limits", async () => {
     for (const [from, to] of [[viewer, hidden], [hidden, viewer]]) {
       await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${from}::uuid, ${to}::uuid)`);
       const result = await search.searchDocuments({ query: 'celestial', limit: 1 }, viewer);
@@ -44,9 +41,6 @@ describe.skipIf(!url || process.env.TEST_DATABASE_WRITE !== "yes")("resource dis
       const autocomplete = await search.getAutocomplete('celestial', viewer);
       expect(autocomplete.filter(i => i.type === 'document').map(i => i.label)).toEqual(['Celestial Visible']);
       expect((await search.searchDocuments({ query: 'celestial' })).total).toBe(6);
-      mocks.auth.mockResolvedValue({ user: { id: viewer } });
-      const markup = renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) }));
-      expect(markup).toContain('Celestial Visible'); expect(markup).not.toContain('Celestial Hidden');
       await db.execute(sql`DELETE FROM user_blocks WHERE blocker_id = ${from}::uuid AND blocked_id = ${to}::uuid`);
     }
     expect((await search.searchDocuments({ query: 'celestial' }, viewer)).total).toBe(6);

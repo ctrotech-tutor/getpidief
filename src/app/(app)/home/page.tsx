@@ -80,7 +80,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
     order by p.id, r.created_at, r.id
   `) : { rows: [] };
   const tabs: { view: View; label: string; href: string }[] = [{ view: "latest", label: "Latest", href: "/" }, { view: "following", label: "Following", href: "/?view=following" }];
-  return <div className={styles.shell}><div className={styles.layout}>
+  return <div className={styles.shell} data-feed-shell><div className={styles.layout}>
     <aside className={styles.left} aria-label="Main navigation">
       <div className={styles.sidebarBrand}><BrandMark /></div>
       <nav className={styles.sideNav} aria-label="Main navigation">

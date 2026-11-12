@@ -3,7 +3,7 @@ import loading from "./feed-loading.module.css";
 
 /** A visual placeholder, not sample content or interactive navigation. */
 export function FeedLoading() {
-  return <div className={styles.shell} role="status" aria-live="polite" aria-label="Loading feed">
+  return <div className={styles.shell} data-feed-shell role="status" aria-live="polite" aria-label="Loading feed">
     <span className="sr-only">Loading feed…</span>
     <div className={styles.layout} aria-hidden="true">
       <div className={`${styles.left} ${loading.sidebar}`}>

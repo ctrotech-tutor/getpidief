@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import { users, posts, documents, categories } from "@/lib/db/schema";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { toggleLike, toggleSave, deletePost } from "./actions";
+import { formatPostTime } from "@/lib/feed/post-time";
 import { Composer } from "@/components/features/feed/Composer";
 import { PostShare } from "@/components/features/feed/PostShare";
 import { FeedMoreMenu } from "@/components/features/feed/FeedMoreMenu";
@@ -40,6 +41,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
     before ? sql`(${posts.createdAt}, ${posts.id}) < (select created_at, id from posts where id = ${before}::uuid)` : undefined,
   )).orderBy(desc(posts.createdAt), desc(posts.id)).limit(21);
   const visible = rows.slice(0, 20); const ids = visible.map(x => x.id);
+  const now = new Date();
   const replies = ids.length ? await db.execute<{ id: string; post_id: string; body: string; name: string; username: string }>(sql`
     select r.id, p.id as post_id, r.body, r.name, r.username from posts p
     cross join lateral (
@@ -73,11 +75,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
       <nav aria-label="Feed views" className={styles.tabs}>{tabs.map(tab => <Link key={tab.view} href={tab.href} aria-current={view === tab.view ? "page" : undefined} className={`${styles.tab} ${view === tab.view ? styles.activeTab : ""}`}>{tab.label}</Link>)}</nav>
       <div className={styles.feedIntro}><strong>{view === "following" ? "From people you follow" : view === "saved" ? "Your saved posts" : "The latest conversations"}</strong><span>Newest first</span></div>
       {visible.length === 0 ? <div className={styles.empty}><span className={styles.emptyIcon}><Sparkles size={22} aria-hidden="true" /></span><h2>{view === "saved" ? "Keep the good ideas close." : view === "following" ? "Your circle starts here." : "Every conversation starts somewhere."}</h2><p>{view === "saved" ? "When a post is worth coming back to, save it and you’ll find it here." : view === "following" ? "Posts from people you follow will show up here, newest first." : "Be the first to share a thought or ask a question. Someone else might be wondering the same thing."}</p>{view !== "latest" && <Link href="/">See the latest posts</Link>}</div> : <div className={styles.posts}>{visible.map(post => <article key={post.id} className={styles.post}>
-        <div className={styles.postTop}><FeedProfileAvatar name={post.name} avatarUrl={post.avatarUrl} post /><div className={styles.author}><Link href={`/u/${post.username}`}>{post.name}</Link><p className={styles.meta}><time dateTime={post.createdAt.toISOString()}>{post.createdAt.toLocaleDateString("en", { dateStyle: "medium", timeZone: "UTC" })}</time></p></div>{post.kind === "question" && <span className={styles.postType}>Question</span>}</div>
+        <div className={styles.postTop}><FeedProfileAvatar name={post.name} avatarUrl={post.avatarUrl} post /><div className={styles.author}><Link href={`/u/${post.username}`}>{post.name}</Link><time className={styles.postTime} dateTime={post.createdAt.toISOString()} title={post.createdAt.toLocaleDateString("en-US", { dateStyle: "long", timeZone: "UTC" })}>{formatPostTime(post.createdAt, now)}</time></div>{post.kind === "question" && <span className={styles.postType}>Question</span>}</div>
         <p className={styles.postBody}>{post.body}</p>
         <div className={styles.actions}><form action={toggleLike}><input type="hidden" name="postId" value={post.id}/><input type="hidden" name="active" value={String(post.liked)}/><button className={`${styles.action} ${post.liked ? styles.actionActive : ""}`} aria-pressed={post.liked} aria-label={`${post.liked ? "Unlike" : "Like"} post by ${post.name}`}><Heart size={19} aria-hidden="true" weight={post.liked ? "fill" : "regular"}/><span>{post.likeCount}</span></button></form>
           <Link className={styles.action} href={`/home/post/${post.id}`} aria-label={`Open discussion on post by ${post.name}, ${post.replyCount} replies`}><MessageCircle size={17} aria-hidden="true" />{post.replyCount}</Link>
-          <form action={toggleSave}><input type="hidden" name="postId" value={post.id}/><input type="hidden" name="active" value={String(post.saved)}/><button className={`${styles.action} ${post.saved ? styles.actionActive : ""}`} aria-pressed={post.saved} aria-label={`${post.saved ? "Remove saved" : "Save"} post by ${post.name}`}><Bookmark size={19} aria-hidden="true" weight={post.saved ? "fill" : "regular"}/>{post.saved ? "Saved" : "Save"}</button></form>
+          <form action={toggleSave}><input type="hidden" name="postId" value={post.id}/><input type="hidden" name="active" value={String(post.saved)}/><button className={`${styles.action} ${post.saved ? styles.actionActive : ""}`} aria-pressed={post.saved} aria-label={`${post.saved ? "Remove saved" : "Save"} post by ${post.name}`}><Bookmark size={19} aria-hidden="true" weight={post.saved ? "fill" : "regular"}/></button></form>
           <PostShare postId={post.id} author={post.name} />
           {post.authorId === userId && <form action={deletePost} className={styles.delete}><input type="hidden" name="postId" value={post.id}/><button>Delete</button></form>}</div>
         {replies.rows.some(r => r.post_id === post.id) && <div className={styles.replies}>{replies.rows.filter(r => r.post_id === post.id).map(r => <p key={r.id} className={styles.reply}><Link href={`/u/${r.username}`}><strong>{r.name}</strong></Link> {r.body}</p>)}<Link className={styles.action} href={`/home/post/${post.id}`}>{post.replyCount > 2 ? `View all ${post.replyCount} replies` : "Join the conversation"}</Link></div>}

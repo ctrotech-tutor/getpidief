@@ -94,3 +94,9 @@
 .shareStatus{font-size:11px;color:#286644}
 .shareInput{max-width:100%;width:210px;font-size:12px;color:#315f45;background:#fff;border:1px solid #cbdcca;border-radius:8px;padding:7px}
 .shareInput:focus-visible{outline:2px solid #337353;outline-offset:2px}
+
+/* Name and compact timestamp share a single line, even on narrow screens. */
+.author{display:flex;align-items:baseline;gap:8px;min-width:0}
+.author a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.postTime{flex:none;white-space:nowrap;color:#718579;font-size:12px}
+.postTime:before{content:"·";margin-right:8px;color:#9aab9c}

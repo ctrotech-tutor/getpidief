@@ -24,7 +24,7 @@ export function PostShare({ postId, author }: { postId: string; author: string }
     }
   }
   return <span className={styles.shareWrap}>
-    <button type="button" className={styles.action} onClick={share} aria-label={`Share post by ${author}`}><ArrowSquareOut size={19} aria-hidden="true" /><span>Share</span></button>
+    <button type="button" className={styles.action} onClick={share} aria-label={`Share post by ${author}`}><ArrowSquareOut size={19} aria-hidden="true" /></button>
     <span role="status" className={styles.shareStatus}>{message}</span>
     {manualUrl && <input className={styles.shareInput} aria-label="Post link to copy" readOnly value={manualUrl} onFocus={event => event.currentTarget.select()} />}
   </span>;

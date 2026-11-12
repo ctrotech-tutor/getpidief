@@ -18,7 +18,7 @@ function cursorUrl(view: FeedView, item: FeedItem, endpoint: string) {
   const params = new URLSearchParams({ view, before: item.eventId, beforeKind: item.eventKind, beforeAt: item.eventAt });
   return `${endpoint}?${params}`;
 }
-function FeedCard({ post, userId, now, refreshing }: { post: FeedItem; userId: string; now: string; refreshing: boolean }) {
+export function FeedCard({ post, userId, now, refreshing }: { post: FeedItem; userId: string; now: string; refreshing: boolean }) {
   const date = new Date(post.createdAt);
   return <ClickablePost postId={post.id} id={`feed-${post.eventKind}-${post.eventId}`} refreshing={refreshing}>
     {post.eventKind === "repost" && <div className={styles.repostAttribution}><Repeat size={15} aria-hidden="true" /><Link href={`/u/${post.reposterUsername}`}>{post.reposterName}</Link> reposted</div>}

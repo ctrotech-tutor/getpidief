@@ -17,7 +17,7 @@ export function FeedLoading() {
       <div className={styles.feedColumn}>
         <div className={loading.mobileBar}><span className={`${loading.block} ${loading.mobileLogo}`} /><span className={`${loading.block} ${loading.navIcon}`} /></div>
         <div className={loading.composerPrompt}><span className={`${loading.block} ${loading.promptAvatar}`} /><span className={`${loading.block} ${loading.promptText}`} /></div>
-        <div className={loading.tabs}><span className={`${loading.block} ${loading.tab}`} /><span className={`${loading.block} ${loading.tab}`} /></div>
+        <div className={loading.tabs}><span className={`${loading.block} ${loading.tab}`} /><span className={`${loading.block} ${loading.tab}`} /><span className={`${loading.block} ${loading.tab}`} /></div>
         <div className={styles.posts}>{[1, 2, 3].map(item => <div className={`${styles.post} ${loading.post}`} key={item}>
           <div className={loading.person}><span className={`${loading.block} ${loading.avatar}`} /><div className={loading.personText}><span className={`${loading.block} ${loading.name}`} /><span className={`${loading.block} ${loading.meta}`} /></div></div>
           <div className={loading.lines}><span className={`${loading.block} ${loading.line}`} /><span className={`${loading.block} ${loading.lineMedium}`} /><span className={`${loading.block} ${loading.lineShort}`} /></div>

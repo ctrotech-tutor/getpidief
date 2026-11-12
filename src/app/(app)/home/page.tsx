@@ -1,5 +1,8 @@
 import { FEED_UUID, validFeedTime } from "@/lib/feed/cursor";
 import { readFeed, type FeedView } from "@/lib/feed/read";
+import { discoveryCandidates } from "@/lib/feed/discovery";
+import { arrangeDiscovery } from "@/lib/feed/discovery-ranking";
+import { DiscoveryStream } from "@/components/features/feed/DiscoveryStream";
 import { FeedStream } from "@/components/features/feed/FeedStream";
 import Link from "next/link";
 import { BookOpen, Compass, House as HomeIcon, MagnifyingGlass as Search, BookOpenText as Sparkles, Bell, GearSix, SquaresFour, UploadSimple, ArrowUpRight } from "@phosphor-icons/react/ssr";
@@ -17,20 +20,22 @@ import styles from "@/components/features/feed/feed.module.css";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Home | getpidief" };
-type View = FeedView;
+type View = FeedView | "discover";
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ view?: string; before?: string; beforeKind?: string; beforeAt?: string }> }) {
   const session = await auth(); const userId = session!.user!.id!;
   const params = await searchParams;
-  const view: View = params.view === "saved" || params.view === "following" ? params.view : "latest";
+  const view: View = params.view === "saved" || params.view === "following" || params.view === "latest" ? params.view : params.before ? "latest" : "discover";
   const before = params.before && FEED_UUID.test(params.before) ? params.before : undefined;
   const beforeAt = params.beforeAt && validFeedTime(params.beforeAt) ? params.beforeAt : undefined;
   const [profile] = await db.select({ name: users.displayName, username: users.username, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, userId)).limit(1);
   const following = await usersRepository.getFollowing(userId, { viewerId: userId, limit: 3 });
   const suggestions = await usersRepository.getFollowSuggestions(userId, 3);
-  const page = await readFeed(userId, view, before, params.beforeKind, beforeAt);
-  const visible = page.items;
-  const tabs: { view: View; label: string; href: string }[] = [{ view: "latest", label: "Latest", href: "/" }, { view: "following", label: "Following", href: "/?view=following" }];
+  const candidates = view === "discover" ? arrangeDiscovery(await discoveryCandidates(userId), new Set()) : [];
+  const page = view === "discover" ? candidates.length ? await readFeed(userId, "latest", undefined, undefined, undefined, candidates.slice(0, 20).map(item => ({ id: item.id, kind: "post" as const }))) : { items: [], hasMore: false } : await readFeed(userId, view, before, params.beforeKind, beforeAt);
+  const byId = new Map(page.items.map(item => [item.id, item]));
+  const visible = view === "discover" ? candidates.slice(0, 20).flatMap(item => { const post = byId.get(item.id); return post ? [post] : []; }) : page.items;
+  const tabs: { view: View; label: string; href: string }[] = [{ view: "discover", label: "Discover", href: "/" }, { view: "latest", label: "Latest", href: "/?view=latest" }, { view: "following", label: "Following", href: "/?view=following" }];
   return <div className={styles.shell} data-feed-shell><div className={styles.layout}>
     <aside className={styles.left} aria-label="Main navigation">
       <div className={styles.sidebarBrand}><BrandMark /></div>
@@ -51,7 +56,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
       <h1 id="feed-title" className="sr-only">{view === "saved" ? "Saved posts" : "Home"}</h1>
       <Composer name={profile?.name ?? "You"} avatarUrl={profile?.avatarUrl ?? null} />
       <nav aria-label="Feed views" className={styles.tabs}>{tabs.map(tab => <Link key={tab.view} href={tab.href} aria-current={view === tab.view ? "page" : undefined} className={`${styles.tab} ${view === tab.view ? styles.activeTab : ""}`}>{tab.label}</Link>)}</nav>
-      {visible.length === 0 ? <div className={styles.empty}><span className={styles.emptyIcon}><Sparkles size={22} aria-hidden="true" /></span><h2>{view === "saved" ? "Keep the good ideas close." : view === "following" ? "Your circle starts here." : "Every conversation starts somewhere."}</h2><p>{view === "saved" ? "When a post is worth coming back to, save it and you’ll find it here." : view === "following" ? "Posts from people you follow will show up here, newest first." : "Be the first to share a thought or ask a question. Someone else might be wondering the same thing."}</p>{view !== "latest" && <Link href="/">See the latest posts</Link>}</div> : <FeedStream key={`${userId}:${view}:${before ?? ""}`} initial={page} userId={userId} view={view} now={new Date().toISOString()} />}
+      {view === "discover" ? <DiscoveryStream key={`${userId}:discover`} userId={userId} now={new Date().toISOString()} seed={{ candidates, items: visible }} /> : visible.length === 0 ? <div className={styles.empty}><span className={styles.emptyIcon}><Sparkles size={22} aria-hidden="true" /></span><h2>{view === "saved" ? "Keep the good ideas close." : view === "following" ? "Your circle starts here." : "Every conversation starts somewhere."}</h2><p>{view === "saved" ? "When a post is worth coming back to, save it and you’ll find it here." : view === "following" ? "Posts from people you follow will show up here, newest first." : "Be the first to share a thought or ask a question. Someone else might be wondering the same thing."}</p>{view !== "latest" && <Link href="/?view=latest">See the latest posts</Link>}</div> : <FeedStream key={`${userId}:${view}:${before ?? ""}`} initial={page} userId={userId} view={view} now={new Date().toISOString()} />}
 
     </section>
     <aside className={styles.right} aria-label="Discover people and resources" tabIndex={0}>

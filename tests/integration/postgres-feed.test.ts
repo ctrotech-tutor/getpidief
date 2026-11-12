@@ -48,7 +48,7 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
     expect(rows).toHaveLength(1); postId = rows[0].id;
     as(ids.reader); await actions.reply(form({ postId, body: "Practise and discuss." }));
     replyId = (await db.execute<{id: string}>(sql`SELECT id FROM post_replies WHERE post_id = ${postId}::uuid`)).rows[0].id;
-    expect(await home({ searchParams: Promise.resolve({}) })).toBeTruthy();
+    expect(await home({ searchParams: Promise.resolve({ view: "latest" }) })).toBeTruthy();
     expect(await discussion({ params: Promise.resolve({ id: postId }), searchParams: Promise.resolve({}) })).toBeTruthy();
   });
   it("filters blocked post authors in both directions and rejects direct post access and interactions", async () => {
@@ -57,7 +57,7 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
       as(viewer);
       const targetPost = target === ids.author ? postId : randomUUID();
       if (target === ids.reader) await db.execute(sql`INSERT INTO posts (id, author_id, kind, body) VALUES (${targetPost}::uuid, ${ids.reader}::uuid, 'thought', 'Blocked reader content')`);
-      const markup = renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) }));
+      const markup = renderToStaticMarkup(await home({ searchParams: Promise.resolve({ view: "latest" }) }));
       expect(markup).not.toContain(target === ids.author ? "What is a useful way to learn?" : "Blocked reader content");
       await expect(discussion({ params: Promise.resolve({ id: targetPost }), searchParams: Promise.resolve({}) })).rejects.toThrow("NOT_FOUND");
       await expect(actions.toggleLike(form({ postId: targetPost, active: "false" }))).rejects.toThrow("Post unavailable");
@@ -78,7 +78,7 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
   it("paginates posts that share a timestamp without losing or duplicating rows", async () => {
     for (let i = 0; i < 24; i++) await db.execute(sql`INSERT INTO posts (author_id, kind, body, created_at) VALUES (${ids.author}::uuid, 'thought', ${`Cursor fixture ${i}`}, '2026-01-01 00:00:00.123456+00'::timestamptz)`);
     as(ids.reader);
-    const first = renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) }));
+    const first = renderToStaticMarkup(await home({ searchParams: Promise.resolve({ view: "latest" }) }));
     const cursor = first.match(/before=([0-9a-f-]{36})/i)?.[1];
     expect(cursor).toBeTruthy();
     const second = renderToStaticMarkup(await home({ searchParams: Promise.resolve({ before: cursor }) }));
@@ -127,6 +127,27 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
       await db.execute(sql`DELETE FROM posts WHERE id = ${otherPost}::uuid`);
     }
   });
+  it("builds a bounded discovery pool without blocked or inactive authors, and rechecks visibility on delivery", async () => {
+    const { discoveryCandidates } = await import("@/lib/feed/discovery");
+    const { readFeed } = await import("@/lib/feed/read");
+    const other = randomUUID();
+    try {
+      await db.execute(sql`INSERT INTO posts (id, author_id, kind, body) VALUES (${other}::uuid, ${ids.moderator}::uuid, 'thought', 'Visible discovery')`);
+      await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${ids.reader}::uuid, ${ids.author}::uuid)`);
+      const pool = await discoveryCandidates(ids.reader);
+      expect(pool.length).toBeLessThanOrEqual(120);
+      expect(pool.some(candidate => candidate.id === postId)).toBe(false);
+      expect(pool.some(candidate => candidate.id === other)).toBe(true);
+      await db.execute(sql`UPDATE posts SET deleted_at = now() WHERE id = ${other}::uuid`);
+      const delivered = await readFeed(ids.reader, "latest", undefined, undefined, undefined, [{ id: other, kind: "post" }]);
+      expect(delivered.items).toHaveLength(0);
+      const markup = renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) }));
+      expect(markup).toContain("Discover"); expect(markup).not.toContain("Visible discovery");
+    } finally {
+      await db.execute(sql`DELETE FROM user_blocks WHERE blocker_id = ${ids.reader}::uuid AND blocked_id = ${ids.author}::uuid`);
+      await db.execute(sql`DELETE FROM posts WHERE id = ${other}::uuid`);
+    }
+  });
   it("shows only followed authors in the following feed and preserves the view when paging", async () => {
     as(ids.reader);
     const empty = renderToStaticMarkup(await home({ searchParams: Promise.resolve({ view: "following" }) }));
@@ -148,7 +169,7 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
       as(ids.reader);
       await db.execute(sql`INSERT INTO follows (follower_id, following_id) VALUES (${ids.reader}::uuid, ${person}::uuid), (${ids.reader}::uuid, ${hidden}::uuid)`);
       await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${hidden}::uuid, ${ids.reader}::uuid)`);
-      const markup = renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) }));
+      const markup = renderToStaticMarkup(await home({ searchParams: Promise.resolve({ view: "latest" }) }));
       const rail = markup.split('aria-labelledby="following-accounts-title"')[1].split('</section>')[0];
       expect(rail).toContain('Rail Person');
       expect(rail).toContain('/u/rail' + person.replaceAll('-', ''));
@@ -156,13 +177,13 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
       expect(rail).not.toContain('Rail Hidden');
       expect(markup.indexOf('following-accounts-title')).toBeLessThan(markup.indexOf('follow-suggestions-title'));
       await db.execute(sql`DELETE FROM follows WHERE follower_id = ${ids.reader}::uuid AND following_id = ${person}::uuid`);
-      const empty = renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) }));
+      const empty = renderToStaticMarkup(await home({ searchParams: Promise.resolve({ view: "latest" }) }));
       const emptyRail = empty.split('aria-labelledby="following-accounts-title"')[1].split('</section>')[0];
       expect(emptyRail).toContain('not following anyone yet');
       expect(emptyRail).not.toContain('Rail Person');
       await db.execute(sql`DELETE FROM user_blocks WHERE blocker_id = ${hidden}::uuid AND blocked_id = ${ids.reader}::uuid`);
       await db.execute(sql`UPDATE users SET status = 'suspended' WHERE id = ${hidden}::uuid`);
-      const inactive = renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) }));
+      const inactive = renderToStaticMarkup(await home({ searchParams: Promise.resolve({ view: "latest" }) }));
       expect(inactive.split('aria-labelledby="following-accounts-title"')[1].split('</section>')[0]).not.toContain('Rail Hidden');
     } finally {
       for (const id of [person, hidden]) await db.execute(sql`DELETE FROM auth_users WHERE id = ${id}::uuid`);
@@ -179,20 +200,20 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
       await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${hidden}::uuid, ${ids.reader}::uuid)`);
       as(ids.reader);
       const section = (html: string) => html.split('aria-labelledby="follow-suggestions-title"')[1].split('</section>')[0];
-      const markup = section(renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) })));
+      const markup = section(renderToStaticMarkup(await home({ searchParams: Promise.resolve({ view: "latest" }) })));
       expect(markup).toContain('Suggested Person'); expect(markup).toContain('Follow Suggested Person');
       expect(markup).toContain('href="/who-to-follow"'); expect(markup).toContain('See all');
       expect(markup).not.toContain('Blocked Suggestion'); expect(markup).not.toContain('Inactive Suggestion');
       expect(markup).not.toContain('reader');
       await db.execute(sql`INSERT INTO follows (follower_id, following_id) VALUES (${ids.reader}::uuid, ${candidate}::uuid)`);
-      expect(section(renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) })))).not.toContain('Suggested Person');
+      expect(section(renderToStaticMarkup(await home({ searchParams: Promise.resolve({ view: "latest" }) })))).not.toContain('Suggested Person');
     } finally { for (const id of [candidate, hidden, inactive]) await db.execute(sql`DELETE FROM auth_users WHERE id = ${id}::uuid`); }
   });
   it("reposts idempotently, attributes the event, and allows undo", async () => {
     as(ids.reader);
     await Promise.all(Array.from({ length: 4 }, () => actions.setRepost(form({ postId, repost: "true" }))));
     expect((await db.execute<{ n: number }>(sql`SELECT count(*)::int as n FROM post_reposts WHERE post_id = ${postId}::uuid AND user_id = ${ids.reader}::uuid`)).rows[0].n).toBe(1);
-    const feed = renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) }));
+    const feed = renderToStaticMarkup(await home({ searchParams: Promise.resolve({ view: "latest" }) }));
     expect(feed).toContain("reader</a> reposted");
     as(ids.moderator);
     await db.execute(sql`INSERT INTO follows (follower_id, following_id) VALUES (${ids.moderator}::uuid, ${ids.reader}::uuid)`);
@@ -216,7 +237,7 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
     let params: { before?: string; beforeKind?: string } = {};
     const seen: string[] = [];
     for (let page = 0; page < 4; page++) {
-      const markup = renderToStaticMarkup(await home({ searchParams: Promise.resolve(params) }));
+      const markup = renderToStaticMarkup(await home({ searchParams: Promise.resolve({ ...params, view: "latest" }) }));
       seen.push(...Array.from(markup.matchAll(/Mixed fixture (\d+)/g), m => m[1]));
       const match = markup.match(/before=([0-9a-f-]{36})(?:&amp;beforeKind=(repost))?/i);
       if (!match) break;

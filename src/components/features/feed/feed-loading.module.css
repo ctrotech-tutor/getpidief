@@ -7,3 +7,6 @@
 @media(max-width:767px){.mobileBar{display:flex;align-items:center;justify-content:space-between;min-height:64px;border-bottom:1px solid #dfe8df;margin-bottom:20px}.mobileLogo{width:120px;height:24px;border-radius:7px}}
 @media(max-height:650px){.brand{margin-bottom:18px}.nav{gap:3px}.navRow{height:42px}.upload{margin-top:16px}}
 @media(prefers-reduced-motion:reduce){.block{animation:none}}
+/* Match the open post timeline and alignment of the loaded feed. */
+.post .lines{margin:13px 0 20px 52px}
+.postActions{margin-left:52px;border-top:0;padding-top:0}

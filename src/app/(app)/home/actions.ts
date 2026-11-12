@@ -5,6 +5,7 @@ import { users, posts, postReplies, postLikes, postSaves, postReposts, feedRepor
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { withPostInteraction } from "@/lib/feed/interaction-transaction";
 import { rateLimiters, redisRateLimit } from "@/lib/redis/client";
 
 async function currentUser() {
@@ -52,9 +53,7 @@ export async function reply(form: FormData) {
   const text = body(form, 1000);
   const id = await postId(form, userId);
   await limit(userId, "comment");
-  await db.transaction(async tx => {
-    const [post] = await tx.select({ id: posts.id }).from(posts).where(and(eq(posts.id, id), isNull(posts.deletedAt))).for("update");
-    if (!post) throw new Error("Post unavailable.");
+  await withPostInteraction(userId, id, async tx => {
     await tx.insert(postReplies).values({ postId: id, authorId: userId, body: text });
   });
   revalidatePath("/");
@@ -63,15 +62,19 @@ export async function reply(form: FormData) {
 }
 export async function toggleLike(form: FormData) {
   const userId = await currentUser(); const id = await postId(form, userId);
-  if (form.get("active") === "true") await db.delete(postLikes).where(and(eq(postLikes.postId, id), eq(postLikes.userId, userId)));
-  else await db.insert(postLikes).values({ postId: id, userId }).onConflictDoNothing();
+  await withPostInteraction(userId, id, async tx => {
+    if (form.get("active") === "true") await tx.delete(postLikes).where(and(eq(postLikes.postId, id), eq(postLikes.userId, userId)));
+    else await tx.insert(postLikes).values({ postId: id, userId }).onConflictDoNothing();
+  });
   revalidatePath("/");
   revalidatePath("/home");
 }
 export async function toggleSave(form: FormData) {
   const userId = await currentUser(); const id = await postId(form, userId);
-  if (form.get("active") === "true") await db.delete(postSaves).where(and(eq(postSaves.postId, id), eq(postSaves.userId, userId)));
-  else await db.insert(postSaves).values({ postId: id, userId }).onConflictDoNothing();
+  await withPostInteraction(userId, id, async tx => {
+    if (form.get("active") === "true") await tx.delete(postSaves).where(and(eq(postSaves.postId, id), eq(postSaves.userId, userId)));
+    else await tx.insert(postSaves).values({ postId: id, userId }).onConflictDoNothing();
+  });
   revalidatePath("/");
   revalidatePath("/home");
 }
@@ -122,9 +125,7 @@ export async function setRepost(form: FormData) {
   const desired = form.get("repost");
   if (desired !== "true" && desired !== "false") throw new Error("Invalid repost request.");
   if (desired === "true") await limit(userId, "feedPost");
-  await db.transaction(async tx => {
-    const [post] = await tx.select({ id: posts.id }).from(posts).where(and(eq(posts.id, id), isNull(posts.deletedAt))).for("update");
-    if (!post) throw new Error("Post unavailable.");
+  await withPostInteraction(userId, id, async tx => {
     if (desired === "true") await tx.insert(postReposts).values({ postId: id, userId }).onConflictDoNothing();
     else await tx.delete(postReposts).where(and(eq(postReposts.postId, id), eq(postReposts.userId, userId)));
   });

@@ -3,6 +3,7 @@ const m = vi.hoisted(() => ({ auth: vi.fn(), profile: vi.fn(), select: vi.fn(), 
 vi.mock("@/lib/auth/auth", () => ({ auth: m.auth }));
 vi.mock("@/lib/db/client", () => ({ db: { query: { users: { findFirst: m.profile } }, select: m.select, insert: m.insert, update: m.update, delete: m.del, transaction: m.transaction } }));
 vi.mock("@/lib/redis/client", () => ({ redisRateLimit: {}, rateLimiters: { feedPost: { limit: m.limitPost }, comment: { limit: m.limitReply } } }));
+vi.mock("@/lib/feed/interaction-transaction", () => ({ withPostInteraction: async (_user: string, _id: string, fn: (tx: { insert: typeof m.insert; delete: typeof m.del }) => Promise<unknown>) => fn({ insert: m.insert, delete: m.del }) }));
 vi.mock("next/cache", () => ({ revalidatePath: m.revalidate }));
 import { createPost, reply, toggleLike, deletePost } from "@/app/(app)/home/actions";
 import { posts, postLikes, postReplies } from "@/lib/db/schema";

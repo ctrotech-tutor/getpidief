@@ -3,6 +3,15 @@ import { users, follows, userBadges, badges, userInterests, tags } from "@/lib/d
 import { eq, and, desc, sql, not } from "drizzle-orm";
 import { KEYS, invalidateCache } from "@/lib/redis/client";
 
+// Apply before pagination and counts. Callers must explicitly supply the viewer;
+// null means an intentionally anonymous/public read.
+function visibleToViewer(viewerId: string | null, accountId: ReturnType<typeof sql>) {
+  if (!viewerId) return undefined;
+  return sql`not exists (select 1 from user_blocks b where
+    (b.blocker_id = ${viewerId}::uuid and b.blocked_id = ${accountId}) or
+    (b.blocked_id = ${viewerId}::uuid and b.blocker_id = ${accountId}))`;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // USERS REPOSITORY
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,9 +138,9 @@ export const usersRepository = {
 
   async getFollowers(
     userId: string,
-    options: { page?: number; limit?: number } = {}
+    options: { viewerId: string | null; page?: number; limit?: number }
   ) {
-    const { page = 1, limit = 24 } = options;
+    const { viewerId, page = 1, limit = 24 } = options;
     const offset = (page - 1) * limit;
 
     const [rows, countResult] = await Promise.all([
@@ -154,7 +163,9 @@ export const usersRepository = {
           and(
             eq(follows.followingId, userId),
             eq(users.status, "active"),
-            sql`${users.deletedAt} IS NULL`
+            sql`${users.deletedAt} IS NULL`,
+            visibleToViewer(viewerId, sql`${users.id}`),
+            visibleToViewer(viewerId, sql`${userId}::uuid`)
           )
         )
         .orderBy(desc(follows.createdAt), desc(follows.id))
@@ -164,7 +175,7 @@ export const usersRepository = {
         .select({ count: sql<number>`count(*)` })
         .from(follows)
         .innerJoin(users, eq(users.id, follows.followerId))
-        .where(and(eq(follows.followingId, userId), eq(users.status, "active"), sql`${users.deletedAt} IS NULL`)),
+        .where(and(eq(follows.followingId, userId), eq(users.status, "active"), sql`${users.deletedAt} IS NULL`, visibleToViewer(viewerId, sql`${users.id}`), visibleToViewer(viewerId, sql`${userId}::uuid`))),
     ]);
 
     return {
@@ -179,9 +190,9 @@ export const usersRepository = {
 
   async getFollowing(
     userId: string,
-    options: { page?: number; limit?: number } = {}
+    options: { viewerId: string | null; page?: number; limit?: number }
   ) {
-    const { page = 1, limit = 24 } = options;
+    const { viewerId, page = 1, limit = 24 } = options;
     const offset = (page - 1) * limit;
 
     const [rows, countResult] = await Promise.all([
@@ -204,7 +215,9 @@ export const usersRepository = {
           and(
             eq(follows.followerId, userId),
             eq(users.status, "active"),
-            sql`${users.deletedAt} IS NULL`
+            sql`${users.deletedAt} IS NULL`,
+            visibleToViewer(viewerId, sql`${users.id}`),
+            visibleToViewer(viewerId, sql`${userId}::uuid`)
           )
         )
         .orderBy(desc(follows.createdAt), desc(follows.id))
@@ -214,7 +227,7 @@ export const usersRepository = {
         .select({ count: sql<number>`count(*)` })
         .from(follows)
         .innerJoin(users, eq(users.id, follows.followingId))
-        .where(and(eq(follows.followerId, userId), eq(users.status, "active"), sql`${users.deletedAt} IS NULL`)),
+        .where(and(eq(follows.followerId, userId), eq(users.status, "active"), sql`${users.deletedAt} IS NULL`, visibleToViewer(viewerId, sql`${users.id}`), visibleToViewer(viewerId, sql`${userId}::uuid`))),
     ]);
 
     return {
@@ -296,6 +309,9 @@ export const usersRepository = {
       WHERE u.status = 'active'
         AND u.deleted_at IS NULL
         AND u.id != ${userId}
+        AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE
+          (b.blocker_id = ${userId}::uuid AND b.blocked_id = u.id) OR
+          (b.blocked_id = ${userId}::uuid AND b.blocker_id = u.id))
         -- Same institution
         AND u.institution_id = (SELECT institution_id FROM users WHERE id = ${userId})
         -- Not already following

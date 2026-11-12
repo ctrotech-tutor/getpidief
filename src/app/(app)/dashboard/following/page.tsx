@@ -31,8 +31,8 @@ export default async function FollowingPage({
   const page = /^[1-9]\d*$/.test(pageValue) && Number.isSafeInteger(Number(pageValue)) && Number(pageValue) <= 100000 ? Number(pageValue) : 1;
 
   const [followingData, followersData] = await Promise.all([
-    usersRepository.getFollowing(session.user.id, { page, limit: 20 }),
-    usersRepository.getFollowers(session.user.id, { page, limit: 20 }),
+    usersRepository.getFollowing(session.user.id, { viewerId: session.user.id, page, limit: 20 }),
+    usersRepository.getFollowers(session.user.id, { viewerId: session.user.id, page, limit: 20 }),
   ]);
 
   const data   = tab === "followers" ? followersData.followers : followingData.following;

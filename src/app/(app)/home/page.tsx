@@ -126,7 +126,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
         {following.following.length ? <ul className={styles.followingList}>{following.following.map(account => <li key={account.id}><Link className={styles.followingItem} href={`/u/${account.username}`}><FeedProfileAvatar name={account.displayName} avatarUrl={account.avatarUrl} post /><span className={styles.followingDetails}><strong>{account.displayName}</strong><small>@{account.username}</small></span></Link></li>)}</ul> : <div className={styles.resourceEmpty}><p>You’re not following anyone yet.</p><Link href="/explore">Explore <ArrowUpRight size={15} aria-hidden="true" /></Link></div>}
       </section>
       <section className={styles.discoveryCard} aria-labelledby="follow-suggestions-title">
-        <div className={styles.discoveryHeading}><h2 id="follow-suggestions-title">Who to follow</h2></div>
+        <div className={styles.discoveryHeading}><h2 id="follow-suggestions-title">Who to follow</h2><Link href="/who-to-follow">See all <ArrowUpRight size={15} aria-hidden="true" /></Link></div>
         {suggestions.rows.length ? <ul className={styles.followingList}>{suggestions.rows.map(account => <li key={account.id} className={styles.suggestionRow}><Link className={styles.followingItem} href={`/u/${account.username}`}><FeedProfileAvatar name={account.display_name} avatarUrl={account.avatar_url} post /><span className={styles.followingDetails}><strong>{account.display_name}</strong><small>@{account.username}</small></span></Link><FollowSuggestion id={account.id} name={account.display_name} /></li>)}</ul> : <div className={styles.resourceEmpty}><p>No suggestions right now.</p></div>}
       </section>
     </aside>

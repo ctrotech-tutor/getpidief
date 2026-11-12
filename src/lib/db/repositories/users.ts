@@ -293,7 +293,8 @@ export const usersRepository = {
 
   // ── Get follow suggestions for a user ─────────────────────────────────────
 
-  async getFollowSuggestions(userId: string, limit: number = 6) {
+  async getFollowSuggestions(userId: string, limit: number = 6, offset: number = 0) {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0 || offset > 2400000) throw new Error("INVALID_PARAMS");
     return db.execute<{
       id: string; username: string; display_name: string;
       avatar_url: string | null; verification_status: string;
@@ -319,7 +320,7 @@ export const usersRepository = {
         (SELECT count(*) FROM user_interests candidate JOIN user_interests viewer ON viewer.tag_id = candidate.tag_id
           WHERE candidate.user_id = u.id AND viewer.user_id = ${userId}::uuid) DESC,
         u.follower_count DESC, u.id ASC
-      LIMIT ${limit}
+      LIMIT ${limit} OFFSET ${offset}
     `);
   },
 

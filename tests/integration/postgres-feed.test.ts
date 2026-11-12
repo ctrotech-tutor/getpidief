@@ -140,6 +140,7 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
       const section = (html: string) => html.split('aria-labelledby="follow-suggestions-title"')[1].split('</section>')[0];
       const markup = section(renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) })));
       expect(markup).toContain('Suggested Person'); expect(markup).toContain('Follow Suggested Person');
+      expect(markup).toContain('href="/who-to-follow"'); expect(markup).toContain('See all');
       expect(markup).not.toContain('Blocked Suggestion'); expect(markup).not.toContain('Inactive Suggestion');
       expect(markup).not.toContain('reader');
       await db.execute(sql`INSERT INTO follows (follower_id, following_id) VALUES (${ids.reader}::uuid, ${candidate}::uuid)`);

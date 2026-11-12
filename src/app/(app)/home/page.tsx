@@ -1,11 +1,13 @@
 import Link from "next/link";
-import { BookOpen, BookmarkSimple as Bookmark, Compass, Heart, House as HomeIcon, ChatCircle as MessageCircle, MagnifyingGlass as Search, BookOpenText as Sparkles, UsersThree as Users } from "@phosphor-icons/react/ssr";
+import { BookOpen, BookmarkSimple as Bookmark, Compass, Heart, House as HomeIcon, ChatCircle as MessageCircle, MagnifyingGlass as Search, BookOpenText as Sparkles, Bell, GearSix, SquaresFour, UploadSimple, ShieldCheck } from "@phosphor-icons/react/ssr";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
 import { users, posts } from "@/lib/db/schema";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { toggleLike, toggleSave, deletePost } from "./actions";
 import { Composer } from "@/components/features/feed/Composer";
+import { FeedSignOut } from "@/components/features/feed/FeedSignOut";
+import { Brand } from "@/components/brand/Brand";
 import styles from "@/components/features/feed/feed.module.css";
 
 export const dynamic = "force-dynamic";
@@ -43,14 +45,28 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   `) : { rows: [] };
   const tabs: { view: View; label: string; href: string }[] = [{ view: "latest", label: "Latest", href: "/" }, { view: "following", label: "Following", href: "/?view=following" }, { view: "saved", label: "Saved", href: "/?view=saved" }];
   return <div className={styles.shell}><div className={styles.layout}>
-    <aside className={styles.left} aria-label="Your space"><p className={styles.eyebrow}>Your space</p><nav className={styles.sideNav} aria-label="Feed navigation">
-      <Link className={`${styles.sideLink} ${view !== "saved" ? styles.sideActive : ""}`} href="/"><HomeIcon size={18} aria-hidden="true" /> Home</Link>
-      <Link className={styles.sideLink} href="/search"><Search size={18} aria-hidden="true" /> Search</Link>
-      <Link className={`${styles.sideLink} ${view === "saved" ? styles.sideActive : ""}`} href="/?view=saved"><Bookmark size={18} aria-hidden="true" /> Saved posts</Link>
-      <Link className={styles.sideLink} href="/dashboard/library"><BookOpen size={18} aria-hidden="true" /> Your library</Link>
-      {profile?.username && <Link className={styles.sideLink} href={`/u/${profile.username}`}><Users size={18} aria-hidden="true" /> Your profile</Link>}
-    </nav><p className={styles.sideNote}>A little curiosity goes a long way.<br /><Link href="/settings/interests">Manage your interests</Link></p></aside>
-    <section aria-labelledby="feed-title"><header className={styles.header}><div><p className={styles.eyebrow}>A place for curious minds</p><h1 id="feed-title">Your home for ideas.</h1><p>Learn something. Share something. Start a conversation.</p></div><div className={styles.headerMark}><span /> Always learning</div></header>
+    <aside className={styles.left} aria-label="Main navigation">
+      <div className={styles.sidebarBrand}><Brand /></div>
+      <nav className={styles.sideNav} aria-label="Main navigation">
+        <Link className={`${styles.sideLink} ${view !== "saved" ? styles.sideActive : ""}`} href="/" aria-current={view !== "saved" ? "page" : undefined}><HomeIcon size={21} aria-hidden="true" /> Home</Link>
+        <Link className={styles.sideLink} href="/search"><Search size={21} aria-hidden="true" /> Search</Link>
+        <Link className={styles.sideLink} href="/explore"><Compass size={21} aria-hidden="true" /> Explore</Link>
+        <Link className={styles.sideLink} href="/notifications"><Bell size={21} aria-hidden="true" /> Notifications</Link>
+        <Link className={`${styles.sideLink} ${view === "saved" ? styles.sideActive : ""}`} href="/?view=saved" aria-current={view === "saved" ? "page" : undefined}><Bookmark size={21} aria-hidden="true" /> Saved posts</Link>
+        <Link className={styles.sideLink} href="/dashboard/library"><BookOpen size={21} aria-hidden="true" /> Library</Link>
+        <Link className={styles.sideLink} href="/dashboard/uploads"><UploadSimple size={21} aria-hidden="true" /> Uploads</Link>
+        <Link className={styles.sideLink} href="/dashboard"><SquaresFour size={21} aria-hidden="true" /> Dashboard</Link>
+        <Link className={styles.sideLink} href="/settings"><GearSix size={21} aria-hidden="true" /> Settings</Link>
+        {["admin", "super_admin", "moderator"].includes(session?.user?.role ?? "") && <Link className={styles.sideLink} href="/admin"><ShieldCheck size={21} aria-hidden="true" /> Moderation</Link>}
+      </nav>
+      <div className={styles.sidebarBottom}>
+        {profile?.username && <Link className={styles.account} href={`/u/${profile.username}`}><span className={styles.accountAvatar} aria-hidden="true">{profile.name.trim().charAt(0).toUpperCase() || "?"}</span><span className={styles.accountText}><strong>{profile.name}</strong><small>@{profile.username}</small></span></Link>}
+        <FeedSignOut />
+      </div>
+    </aside>
+    <section aria-labelledby="feed-title" className={styles.feedColumn}>
+      <div className={styles.mobileHeader}><Brand /><Link href="/settings" className={styles.mobileSettings} aria-label="Settings"><GearSix size={22} aria-hidden="true" /></Link></div>
+      <header className={styles.header}><h1 id="feed-title">Home</h1></header>
       <Composer name={profile?.name ?? "You"} />
       <nav aria-label="Feed views" className={styles.tabs}>{tabs.map(tab => <Link key={tab.view} href={tab.href} aria-current={view === tab.view ? "page" : undefined} className={`${styles.tab} ${view === tab.view ? styles.activeTab : ""}`}>{tab.label}</Link>)}</nav>
       <div className={styles.feedIntro}><strong>{view === "following" ? "From people you follow" : view === "saved" ? "Your saved posts" : "The latest conversations"}</strong><span>Newest first</span></div>
@@ -65,6 +81,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
       </article>)}</div>}
       {rows.length > 20 && <Link className={styles.more} href={`/?${view !== "latest" ? `view=${view}&` : ""}before=${visible[visible.length - 1].id}`}>Older posts</Link>}
     </section>
-    <aside className={styles.right} aria-label="Discover"><div className={styles.rightCard}><p className={styles.eyebrow}>Your curiosity, your way</p><h2>There’s always more to discover.</h2><p>Search the resource library for something useful, then bring what you learn back to the conversation.</p><Link href="/search"><Compass size={16} aria-hidden="true" />&nbsp; Search resources</Link></div><div className={styles.rightSmall}><Link href="/about">About</Link> · <Link href="/privacy">Privacy</Link> · <Link href="/terms">Terms</Link><br />A space to learn together.</div></aside>
+    <aside className={styles.right} aria-label="Resources">
+      <div className={styles.rightCard}><h2>Explore resources</h2><p>Find notes, papers and other materials shared by the community.</p><Link href="/explore">Browse resources <span aria-hidden="true">↗</span></Link></div>
+      <div className={styles.rightSmall}><Link href="/about">About</Link> · <Link href="/privacy">Privacy</Link> · <Link href="/terms">Terms</Link></div>
+    </aside>
   </div></div>;
 }

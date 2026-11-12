@@ -1,54 +1,26 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Brand } from "@/components/brand/Brand";
+import { PageContainer } from "@/components/layouts/PageContainer/PageContainer";
 import { OnboardingStepperClient } from "@/components/features/auth/OnboardingStepperClient";
+import styles from "./onboarding.module.css";
 
-export const metadata: Metadata = { title: "Setup your Scholar Profile — getpidief" };
+export const metadata: Metadata = { title: "Make it yours | getpidief" };
 
-const STEPS = [
-  { number: 1, label: "Institution"    },
-  { number: 2, label: "Academic Focus" },
-  { number: 3, label: "Interests"      },
-] as const;
-
-interface OnboardingLayoutProps {
-  children: React.ReactNode;
-}
-
-export default function OnboardingLayout({ children }: OnboardingLayoutProps) {
-  return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Top bar */}
-      <header className="h-14 flex items-center justify-between px-6 border-b border-border">
-        <Link href="/" className="font-heading font-black text-lg tracking-tight text-foreground">
-          getpidief
-        </Link>
-        <Link
-          href="/explore"
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Skip setup →
-        </Link>
-      </header>
-
-      {/* Main */}
-      <main className="flex-1 flex flex-col items-center justify-center px-4 py-12">
-        {/* Stepper */}
-        <div className="w-full max-w-lg mb-10">
-          <OnboardingStepper />
-        </div>
-
-        {/* Card */}
-        <div className="w-full max-w-lg bg-card border border-border rounded-2xl p-8 shadow-sm">
-          {children}
-        </div>
-      </main>
-    </div>
-  );
-}
-
-// ── Stepper — reads active step from URL pattern ──────────────────────────────
-// We use a client component for this since we need pathname
-
-function OnboardingStepper() {
-  return <OnboardingStepperClient steps={STEPS} />;
+export default function OnboardingLayout({ children }: { children: React.ReactNode }) {
+  return <div className={styles.shell}>
+    <header><PageContainer className={styles.headerWrap}><div className={styles.header}><Brand /><span className={styles.headerNote}>A little more human. A lot more learning.</span></div></PageContainer></header>
+    <main><PageContainer className={styles.layout}>
+      <aside className={styles.aside}>
+        <p className={styles.eyebrow}>A SPACE TO LEARN TOGETHER</p>
+        <h1 className={styles.asideTitle}>Your curiosity<br /><em>belongs here.</em></h1>
+        <p className={styles.asideCopy}>A few details can help make this space feel more like yours. Take what feels right and leave the rest for later.</p>
+        <div className={styles.asideRule} />
+        <p className={styles.asideFoot}>Share ideas. Ask better questions.<br />Find people learning alongside you.</p>
+      </aside>
+      <section className={styles.panel} aria-label="Set up your profile">
+        <OnboardingStepperClient steps={[{ number: 1, label: "Your place" }, { number: 2, label: "Your path" }, { number: 3, label: "Your interests" }]} />
+        {children}
+      </section>
+    </PageContainer></main>
+  </div>;
 }

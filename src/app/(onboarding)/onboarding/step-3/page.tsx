@@ -1,74 +1,22 @@
 import type { Metadata } from "next";
 import { InterestTagsStep } from "@/components/features/auth/InterestTagsStep";
-import { db } from "@/lib/db/client";
-import { tags, users } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
 import { auth } from "@/lib/auth/auth";
-import { redis, KEYS } from "@/lib/redis/client";
+import { getInterestChoices } from "@/lib/interests/server";
 import { resolveOnboardingStep } from "@/lib/auth/onboardingResume";
 import { redirect } from "next/navigation";
+import styles from "../../onboarding.module.css";
 
-type OnboardingSessionUser = {
-  institutionId?: string | null;
-};
-
-export const metadata: Metadata = { title: "Step 3 — Your Interests" };
-
+export const metadata: Metadata = { title: "Your interests | getpidief" };
 export default async function OnboardingStep3Page() {
   const step = await resolveOnboardingStep();
-  if (step !== 3) redirect(`/onboarding/step-${step}`);
-
+  if (step < 3) redirect(`/onboarding/step-${step}`);
   const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) redirect("/login");
-  const profile = await db.query.users.findFirst({
-    where: eq(users.id, userId),
-    columns: { institutionId: true },
-  });
-
-  // Load all active tags — cached in Redis
-  const cacheKey = KEYS.tagsAll();
-  const cached   = redis ? await redis.get<{ id: string; name: string; slug: string }[]>(cacheKey) : null;
-
-  const allTags = cached ?? (await db
-    .select({ id: tags.id, name: tags.name, slug: tags.slug })
-    .from(tags)
-    .where(eq(tags.isActive, true))
-    .orderBy(desc(tags.usageCount)));
-
-  if (!cached && redis) {
-    await redis.setex(cacheKey, 3600, allTags);
-  }
-
-  // Get user's institution name for "trending at X" section
-  const user = { institutionId: profile?.institutionId } as OnboardingSessionUser;
-  const institutionName =
-    user?.institutionId
-      ? "your institution"
-      : "your institution";
-
-  // Pick 6 "trending" tags (top by usage count)
-  const trending = allTags.slice(0, 6);
-
-  return (
-    <div className="space-y-6">
-      <div className="space-y-1">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-          Step 3 of 3
-        </p>
-        <h2 className="font-heading font-bold text-foreground text-2xl tracking-tight">
-          What topics interest you?
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Select at least 3 to personalize your Academic Pulse feed.
-        </p>
-      </div>
-
-      <InterestTagsStep
-        allTags={allTags}
-        trendingTags={trending}
-        institutionName={institutionName}
-      />
-    </div>
-  );
+  if (!session?.user?.id) redirect("/login");
+  const { choices, selected } = await getInterestChoices(session.user.id);
+  return <>
+    <p className={styles.eyebrow}>03 / YOUR INTERESTS</p>
+    <h2 className={styles.heading}>Follow your curiosity.</h2>
+    <p className={styles.intro}>Choose a few topics you care about, or head straight in. This is just a starting point.</p>
+    <InterestTagsStep allTags={choices} initialSelected={selected} />
+  </>;
 }

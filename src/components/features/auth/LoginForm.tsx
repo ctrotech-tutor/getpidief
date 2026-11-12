@@ -126,7 +126,7 @@ export function LoginForm() {
 
       // Success - check if email is verified
       const requested = searchParams.get("callbackUrl");
-      const callbackUrl = requested?.startsWith("/") && !requested.startsWith("//") && !requested.includes("\\") ? requested : "/explore";
+      const callbackUrl = requested?.startsWith("/") && !requested.startsWith("//") && !requested.includes("\\") ? requested : "/";
 
       // Check if user needs email verification
       if (result.url?.includes("/verify-email")) {
@@ -175,6 +175,7 @@ export function LoginForm() {
 
       {/* Google OAuth */}
       <GoogleOAuthButton label="Continue with Google" />
+      <p className="text-xs text-muted-foreground">New here? Continuing with Google creates an account. Please review our <Link href="/terms" className="underline">Terms</Link> and <Link href="/privacy" className="underline">Privacy Policy</Link>.</p>
 
       {/* Divider */}
       <div className="flex items-center gap-3">

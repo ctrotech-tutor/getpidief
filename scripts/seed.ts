@@ -1,485 +1,117 @@
 #!/usr/bin/env tsx
-/**
- * getpidief — Database Seed Script
- * Run: pnpm db:seed
- *
- * Seeds: institutions, categories, tags, badges, system settings, + 3 test users
- */
-
+/** Development fixtures only. Never reset a database or create known-password users on a remote host. */
 import { config } from "dotenv";
-config({ path: ".env.local", quiet: true });
-config({ path: ".env", quiet: true });
-import { Pool } from "pg";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { inArray, sql } from "drizzle-orm";
-import {
-  institutions, categories, tags, badges, systemSettings,
-  authUsers, authAccounts, users,
-  documents, documentTags, documentViews, documentDownloads,
-  userInterests, follows, comments,
-  documentReactions, bookmarkCollections, documentBookmarks,
-} from "../src/lib/db/schema";
+import { Pool, type PoolClient } from "pg";
 import bcrypt from "bcryptjs";
+import { assertLocalSeedTarget } from "./seed/guard";
+import { account, fixtureId } from "./seed/identity";
+import { topics, guides } from "./seed/content";
+import { writeGuides } from "./seed/pdf";
 
-// Seeding writes demo accounts and content. Only use an explicitly chosen database.
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error("DATABASE_URL environment variable is not set");
-const pool = new Pool({ connectionString });
-const seedDb = drizzle(pool);
+config({ path: ".env.local", quiet: true }); config({ path: ".env", quiet: true });
+const USER_COUNT = 50;
+const PASSWORD = "Password123!";
+const tagNames = ["Science", "Technology", "Education", "Research", "Mathematics", "Psychology", "History", "Design"];
 
-async function withRetry<T>(label: string, fn: () => Promise<T>, attempts = 4): Promise<T> {
-  let lastErr: unknown;
-  for (let i = 0; i < attempts; i++) {
+async function seedUsers(client: PoolClient) {
+  for (let i = 0; i < USER_COUNT; i++) {
+    const u = account(i);
+    const existing = await client.query("SELECT id, email FROM auth_users WHERE id = $1 OR email = $2", [u.id, u.email]);
+    if (existing.rows.some(row => row.id !== u.id || row.email !== u.email)) throw new Error(`Account collision for ${u.email}; nothing was changed.`);
+    const byUsername = await client.query("SELECT id FROM users WHERE username = $1", [u.username]);
+    if (byUsername.rows.some(row => row.id !== u.id)) throw new Error(`Username collision for ${u.username}; nothing was changed.`);
+    if (existing.rowCount) {
+      const valid = await client.query("SELECT 1 FROM users u JOIN auth_accounts a ON a.user_id = u.id AND a.provider = 'credentials' WHERE u.id = $1 AND u.username = $2", [u.id, u.username]);
+      if (!valid.rowCount) throw new Error(`Incomplete or modified demo account ${u.email}; no changes made.`);
+      continue; // Never overwrite a password, profile or real user's edits on rerun.
+    }
+    // Each hash has its own salt; registration currently uses bcrypt cost 12.
+    const hash = await bcrypt.hash(PASSWORD, 12);
+    await client.query("INSERT INTO auth_users (id, email, name, email_verified) VALUES ($1,$2,$3,now())", [u.id, u.email, u.name]);
+    await client.query("INSERT INTO users (id, username, display_name, bio, role, onboarding_complete, onboarding_step) VALUES ($1,$2,$3,$4,'student',true,3)", [u.id, u.username, u.name, "Fictional local demo account for testing getpidief."]);
+    await client.query("INSERT INTO auth_accounts (user_id, type, provider, provider_account_id) VALUES ($1,'credentials','credentials',$2)", [u.id, hash]);
+  }
+}
+
+async function seedTags(client: PoolClient) {
+  const ids: string[] = [];
+  for (const name of tagNames) {
+    const slug = name.toLowerCase();
+    await client.query("INSERT INTO tags (name, slug, is_system_tag) VALUES ($1,$2,true) ON CONFLICT DO NOTHING", [name, slug]);
+    const result = await client.query("SELECT id FROM tags WHERE slug=$1 AND is_active=true", [slug]);
+    if (result.rowCount !== 1) throw new Error(`Active tag ${slug} is unavailable or conflicts with existing data.`);
+    ids.push(result.rows[0].id);
+  }
+  return ids;
+}
+
+async function seedActivity(client: PoolClient, tagIds: string[], sizes: number[]) {
+  for (let i = 0; i < USER_COUNT; i++) {
+    const id = account(i).id;
+    for (const tagId of [tagIds[i % tagIds.length], tagIds[(i + 3) % tagIds.length]]) {
+      await client.query("INSERT INTO user_interests (user_id, tag_id) SELECT $1,$2 WHERE NOT EXISTS (SELECT 1 FROM user_interests WHERE user_id=$1 AND tag_id=$2)", [id, tagId]);
+    }
+    // Only demo-to-demo follows, with no changes to real users.
+    for (const offset of [1, 4, 11]) await client.query("INSERT INTO follows (follower_id, following_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [id, account((i + offset) % USER_COUNT).id]);
+  }
+  for (let i = 0; i < 120; i++) {
+    const topic = topics[i % topics.length]; const variation = Math.floor(i / topics.length);
+    const bodies = [
+      `${topic.question}\n\nI would love to hear different approaches.`,
+      `${topic.angle}\n\nWhat would you add to that?`,
+      `A useful starting point for ${topic.name.toLowerCase()}: ${topic.source}\n\n${topic.angle}`,
+      `For people learning about ${topic.name.toLowerCase()}, what resource would you recommend to someone starting out, and why?`,
+      `How would you explain ${topic.name.toLowerCase()} to someone encountering it for the first time?\n\nOne reference to explore: ${topic.source}`,
+    ];
+    const postId = fixtureId("post", i); const author = i % USER_COUNT;
+    const existingPost = await client.query("SELECT author_id FROM posts WHERE id = $1", [postId]);
+    if (existingPost.rows.some(row => row.author_id !== account(author).id)) throw new Error(`Post ID collision: ${postId}.`);
+    await client.query("INSERT INTO posts (id, author_id, kind, body, created_at) VALUES ($1,$2,$3,$4,now() - (($5 * 37 + 10) * interval '1 minute')) ON CONFLICT (id) DO NOTHING", [postId, account(author).id, variation === 0 || variation === 3 ? "question" : "thought", bodies[variation], i]);
+    const reply = ["That is a helpful question. I would start with a concrete example and then check the assumptions.", "I like this framing. Comparing more than one perspective can make the limits clearer.", "Writing down what is still uncertain helps me figure out what to look up next."][i % 3];
+    const replyId = fixtureId("reply", i);
+    const existingReply = await client.query("SELECT post_id, author_id FROM post_replies WHERE id = $1", [replyId]);
+    if (existingReply.rows.some(row => row.post_id !== postId || row.author_id !== account((author + 7) % USER_COUNT).id)) throw new Error(`Reply ID collision: ${replyId}.`);
+    await client.query("INSERT INTO post_replies (id, post_id, author_id, body, created_at) VALUES ($1,$2,$3,$4,now() - ($5 * interval '37 minutes')) ON CONFLICT (id) DO NOTHING", [replyId, postId, account((author + 7) % USER_COUNT).id, reply, i]);
+    if (i % 3 !== 0) await client.query("INSERT INTO post_likes (post_id,user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [postId, account((author + 3) % USER_COUNT).id]);
+    if (i % 5 === 0) await client.query("INSERT INTO post_saves (post_id,user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [postId, account((author + 9) % USER_COUNT).id]);
+  }
+  for (let i = 0; i < guides.length; i++) {
+    const g = guides[i]; const id = fixtureId("document", i); const slug = `local-demo-guide-${String(i + 1).padStart(2, "0")}`;
+    const collision = await client.query("SELECT id FROM documents WHERE (slug = $1 AND id <> $2) OR (id = $2 AND (slug <> $1 OR author_id <> $3))", [slug, id, account(i).id]);
+    if (collision.rowCount) throw new Error(`Document slug collision: ${slug}.`);
+    await client.query(`INSERT INTO documents (id, slug, title, description, author_id, resource_type, file_url, file_size, mime_type, preview_status, page_count, visibility, license, status, published_at, search_vector)
+      VALUES ($1,$2,$3::text,$4::text,$5,'other',$6,$7,'application/pdf','ready',1,'public','academic_use_only','approved',now(), setweight(to_tsvector('english', $3::text), 'A') || setweight(to_tsvector('english', $4::text), 'B')) ON CONFLICT (id) DO NOTHING`,
+      [id, slug, g.title, `Original local demo guide, not a verified publication. Further reading: ${g.source}`, account(i).id, `/seed-assets/guide-${String(i + 1).padStart(2, "0")}.pdf`, sizes[i]]);
+    const tagId = tagIds[[3, 4, 4, 7, 1, 6, 2, 1][i]];
+    await client.query("INSERT INTO document_tags (document_id,tag_id) SELECT $1,$2 WHERE NOT EXISTS (SELECT 1 FROM document_tags WHERE document_id=$1 AND tag_id=$2)", [id, tagId]);
+  }
+}
+
+async function main() {
+  const connectionString = assertLocalSeedTarget(process.env.DATABASE_URL, process.env.NODE_ENV);
+  const pool = new Pool({ connectionString, max: 1, connectionTimeoutMillis: 10000 });
+  try {
+    const client = await pool.connect();
     try {
-      return await fn();
-    } catch (err: unknown) {
-      lastErr = err;
-      const error = err as { cause?: { code?: string }; code?: string };
-      const code = error?.cause?.code ?? error?.code;
-      // Retry only for transient network failures.
-      if (code !== "ECONNRESET" && code !== "ETIMEDOUT" && code !== "ECONNREFUSED") {
-        throw err;
-      }
-      const delayMs = 400 * Math.pow(2, i);
-      console.warn(`     ! ${label} failed (${code}); retrying in ${delayMs}ms...`);
-      await new Promise((r) => setTimeout(r, delayMs));
-    }
-  }
-  throw lastErr;
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(734325190)");
+      console.log("Creating or checking 50 local demo accounts. This can take a little while...");
+      await seedUsers(client);
+      const tagIds = await seedTags(client);
+      const sizes = await writeGuides();
+      await seedActivity(client, tagIds, sizes);
+      // Refresh only demo profiles' derived counters from actual related rows.
+      await client.query(`UPDATE users u SET
+        following_count = (SELECT count(*) FROM follows f WHERE f.follower_id = u.id),
+        follower_count = (SELECT count(*) FROM follows f WHERE f.following_id = u.id),
+        document_count = (SELECT count(*) FROM documents d WHERE d.author_id = u.id AND d.status = 'approved' AND d.deleted_at IS NULL)
+        WHERE u.id = ANY($1::uuid[])`, [Array.from({ length: USER_COUNT }, (_, i) => account(i).id)]);
+      await client.query("COMMIT");
+      console.log("Done: 50 fictional accounts, 120 discussion posts, 120 replies, and 8 original PDF guides.");
+      console.log("Sign in with learner01@example.test through learner50@example.test. Password: Password123!");
+      console.log("Local demo only. Existing records were not deleted. See docs/LOCAL-SEED.md.");
+    } catch (error) { await client.query("ROLLBACK"); throw error; }
+    finally { client.release(); }
+  } finally { await pool.end(); }
 }
-
-async function seed() {
-  console.log("🌱  Starting seed...\n");
-
-  // ── Institutions ──────────────────────────────────────────────────────────
-  console.log("  → Seeding institutions...");
-  const institutionRows = await withRetry("institutions insert", async () => {
-    return seedDb
-      .insert(institutions)
-      .values([
-        {
-          name: "University of Cape Town", slug: "uct",
-          shortName: "UCT", country: "South Africa", countryCode: "ZA",
-          city: "Cape Town", type: "university",
-          emailDomains: ["uct.ac.za", "myuct.ac.za"], isActive: true, isVerified: true,
-        },
-        {
-          name: "University of Lagos", slug: "unilag",
-          shortName: "UNILAG", country: "Nigeria", countryCode: "NG",
-          city: "Lagos", type: "university",
-          emailDomains: ["unilag.edu.ng"], isActive: true, isVerified: true,
-        },
-        {
-          name: "University of Ghana", slug: "ug",
-          shortName: "UG", country: "Ghana", countryCode: "GH",
-          city: "Accra", type: "university",
-          emailDomains: ["ug.edu.gh", "st.ug.edu.gh"], isActive: true, isVerified: true,
-        },
-        {
-          name: "Makerere University", slug: "makerere",
-          shortName: "MAK", country: "Uganda", countryCode: "UG",
-          city: "Kampala", type: "university",
-          emailDomains: ["mak.ac.ug"], isActive: true, isVerified: true,
-        },
-        {
-          name: "University of Nairobi", slug: "uon",
-          shortName: "UoN", country: "Kenya", countryCode: "KE",
-          city: "Nairobi", type: "university",
-          emailDomains: ["uonbi.ac.ke", "students.uonbi.ac.ke"], isActive: true, isVerified: true,
-        },
-        {
-          name: "MIT", slug: "mit",
-          shortName: "MIT", country: "United States", countryCode: "US",
-          city: "Cambridge", type: "university",
-          emailDomains: ["mit.edu"], isActive: true, isVerified: true,
-        },
-        {
-          name: "University of Oxford", slug: "oxford",
-          shortName: "Oxford", country: "United Kingdom", countryCode: "GB",
-          city: "Oxford", type: "university",
-          emailDomains: ["ox.ac.uk", "oxon.ac.uk"], isActive: true, isVerified: true,
-        },
-      ])
-      .onConflictDoNothing()
-      .returning({ id: institutions.id, slug: institutions.slug });
-  });
-
-  console.log(`     ✓ ${institutionRows.length} institutions seeded`);
-
-  // ── Categories ────────────────────────────────────────────────────────────
-  console.log("  → Seeding categories...");
-  const categoryRows = await seedDb
-    .insert(categories)
-    .values([
-      { name: "Computer Science",    slug: "computer-science",    icon: "code",           color: "#2563EB", sortOrder: 1,  isActive: true, isFeatured: true  },
-      { name: "Law",                  slug: "law",                 icon: "scale",          color: "#7C3AED", sortOrder: 2,  isActive: true, isFeatured: true  },
-      { name: "Medicine & Health",    slug: "medicine-health",     icon: "heart-pulse",    color: "#DC2626", sortOrder: 3,  isActive: true, isFeatured: true  },
-      { name: "Engineering",          slug: "engineering",         icon: "cog",            color: "#D97706", sortOrder: 4,  isActive: true, isFeatured: true  },
-      { name: "Business & Economics", slug: "business-economics",  icon: "trending-up",    color: "#059669", sortOrder: 5,  isActive: true, isFeatured: true  },
-      { name: "Sciences",             slug: "sciences",            icon: "flask-conical",  color: "#0891B2", sortOrder: 6,  isActive: true, isFeatured: true  },
-      { name: "Humanities",           slug: "humanities",          icon: "book-open",      color: "#9333EA", sortOrder: 7,  isActive: true, isFeatured: false },
-      { name: "Architecture",         slug: "architecture-design", icon: "building-2",     color: "#EA580C", sortOrder: 8,  isActive: true, isFeatured: false },
-      { name: "Education",            slug: "education",           icon: "graduation-cap", color: "#16A34A", sortOrder: 9,  isActive: true, isFeatured: false },
-      { name: "Social Sciences",      slug: "social-sciences",     icon: "users",          color: "#0D9488", sortOrder: 10, isActive: true, isFeatured: false },
-      { name: "Agriculture",          slug: "agriculture",         icon: "leaf",           color: "#65A30D", sortOrder: 11, isActive: true, isFeatured: false },
-      { name: "Pharmacy",             slug: "pharmacy",            icon: "pill",           color: "#BE185D", sortOrder: 12, isActive: true, isFeatured: false },
-    ])
-    .onConflictDoNothing()
-    .returning({ id: categories.id, slug: categories.slug });
-
-  console.log(`     ✓ ${categoryRows.length} categories seeded`);
-
-  // ── Tags ──────────────────────────────────────────────────────────────────
-  console.log("  → Seeding system tags...");
-  const tagList = [
-    "Machine Learning", "Data Structures", "Algorithms", "Constitutional Law",
-    "Contract Law", "Biochemistry", "Clinical Medicine", "Financial Modelling",
-    "Corporate Finance", "Organic Chemistry", "Thermodynamics", "Quantum Physics",
-    "Public Health", "Econometrics", "Human-Computer Interaction", "Database Systems",
-    "Network Security", "Operating Systems", "Calculus", "Linear Algebra",
-    "Statistics", "Urban Planning", "Medical Ethics", "Game Theory",
-    "Software Engineering", "Artificial Intelligence", "Computer Networks",
-    "Data Science", "Cybersecurity", "Cloud Computing", "Digital Marketing",
-    "International Law", "Criminal Law", "Property Law", "Tort Law",
-    "Microbiology", "Anatomy", "Physiology", "Pharmacology",
-    "Structural Engineering", "Civil Engineering", "Electrical Engineering",
-    "Mechanical Engineering", "Chemical Engineering", "Environmental Science",
-    "Philosophy", "Psychology", "Sociology", "Economics", "Accounting",
-  ];
-
-  const tagRows = await seedDb
-    .insert(tags)
-    .values(
-      tagList.map((name) => ({
-        name,
-        slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-        isActive: true,
-        isSystemTag: true,
-      }))
-    )
-    .onConflictDoNothing()
-    .returning({ id: tags.id });
-
-  console.log(`     ✓ ${tagRows.length} tags seeded`);
-
-  // ── Badges ────────────────────────────────────────────────────────────────
-  console.log("  → Seeding badges...");
-  await seedDb
-    .insert(badges)
-    .values([
-      { name: "First Upload",         slug: "first-upload",         description: "Uploaded your first document",           icon: "upload",        color: "#2563EB", reputationBonus: 5,  criteriaType: "document_count",   criteriaValue: 1,    sortOrder: 1  },
-      { name: "Active Scholar",       slug: "active-scholar",       description: "Uploaded 10 approved documents",         icon: "star",          color: "#F59E0B", reputationBonus: 15, criteriaType: "document_count",   criteriaValue: 10,   sortOrder: 2  },
-      { name: "Prolific Contributor", slug: "prolific-contributor", description: "Uploaded 50 approved documents",         icon: "award",         color: "#10B981", reputationBonus: 30, criteriaType: "document_count",   criteriaValue: 50,   sortOrder: 3  },
-      { name: "Rising Scholar",       slug: "rising-scholar",       description: "Reached a reputation score of 100",      icon: "trending-up",   color: "#8B5CF6", reputationBonus: 10, criteriaType: "reputation_score", criteriaValue: 100,  sortOrder: 4  },
-      { name: "Community Builder",    slug: "community-builder",    description: "Gained 50 followers",                    icon: "users",         color: "#EC4899", reputationBonus: 20, criteriaType: "follower_count",   criteriaValue: 50,   sortOrder: 5  },
-      { name: "Streak Scholar",       slug: "streak-scholar",       description: "Maintained a 7-day activity streak",     icon: "flame",         color: "#EF4444", reputationBonus: 10, criteriaType: "streak_days",      criteriaValue: 7,    sortOrder: 6  },
-      { name: "Verified Contributor", slug: "verified-contributor", description: "Institutional affiliation verified",     icon: "shield-check",  color: "#F59E0B", reputationBonus: 25, criteriaType: "manual",           criteriaValue: null, sortOrder: 7  },
-      { name: "Top of the Month",     slug: "top-of-month",         description: "Top contributor this month",             icon: "trophy",        color: "#F59E0B", reputationBonus: 50, criteriaType: "manual",           criteriaValue: null, sortOrder: 8  },
-    ])
-    .onConflictDoNothing();
-
-  console.log("     ✓ badges seeded");
-
-  // ── System Settings ───────────────────────────────────────────────────────
-  console.log("  → Seeding system settings...");
-  await seedDb
-    .insert(systemSettings)
-    .values([
-      { key: "maintenance_mode",               value: false,     description: "Enable maintenance page" },
-      { key: "max_upload_size_mb",             value: 50,        description: "Max PDF upload size in MB" },
-      { key: "default_visibility",             value: "public",  description: "Default document visibility" },
-      { key: "require_email_verification",     value: true,      description: "Require email verification" },
-      { key: "allow_registration",             value: true,      description: "Allow new registrations" },
-      { key: "trending_recalc_interval_mins",  value: 15,        description: "Trending recalculation interval" },
-      { key: "digest_day_of_week",             value: "monday",  description: "Weekly digest day" },
-      { key: "max_tags_per_document",          value: 10,        description: "Max tags per document" },
-    ])
-    .onConflictDoNothing();
-
-  console.log("     ✓ system settings seeded");
-
-  // ── Test Users (dev only) ─────────────────────────────────────────────────
-  if (process.env.NODE_ENV !== "production") {
-    console.log("  → Seeding test users (dev only)...");
-
-    const testUsers = [
-      { email: "admin@getpidief.dev",  name: "Admin User",     username: "admin_dev",     role: "admin"       as const },
-      { email: "mod@getpidief.dev",    name: "Moderator User", username: "mod_dev",       role: "moderator"   as const },
-      { email: "student@getpidief.dev",name: "Test Student",   username: "test_student",  role: "student"     as const },
-    ];
-
-    for (const u of testUsers) {
-      const passwordHash = await bcrypt.hash("Password123!", 10);
-
-      const [authRow] = await seedDb
-        .insert(authUsers)
-        .values({ name: u.name, email: u.email, emailVerified: new Date() })
-        .onConflictDoNothing()
-        .returning({ id: authUsers.id });
-
-      if (!authRow) continue;
-
-      await seedDb
-        .insert(users)
-        .values({
-          id: authRow.id, username: u.username,
-          displayName: u.name, role: u.role,
-          status: "active", onboardingComplete: true,
-          verificationStatus: "verified",
-          reputationScore: u.role === "admin" ? 999 : 0,
-        })
-        .onConflictDoNothing();
-
-      // Store password hash in credentials account
-      await seedDb
-        .insert(authAccounts)
-        .values({
-          userId: authRow.id,
-          type: "credentials",
-          provider: "credentials",
-          providerAccountId: passwordHash,
-        })
-        .onConflictDoNothing();
-    }
-
-    console.log("     ✓ 3 test users seeded");
-    console.log("       admin@getpidief.dev  / Password123!");
-    console.log("       mod@getpidief.dev    / Password123!");
-    console.log("       student@getpidief.dev/ Password123!");
-
-    // ── Demo Content (dev only) ──────────────────────────────────────────────
-    console.log("\n  → Seeding demo documents + interactions (dev only)...");
-    const existingDemo = await seedDb.execute<{ count: string }>(
-      sql`SELECT COUNT(*)::text AS count FROM documents WHERE slug LIKE 'seed-%'`
-    );
-    const demoCount = Number(existingDemo.rows[0]?.count ?? "0");
-
-    if (demoCount > 0) {
-      await seedDb.execute(
-        sql`UPDATE documents
-            SET thumbnail_url = NULL
-            WHERE slug LIKE 'seed-%'
-              AND thumbnail_url LIKE 'https://picsum.photos/%'`
-      );
-      console.log(`     ✓ demo content already exists (${demoCount} docs), skipping`);
-      console.log("     ✓ normalized seeded thumbnails to local-safe values");
-      console.log("\n✅  Seed complete!\n");
-      return;
-    }
-
-    const [allInstitutions, allCategories, allTags, testUserRows] = await Promise.all([
-      seedDb.select({ id: institutions.id }).from(institutions),
-      seedDb.select({ id: categories.id }).from(categories),
-      seedDb.select({ id: tags.id }).from(tags),
-      seedDb
-        .select({ id: users.id, username: users.username })
-        .from(users)
-        .where(inArray(users.username, ["admin_dev", "mod_dev", "test_student"])),
-    ]);
-
-    if (!allInstitutions.length || !allCategories.length || !allTags.length || !testUserRows.length) {
-      throw new Error("Cannot seed demo content: base entities (institutions/categories/tags/users) missing.");
-    }
-
-    const userIds = testUserRows.map((u) => u.id);
-    const now = Date.now();
-    const docCount = 30;
-    const resourceTypes = [
-      "past_exam",
-      "lecture_notes",
-      "research_paper",
-      "textbook_summary",
-      "assignment",
-      "tutorial_sheet",
-      "course_guide",
-      "lab_report",
-      "thesis",
-      "dissertation",
-      "other",
-    ] as const;
-    const titles = [
-      "Advanced Algorithms Revision Pack",
-      "Database Systems Lecture Notes",
-      "Public Health Biostatistics Handbook",
-      "Contract Law Case Digest",
-      "Signals and Systems Tutorial Set",
-      "Thermodynamics Lab Report Template",
-      "Machine Learning Practical Workbook",
-      "Software Engineering Course Guide",
-      "Financial Modelling Past Questions",
-      "Quantum Physics Problem Sheet",
-    ];
-
-    const docsPayload = Array.from({ length: docCount }).map((_, i) => {
-      const title = `${titles[i % titles.length]} ${i + 1}`;
-      const authorId = userIds[i % userIds.length];
-      const categoryId = allCategories[i % allCategories.length]?.id ?? null;
-      const institutionId = allInstitutions[i % allInstitutions.length]?.id ?? null;
-      const publishedAt = new Date(now - i * 86400000);
-      return {
-        slug: `seed-doc-${i + 1}`,
-        title,
-        description: `Seeded demo resource for development/testing (${title}).`,
-        language: "en",
-        categoryId,
-        resourceType: resourceTypes[i % resourceTypes.length],
-        semester: i % 2 === 0 ? ("semester_1" as const) : ("semester_2" as const),
-        academicYear: 2021 + (i % 5),
-        institutionId,
-        authorId,
-        fileUrl: `https://3rvj5ig9j4.ufs.sh/f/jpsC6qlv32e86z4607Guiv1KTYp4mO2cCtWknXIPJhd98Dfa`,
-        fileSize: 150000 + i * 2500,
-        mimeType: "application/pdf",
-        thumbnailUrl: null,
-        previewStatus: "ready" as const,
-        pageCount: 12 + (i % 40),
-        visibility: "public" as const,
-        license: "academic_use_only" as const,
-        allowDownload: true,
-        allowPrint: true,
-        status: "approved" as const,
-        publishedAt,
-        viewCount: 100 + i * 17,
-        uniqueViewCount: 80 + i * 11,
-        downloadCount: 20 + i * 7,
-        likeCount: 8 + (i % 13),
-        dislikeCount: i % 4,
-        bookmarkCount: 5 + (i % 8),
-        commentCount: 2 + (i % 5),
-        shareCount: 1 + (i % 6),
-        trendingScore: 20 + i * 1.5,
-      };
-    });
-
-    await seedDb.insert(documents).values(docsPayload).onConflictDoNothing();
-    const seededSlugs = docsPayload.map((d) => d.slug);
-    const seededDocs = await seedDb
-      .select({ id: documents.id, slug: documents.slug, authorId: documents.authorId })
-      .from(documents)
-      .where(inArray(documents.slug, seededSlugs));
-
-    // Document tags (3 tags per doc)
-    const docTagRows = seededDocs.flatMap((d, i) => {
-      const t1 = allTags[i % allTags.length]!;
-      const t2 = allTags[(i + 7) % allTags.length]!;
-      const t3 = allTags[(i + 13) % allTags.length]!;
-      return [
-        { documentId: d.id, tagId: t1.id },
-        { documentId: d.id, tagId: t2.id },
-        { documentId: d.id, tagId: t3.id },
-      ];
-    });
-    await seedDb.insert(documentTags).values(docTagRows).onConflictDoNothing();
-
-    // User interests (for recommendations)
-    const interestRows = userIds.flatMap((userId, idx) => [
-      { userId, tagId: allTags[idx % allTags.length]!.id },
-      { userId, tagId: allTags[(idx + 3) % allTags.length]!.id },
-      { userId, tagId: allTags[(idx + 9) % allTags.length]!.id },
-    ]);
-    await seedDb.insert(userInterests).values(interestRows).onConflictDoNothing();
-
-    // Follows
-    const followRows = userIds.flatMap((followerId) =>
-      userIds
-        .filter((u) => u !== followerId)
-        .slice(0, 2)
-        .map((followingId) => ({ followerId, followingId }))
-    );
-    await seedDb.insert(follows).values(followRows).onConflictDoNothing();
-
-    // Reactions (1-2 per doc, unique per user-doc)
-    const reactionRows = seededDocs.flatMap((d, idx) => {
-      const u1 = userIds[idx % userIds.length];
-      const u2 = userIds[(idx + 1) % userIds.length];
-      return [
-        { documentId: d.id, userId: u1, type: "like" as const },
-        ...(idx % 4 === 0 ? [{ documentId: d.id, userId: u2, type: "dislike" as const }] : []),
-      ];
-    });
-    await seedDb.insert(documentReactions).values(reactionRows).onConflictDoNothing();
-
-    // Bookmark collections + bookmarks
-    const collectionRows = userIds.map((userId) => ({
-      userId,
-      name: "Saved",
-      description: "Default seeded collection",
-      visibility: "private" as const,
-      isDefault: true,
-    }));
-    await seedDb.insert(bookmarkCollections).values(collectionRows).onConflictDoNothing();
-    const collections = await seedDb
-      .select({ id: bookmarkCollections.id, userId: bookmarkCollections.userId })
-      .from(bookmarkCollections)
-      .where(inArray(bookmarkCollections.userId, userIds));
-    const collectionByUser = new Map(collections.map((c) => [c.userId, c.id]));
-
-    const bookmarkRows = seededDocs.slice(0, 18).map((d, idx) => {
-      const userId = userIds[idx % userIds.length];
-      return {
-        userId,
-        documentId: d.id,
-        collectionId: collectionByUser.get(userId) ?? null,
-      };
-    });
-    await seedDb.insert(documentBookmarks).values(bookmarkRows).onConflictDoNothing();
-
-    // Comments (+ replies)
-    const topComments = await seedDb
-      .insert(comments)
-      .values(
-        seededDocs.slice(0, 12).map((d, idx) => ({
-          documentId: d.id,
-          userId: userIds[idx % userIds.length],
-          content: `This is a seeded top-level comment on ${d.slug}.`,
-          contentHtml: `<p>This is a seeded top-level comment on ${d.slug}.</p>`,
-        }))
-      )
-      .returning({ id: comments.id, documentId: comments.documentId });
-
-    await seedDb.insert(comments).values(
-      topComments.slice(0, 8).map((c, idx) => ({
-        documentId: c.documentId,
-        userId: userIds[(idx + 1) % userIds.length],
-        parentId: c.id,
-        rootId: c.id,
-        content: "Seeded reply for development.",
-        contentHtml: "<p>Seeded reply for development.</p>",
-      }))
-    );
-
-    // View + download logs
-    await seedDb.insert(documentViews).values(
-      seededDocs.slice(0, 20).map((d, idx) => ({
-        documentId: d.id,
-        userId: userIds[idx % userIds.length],
-        sessionId: `seed-session-${idx + 1}`,
-        ipHash: `seed-ip-${(idx % 6) + 1}`,
-        userAgent: "SeedScript/1.0",
-        durationSeconds: 30 + idx * 3,
-        pagesViewed: 2 + (idx % 8),
-      }))
-    );
-
-    await seedDb.insert(documentDownloads).values(
-      seededDocs.slice(0, 16).map((d, idx) => ({
-        documentId: d.id,
-        userId: userIds[idx % userIds.length],
-        ipHash: `seed-ip-${(idx % 6) + 1}`,
-      }))
-    );
-
-    console.log(`     ✓ ${seededDocs.length} demo documents seeded`);
-    console.log("     ✓ document tags seeded");
-    console.log("     ✓ follows + interests seeded");
-    console.log("     ✓ reactions + bookmarks seeded");
-    console.log("     ✓ comments + view/download logs seeded");
-  }
-
-  console.log("\n✅  Seed complete!\n");
-}
-
-seed().catch((err) => {
-  console.error("❌ Seed failed:", err);
-  process.exitCode = 1;
-}).finally(() => pool.end());
+main().catch(error => { console.error("Seed failed:", error instanceof Error ? error.message : "Unknown error"); process.exitCode = 1; });

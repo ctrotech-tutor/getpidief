@@ -33,6 +33,11 @@ describe("document download", () => {
     expect(response.headers.get("location")).toBe("http://localhost/api/documents/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/file");
     expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
+  it("resolves local demo PDF references on the same origin", async () => {
+    mocks.findDocument.mockResolvedValue({ status: "approved", allowDownload: true, authorId: "author", fileUrl: "/seed-assets/guide-01.pdf" });
+    const response = await GET(req(), params);
+    expect(response.headers.get("location")).toBe("http://localhost/seed-assets/guide-01.pdf");
+  });
   it("tracks and redirects allowed public downloads", async () => {
     mocks.findDocument.mockResolvedValue({ status: "approved", allowDownload: true, authorId: "author", fileUrl: "https://example.com/file.pdf" });
     const response = await GET(req(), params);

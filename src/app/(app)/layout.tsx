@@ -37,14 +37,14 @@ export default async function AppLayout({
   const profile = user.id
     ? await db.query.users.findFirst({
         where: eq(users.id, user.id),
-        columns: { onboardingComplete: true, status: true },
+        columns: { onboardingComplete: true, onboardingStep: true, status: true },
       })
     : null;
 
   // ── Onboarding incomplete → redirect to step-1 ───────────────────────────
   // Use DB as source of truth to avoid stale JWT redirect loops.
   if (!profile?.onboardingComplete) {
-    redirect("/onboarding/step-1");
+    redirect(`/onboarding/step-${Math.min(Math.max(profile?.onboardingStep ?? 1, 1), 3)}`);
   }
 
   // ── Suspended / deleted account ───────────────────────────────────────────

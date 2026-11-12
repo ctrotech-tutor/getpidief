@@ -43,7 +43,7 @@ This guide is for a separate development database. It does not reset or migrate 
    npm run dev
    ```
 
-   Visit `http://localhost:3000/feed-preview` for the sample social feed. Its posts and interactions are examples and reset on refresh. The regular application uses real services and is not yet fully configured by a database URL alone. No seed command is required or recommended for a fresh empty database.
+   Visit `http://localhost:3000/feed-preview` for the sample social feed. Its posts and interactions are examples and reset on refresh. The regular application uses real services and is not yet fully configured by a database URL alone. No seed is required for onboarding. To populate a separate local database with clearly labeled demo accounts and content, see [LOCAL-SEED.md](LOCAL-SEED.md).
 
 5. Optional checks:
 
@@ -61,4 +61,4 @@ Email, authentication providers, uploads, storage, background processing, rate l
 
 Registration still requires a reachable development Upstash REST Redis, and the email worker still requires an Inngest development server connected to `http://localhost:3000/api/inngest`. Inngest processes the message asynchronously; the email appears in the Mailpit inbox, not necessarily immediately after registration. Running `npm ci --ignore-scripts` may leave the bundled Inngest CLI unavailable; install the Inngest CLI separately, then run `inngest dev -u http://localhost:3000/api/inngest`. Check the Inngest dashboard for worker failures. These services have not been verified against a real account in this environment.
 
-Other provider settings and sender verification are documented in [EMAIL.md](EMAIL.md). With an empty database, the current onboarding requires reference institutions and interests, and the visible skip link does not complete onboarding; no seed is automatically installed.
+Other provider settings and sender verification are documented in [EMAIL.md](EMAIL.md). Onboarding can be completed without institutions or interest tags, so no seed is needed. Optional choices are saved when available. Institution search can use the ROR directory over HTTPS; it also works with local results or can be skipped if the directory is unavailable. Selected interests are stored, but the current home feed is chronological rather than personalized by topic. See [ONBOARDING.md](ONBOARDING.md).

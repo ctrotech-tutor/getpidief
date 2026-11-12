@@ -1,5 +1,8 @@
-<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect x="2" y="4" width="20" height="24" rx="4" fill="#4f46e5" />
-  <rect x="10" y="8" width="20" height="20" rx="4" fill="#60a5fa" opacity="0.9" style="mix-blend-mode: multiply;" />
-  <circle cx="20" cy="18" r="4" fill="white" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <rect width="120" height="120" rx="25" fill="#f6f7f0"/>
+  <g transform="translate(12 12) scale(3)">
+    <rect x="2" y="4" width="20" height="24" rx="4" fill="#527a5b"/>
+    <rect x="10" y="8" width="20" height="20" rx="4" fill="#a1bf9b" opacity=".9" style="mix-blend-mode:multiply"/>
+    <circle cx="20" cy="18" r="4" fill="white"/>
+  </g>
 </svg>

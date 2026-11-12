@@ -44,28 +44,42 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
   ...authConfig,
 
   // ── Database adapter ─────────────────────────────────────────────────────
-  adapter: DrizzleAdapter(db, {
-    usersTable:              authUsers,
-    // @ts-expect-error -- project auth_accounts schema intentionally differs from Auth.js default account columns
-    accountsTable:           authAccounts,
-    sessionsTable:           authSessions,
-    verificationTokensTable: authVerificationTokens,
-  }),
+  adapter: {
+    ...DrizzleAdapter(db, {
+      usersTable: authUsers,
+      // @ts-expect-error -- tokens are intentionally not stored for sign-in-only OAuth
+      accountsTable: authAccounts,
+      sessionsTable: authSessions,
+      verificationTokensTable: authVerificationTokens,
+    }),
+    // Create the identity and application profile atomically. Auth.js events are
+    // best-effort and must not be responsible for essential database records.
+    async createUser(data) {
+      return db.transaction(async (tx) => {
+        const [identity] = await tx.insert(authUsers).values({
+          name: data.name, email: data.email, emailVerified: data.emailVerified,
+          image: data.image,
+        }).returning();
+        const username = `learner_${identity.id.replaceAll("-", "").slice(0, 24)}`;
+        await tx.insert(users).values({
+          id: identity.id, username,
+          displayName: (data.name?.trim() || username).slice(0, 100),
+          avatarUrl: data.image ?? null, onboardingComplete: false, onboardingStep: 1,
+        });
+        return identity;
+      });
+    },
+  },
 
-  // ── Override session strategy to "database" for server contexts ──────────
+  // ── Signed JWT sessions, checked against the database version ──────────
   session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
 
   providers: [
     GoogleProvider({
       clientId:     process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          prompt:        "consent",
-          access_type:   "offline",
-          response_type: "code",
-        },
-      },
+      // Sign-in does not need Google API access or refresh tokens.
+      account: () => ({}),
     }),
 
     Credentials({
@@ -154,28 +168,20 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
 
   callbacks: {
     // Extend the edge-safe callbacks with DB-aware sign-in check
-    async signIn({ user }) {
-      if (!user.id) return true;
-
-      // Check auth user for email verification
-      const authUser = await db.query.authUsers.findFirst({
-        where: eq(authUsers.id, user.id),
-        columns: { emailVerified: true },
-      });
-
-      if (!authUser?.emailVerified) {
-        // User needs to verify email first
-        return "/verify-email";
+    async signIn({ user, account, profile }) {
+      if (account?.provider === "google") {
+        // Auth.js runs this callback before creating a first-time OAuth user.
+        // Only a Google-verified email is accepted. Do not auto-link by email.
+        if (profile?.email_verified !== true || typeof profile.email !== "string" || !profile.email) return false;
+        if (!user.id) return false;
+        const existing = await db.query.users.findFirst({ where: eq(users.id, user.id), columns: { status: true, deletedAt: true } });
+        return !existing || (existing.status === "active" && !existing.deletedAt);
       }
-
-      const profile = await db.query.users.findFirst({
-        where: eq(users.id, user.id),
-        columns: { status: true },
-      });
-
-      if (profile?.status === "suspended") return false;
-      if (profile?.status === "deleted")   return false;
-      return true;
+      if (!user.id) return false;
+      const authUser = await db.query.authUsers.findFirst({ where: eq(authUsers.id, user.id), columns: { emailVerified: true } });
+      if (!authUser?.emailVerified) return "/verify-email";
+      const profileRow = await db.query.users.findFirst({ where: eq(users.id, user.id), columns: { status: true, deletedAt: true } });
+      return !!profileRow && profileRow.status === "active" && !profileRow.deletedAt;
     },
 
     // Inherit jwt + session from authConfig
@@ -199,45 +205,25 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
       } else if (typeof token.sessionVersion !== "number" || token.sessionVersion !== account.sessionVersion) {
         return null;
       }
-      // On sign-in: attach profile fields from user object
-      if (user) {
-        const u = user as AuthSessionUser;
-        token.id                  = user.id!;
-        token.role                = u.role                ?? "student";
-        token.status              = u.status              ?? "active";
-        token.username            = u.username            ?? "";
-        token.displayName         = u.displayName         ?? user.name ?? "";
-        token.avatarUrl           = u.avatarUrl           ?? null;
-        token.onboardingComplete  = u.onboardingComplete  ?? false;
-        token.institutionId       = u.institutionId       ?? null;
-        token.verificationStatus  = u.verificationStatus  ?? "unverified";
-        token.reputationScore     = u.reputationScore     ?? 0;
-        token.reputationLevel     = u.reputationLevel     ?? "scholar";
-      }
-
-      // Client-supplied session updates are untrusted. Reload authorization and
-      // profile fields from the database instead of merging arbitrary input.
-      if (trigger === "update" && typeof token.id === "string") {
+      if (user) token.id = user.id!;
+      // OAuth users returned by the adapter contain identity, not our profile.
+      // Refresh from DB on sign-in and update; never trust client update fields.
+      if ((user || trigger === "update") && typeof token.id === "string") {
         const profile = await db.query.users.findFirst({
           where: eq(users.id, token.id),
-          columns: { role: true, status: true, onboardingComplete: true, username: true, displayName: true, avatarUrl: true, institutionId: true, verificationStatus: true, reputationScore: true, reputationLevel: true },
+          columns: { role: true, status: true, deletedAt: true, onboardingComplete: true, username: true, displayName: true, avatarUrl: true, institutionId: true, verificationStatus: true, reputationScore: true, reputationLevel: true },
         });
-        if (profile) {
-          token.role = profile.role;
-          token.status = profile.status;
-          token.onboardingComplete = profile.onboardingComplete;
-          token.username = profile.username;
-          token.displayName = profile.displayName;
-          token.avatarUrl = profile.avatarUrl;
-          token.institutionId = profile.institutionId;
-          token.verificationStatus = profile.verificationStatus;
-          token.reputationScore = profile.reputationScore;
-          token.reputationLevel = profile.reputationLevel;
-        } else {
-          token.role = "student";
-          token.status = "deleted";
-          token.onboardingComplete = false;
-        }
+        if (!profile || profile.status !== "active" || profile.deletedAt) return null;
+        token.role = profile.role;
+        token.status = profile.status;
+        token.onboardingComplete = profile.onboardingComplete;
+        token.username = profile.username;
+        token.displayName = profile.displayName;
+        token.avatarUrl = profile.avatarUrl;
+        token.institutionId = profile.institutionId;
+        token.verificationStatus = profile.verificationStatus;
+        token.reputationScore = profile.reputationScore;
+        token.reputationLevel = profile.reputationLevel;
       }
 
       return token;
@@ -247,19 +233,8 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
   events: {
     // ── New user created ────────────────────────────────────────────────────
     async createUser({ user }) {
-      const username = await generateUsername(
-        user.name ?? user.email!.split("@")[0]
-      );
-
-      await db.insert(users).values({
-        id:           user.id!,
-        username,
-        displayName:  user.name ?? username,
-        avatarUrl:    user.image ?? null,
-        onboardingComplete: false,
-        onboardingStep:     1,
-      }).onConflictDoNothing();
-
+      if (!user.id) return;
+      const username = `learner_${user.id.replaceAll("-", "").slice(0, 24)}`;
       void dispatchInngestEvent("user/registered", {
         userId: user.id!,
         email: user.email!,
@@ -325,23 +300,3 @@ export async function isAdmin(): Promise<boolean> {
   return ["admin", "super_admin"].includes((user?.role as string) ?? "");
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPER: Generate unique username from name/email
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function generateUsername(base: string): Promise<string> {
-  const clean = base
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_|_$/g, "")
-    .slice(0, 20) || "scholar";
-
-  const existing = await db.query.users.findFirst({
-    where: sql`username LIKE ${clean + "%"}`,
-    columns: { username: true },
-  });
-
-  if (!existing) return clean;
-  return `${clean}_${Math.floor(Math.random() * 9000) + 1000}`;
-}

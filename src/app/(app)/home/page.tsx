@@ -90,7 +90,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
         <button type="submit" className="sr-only">Search</button>
       </form>
       <section className={styles.discoveryCard} aria-labelledby="recent-resources-title">
-        <div className={styles.discoveryHeading}><div><span className={styles.discoveryEyebrow}>THE LIBRARY</span><h2 id="recent-resources-title">Recently added</h2></div><Link href="/explore">Explore <ArrowUpRight size={15} aria-hidden="true" /></Link></div>
+        <div className={styles.discoveryHeading}><h2 id="recent-resources-title">Recently added</h2><Link href="/explore">Explore <ArrowUpRight size={15} aria-hidden="true" /></Link></div>
         {recentResources.length ? <ul className={styles.resourceList}>{recentResources.map(resource => <li key={resource.id}><Link href={`/d/${resource.slug}`} className={styles.resourceItem}><span className={styles.resourceIcon}><FileText size={19} aria-hidden="true" /></span><span className={styles.resourceDetails}><strong>{resource.title}</strong><small>{resource.category ?? "Resource"}</small></span><ArrowUpRight className={styles.resourceArrow} size={16} aria-hidden="true" /></Link></li>)}</ul> : <div className={styles.resourceEmpty}><p>No public resources yet.</p><Link href="/dashboard/uploads">Share a resource <ArrowUpRight size={15} aria-hidden="true" /></Link></div>}
       </section>
     </aside>

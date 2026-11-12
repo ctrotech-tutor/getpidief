@@ -13,6 +13,7 @@ import { PostOptions } from "./PostOptions";
 import { PostShare } from "./PostShare";
 import { InstantReaction } from "./InstantReaction";
 import styles from "./feed.module.css";
+import { subscribeFollow } from "./follow-updates";
 
 type Page = { items: FeedItem[]; hasMore: boolean };
 function cursorUrl(view: FeedView, item: FeedItem, endpoint: string) {
@@ -35,6 +36,11 @@ export function FeedCard({ post, userId, now, refreshing, savedView = false }: {
 }
 
 export function FeedStream({ initial, userId, view, now }: { initial: Page; userId: string; view: FeedView; now: string }) {
+  const [unfollowed, setUnfollowed] = useState<Set<string>>(() => new Set());
+  useEffect(() => subscribeFollow(update => {
+    if (view !== "following" || update.pending || update.failed || update.following) return;
+    setUnfollowed(current => new Set(current).add(update.id));
+  }), [view]);
   const [extra, setExtra] = useState<FeedItem[]>([]);
   const [hasMore, setHasMore] = useState(initial.hasMore);
   const [tail, setTail] = useState<FeedItem | undefined>(initial.items.at(-1));
@@ -52,7 +58,7 @@ export function FeedStream({ initial, userId, view, now }: { initial: Page; user
   const sentinel = useRef<HTMLDivElement>(null);
   const inflight = useRef(false);
   const abort = useRef<AbortController | null>(null);
-  const items = [...initial.items, ...extra.filter(item => !initial.items.some(x => x.eventId === item.eventId && x.eventKind === item.eventKind))];
+  const items = [...initial.items, ...extra.filter(item => !initial.items.some(x => x.eventId === item.eventId && x.eventKind === item.eventKind))].filter(item => view !== "following" || !unfollowed.has(item.actorId));
   const last = tail;
   const atCapacity = extra.length >= 100;
   useEffect(() => {

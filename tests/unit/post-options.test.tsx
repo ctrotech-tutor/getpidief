@@ -18,14 +18,14 @@ describe("post options", () => {
     }
     expect(screen.queryByRole("menuitem", { name: /block/i })).not.toBeInTheDocument();
   });
-  it("follows through the real API and refreshes the feed", async () => {
+  it("follows through the real API without refreshing the feed", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true }); vi.stubGlobal("fetch", fetchMock);
     render(<PostOptions {...base} />);
     fireEvent.click(screen.getByRole("button", { name: "Follow Ada" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/follows", expect.objectContaining({ method: "POST", body: JSON.stringify({ followingId: base.authorId }) })));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Follow Ada" })).not.toBeInTheDocument());
     openMenu(); expect(await screen.findByRole("menuitem", { name: "Unfollow" })).toBeInTheDocument();
-    expect(mocks.refresh).toHaveBeenCalled();
+    expect(mocks.refresh).not.toHaveBeenCalled();
   });
   it("reports a failed follow without pretending it succeeded", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));

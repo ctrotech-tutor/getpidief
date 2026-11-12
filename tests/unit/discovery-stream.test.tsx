@@ -9,7 +9,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: 
 vi.mock("@/app/(app)/home/actions", () => ({ toggleLike: vi.fn(), deletePost: vi.fn(), toggleSave: vi.fn(), setRepost: vi.fn() }));
 const ids = ["12345678-1234-1234-1234-123456789abc", "23456789-1234-1234-1234-123456789abc"];
 const candidate = (id: string): DiscoveryCandidate => ({ id, authorId: id, createdAt: "2026-01-01T00:00:00.000Z", following: false, replyCount: 0 });
-const post = (id: string): FeedItem => ({ eventId: id, eventKind: "post", eventAt: "2026-01-01T00:00:00.123456Z", id, authorId: id, body: `Post ${id}`, kind: "thought", createdAt: "2026-01-01T00:00:00.123Z", name: "Ada", username: "ada", avatarUrl: null, likeCount: 0, liked: false, saved: false, following: false, replyCount: 0, reposted: false, repostCount: 0, reposterName: null, reposterUsername: null, replies: [] });
+const post = (id: string): FeedItem => ({ eventId: id, actorId: "author", eventKind: "post", eventAt: "2026-01-01T00:00:00.123456Z", id, authorId: id, body: `Post ${id}`, kind: "thought", createdAt: "2026-01-01T00:00:00.123Z", name: "Ada", username: "ada", avatarUrl: null, likeCount: 0, liked: false, saved: false, following: false, replyCount: 0, reposted: false, repostCount: 0, reposterName: null, reposterUsername: null, replies: [] });
 const seed = { candidates: ids.map(candidate), items: ids.map(post) };
 beforeEach(() => { localStorage.clear(); sessionStorage.clear(); });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });

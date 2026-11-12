@@ -5,7 +5,7 @@ export type FeedView = "latest" | "following" | "saved";
 export type FeedEventKey = { id: string; kind: "post" | "repost" };
 export async function readFeed(userId: string, view: FeedView, before?: string, beforeKind?: string, beforeAt?: string, refreshKeys?: FeedEventKey[]) {
   // Saved is a collection of originals; Following includes posts and reposts by followed people.
-  type FeedEvent = { eventId: string; eventKind: "post" | "repost"; id: string; authorId: string; body: string; kind: string; createdAt: string; eventAt: string; name: string; username: string; avatarUrl: string | null; likeCount: number; liked: boolean; saved: boolean; following: boolean; replyCount: number; reposted: boolean; repostCount: number; reposterName: string | null; reposterUsername: string | null };
+  type FeedEvent = { eventId: string; actorId: string; eventKind: "post" | "repost"; id: string; authorId: string; body: string; kind: string; createdAt: string; eventAt: string; name: string; username: string; avatarUrl: string | null; likeCount: number; liked: boolean; saved: boolean; following: boolean; replyCount: number; reposted: boolean; repostCount: number; reposterName: string | null; reposterUsername: string | null };
   const cursorKind = beforeKind === "repost" ? "repost" : "post";
   const events = await db.execute<FeedEvent>(sql`
     WITH feed_events AS (
@@ -18,7 +18,7 @@ export async function readFeed(userId: string, view: FeedView, before?: string, 
       SELECT event_at, event_kind, event_id FROM feed_events
       WHERE event_id = ${before ?? null}::uuid AND event_kind = ${cursorKind}
     )
-    SELECT e.event_id AS "eventId", e.event_kind AS "eventKind", p.id, p.author_id AS "authorId", p.body, p.kind,
+    SELECT e.event_id AS "eventId", e.actor_id AS "actorId", e.event_kind AS "eventKind", p.id, p.author_id AS "authorId", p.body, p.kind,
       p.created_at AS "createdAt", to_char(e.event_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "eventAt", u.display_name AS name, u.username, u.avatar_url AS "avatarUrl",
       (SELECT count(*)::int FROM post_likes l WHERE l.post_id = p.id) AS "likeCount",
       EXISTS (SELECT 1 FROM post_likes l WHERE l.post_id = p.id AND l.user_id = ${userId}::uuid) AS liked,

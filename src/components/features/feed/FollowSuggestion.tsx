@@ -1,12 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import styles from "./feed.module.css";
 import { finishFollow, pendingFollow, startFollow, subscribeFollow } from "./follow-updates";
 
 export function FollowSuggestion({ id, name }: { id: string; name: string }) {
-  const router = useRouter();
   const [pending, setPending] = useState(() => pendingFollow(id) !== undefined);
   const [following, setFollowing] = useState(() => pendingFollow(id) ?? false);
   const [error, setError] = useState("");
@@ -23,7 +21,6 @@ export function FollowSuggestion({ id, name }: { id: string; name: string }) {
       const response = await fetch("/api/follows", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ followingId: id }) });
       if (!response.ok) throw new Error("Follow failed");
       finishFollow(id, true);
-      router.refresh();
     } catch { finishFollow(id, false, true); }
   }
   return <div className={styles.suggestionAction}>

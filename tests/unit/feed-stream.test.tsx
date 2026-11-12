@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { FeedStream } from "@/components/features/feed/FeedStream";
+import { startFollow, finishFollow } from "@/components/features/feed/follow-updates";
 import type { FeedItem } from "@/lib/feed/read";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("@/app/(app)/home/actions", () => ({ toggleLike: vi.fn(), deletePost: vi.fn(), toggleSave: vi.fn(), setRepost: vi.fn() }));
-const item = (id: string): FeedItem => ({ eventId: id, eventKind: "post", eventAt: "2026-01-01T00:00:00.123456Z", id, authorId: "author", body: `Post ${id}`, kind: "thought", createdAt: "2026-01-01T00:00:00.123Z", name: "Ada", username: "ada", avatarUrl: null, likeCount: 0, liked: false, saved: false, following: false, replyCount: 0, reposted: false, repostCount: 0, reposterName: null, reposterUsername: null, replies: [] });
+const item = (id: string): FeedItem => ({ eventId: id, actorId: "author", eventKind: "post", eventAt: "2026-01-01T00:00:00.123456Z", id, authorId: "author", body: `Post ${id}`, kind: "thought", createdAt: "2026-01-01T00:00:00.123Z", name: "Ada", username: "ada", avatarUrl: null, likeCount: 0, liked: false, saved: false, following: false, replyCount: 0, reposted: false, repostCount: 0, reposterName: null, reposterUsername: null, replies: [] });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 describe("feed stream", () => {
   it("appends without removing the first page and exposes a working link fallback", async () => {
@@ -60,6 +61,16 @@ describe("feed stream", () => {
     expect(screen.getByText("Post two")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Unlike post by Ada" })).toBeInTheDocument();
     expect(fetchMock.mock.calls[1][0]).toContain("events=");
+  });
+  it("removes only events by an unfollowed actor without a feed refresh", async () => {
+    const original = item("one");
+    const repost = { ...item("two"), eventKind: "repost" as const, actorId: "another", reposterName: "Lin", reposterUsername: "lin" };
+    render(<FeedStream initial={{ items: [original, repost], hasMore: false }} view="following" userId="reader" now="2026-01-02T00:00:00.000Z" />);
+    act(() => { startFollow("author", false); finishFollow("author", false); });
+    expect(screen.queryByText("Post one")).not.toBeInTheDocument();
+    expect(screen.getByText("Post two")).toBeInTheDocument();
+    act(() => { startFollow("author", true); finishFollow("author", true); });
+    expect(screen.queryByText("Post one")).not.toBeInTheDocument();
   });
   it("shows an accessible loading announcement and decorative post skeletons while fetching", async () => {
     let complete!: (value: { ok: boolean; json: () => Promise<{ items: FeedItem[]; hasMore: boolean }> }) => void;

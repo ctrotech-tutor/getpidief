@@ -51,7 +51,7 @@ export function PostOptions({ postId, authorId, author, ownPost, initiallyFollow
     try {
       const response = await fetch("/api/follows", { method: following ? "DELETE" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ followingId: authorId }) });
       if (!response.ok) throw new Error("Follow request failed");
-      finishFollow(authorId, next); router.refresh();
+      finishFollow(authorId, next);
     } catch { finishFollow(authorId, following, true); }
   }
   async function updateSave() {

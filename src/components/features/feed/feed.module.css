@@ -53,3 +53,17 @@
 .moreMenu{width:240px;min-width:240px;max-height:min(520px,var(--radix-dropdown-menu-content-available-height));padding:8px;border:1px solid #dde7dc;border-radius:15px;background:#fff;color:#294338;box-shadow:0 16px 45px rgba(26,53,38,.14);z-index:400}
 .menuItem{display:flex;align-items:center;gap:11px;min-height:39px;padding:9px 10px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;color:#405a4b}.menuItem svg{width:18px;height:18px;flex:none;color:#688575}.menuItem:focus,.menuFooterLink:focus{background:#edf4ec;color:#174a36;outline:none}.menuSignOut{color:#92534d}.menuSignOut svg{color:inherit}.menuDivider{height:1px;background:#edf1eb;margin:6px 4px}
 .menuFooter{display:flex;gap:2px;padding:2px 4px}.menuFooterLink{padding:6px;border-radius:6px;font-size:11px;color:#758b7c;cursor:pointer}
+
+/* A little more rhythm on taller screens, compact enough for shorter windows. */
+.sidebarBrand{padding-bottom:30px}
+.sideNav{gap:8px}.sideLink{min-height:48px;gap:15px}
+.profileAvatar{width:26px;height:26px;margin:-1px}
+.uploadCta{margin-top:28px}
+.headerActions{display:flex;align-items:center;gap:4px}
+.headerAction{width:38px;height:38px;display:grid;place-items:center;border-radius:10px;color:#627b6b}
+.headerAction:hover{background:#e8f0e7;color:#194d35}.headerAction[aria-current="page"]{color:#194d35}
+.headerAction:focus-visible{outline:2px solid #337353;outline-offset:2px}
+.compactSearch{display:none}
+@media(max-width:1100px) and (min-width:768px){.compactSearch{display:grid}}
+@media(max-width:767px){.headerActions{display:none}}
+@media(max-height:650px){.sidebarBrand{padding-bottom:18px}.sideNav{gap:3px}.sideLink{min-height:42px}.uploadCta{margin-top:16px}.sidebarMore{padding-top:12px}}

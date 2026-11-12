@@ -54,18 +54,18 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
     <aside className={styles.left} aria-label="Main navigation">
       <div className={styles.sidebarBrand}><BrandMark /></div>
       <nav className={styles.sideNav} aria-label="Main navigation">
-        <Link className={`${styles.sideLink} ${view !== "saved" ? styles.sideActive : ""}`} href="/" aria-current={view !== "saved" ? "page" : undefined}><HomeIcon size={21} weight={view !== "saved" ? "fill" : "regular"} aria-hidden="true" /> Home</Link>
-        <Link className={styles.sideLink} href="/explore"><Compass size={21} aria-hidden="true" /> Explore</Link>
-        <Link className={styles.sideLink} href="/notifications"><Bell size={21} aria-hidden="true" /> Notifications</Link>
-        <Link className={styles.sideLink} href="/dashboard/library"><BookOpen size={21} aria-hidden="true" /> Library</Link>
+        <Link className={`${styles.sideLink} ${view !== "saved" ? styles.sideActive : ""}`} href="/" aria-current={view !== "saved" ? "page" : undefined}><HomeIcon size={24} weight={view !== "saved" ? "fill" : "regular"} aria-hidden="true" /> Home</Link>
+        <Link className={styles.sideLink} href="/explore"><Compass size={24} aria-hidden="true" /> Explore</Link>
+        <Link className={styles.sideLink} href="/notifications"><Bell size={24} aria-hidden="true" /> Notifications</Link>
+        <Link className={styles.sideLink} href="/dashboard/library"><BookOpen size={24} aria-hidden="true" /> Library</Link>
         {profile?.username && <Link className={styles.sideLink} href={`/u/${profile.username}`}><FeedProfileAvatar name={profile.name} avatarUrl={profile.avatarUrl} /> Profile</Link>}
       </nav>
       <Link className={styles.uploadCta} href="/dashboard/uploads/new"><UploadSimple size={19} aria-hidden="true" /> Upload a resource</Link>
-      <div className={styles.sidebarMore}><FeedMoreMenu canModerate={["admin", "super_admin", "moderator"].includes(session?.user?.role ?? "")} /></div>
+      <div className={styles.sidebarMore}><FeedMoreMenu /></div>
     </aside>
     <section aria-labelledby="feed-title" className={styles.feedColumn}>
       <div className={styles.mobileHeader}><Brand /><div className={styles.mobileHeaderActions}><Link href="/?view=saved" className={styles.mobileSettings} aria-label="Saved posts" aria-current={view === "saved" ? "page" : undefined}><Bookmark size={22} weight={view === "saved" ? "fill" : "regular"} aria-hidden="true" /></Link><Link href="/settings" className={styles.mobileSettings} aria-label="Settings"><GearSix size={22} aria-hidden="true" /></Link></div></div>
-      <header className={styles.header}><h1 id="feed-title">{view === "saved" ? "Saved posts" : "Home"}</h1></header>
+      <header className={styles.header}><h1 id="feed-title">{view === "saved" ? "Saved posts" : "Home"}</h1><div className={styles.headerActions}><Link href="/search" className={`${styles.headerAction} ${styles.compactSearch}`} aria-label="Search resources"><Search size={20} aria-hidden="true" /></Link><Link href="/?view=saved" className={styles.headerAction} aria-label="Saved posts" aria-current={view === "saved" ? "page" : undefined}><Bookmark size={20} weight={view === "saved" ? "fill" : "regular"} aria-hidden="true" /></Link></div></header>
       <Composer name={profile?.name ?? "You"} />
       <nav aria-label="Feed views" className={styles.tabs}>{tabs.map(tab => <Link key={tab.view} href={tab.href} aria-current={view === tab.view ? "page" : undefined} className={`${styles.tab} ${view === tab.view ? styles.activeTab : ""}`}>{tab.label}</Link>)}</nav>
       <div className={styles.feedIntro}><strong>{view === "following" ? "From people you follow" : view === "saved" ? "Your saved posts" : "The latest conversations"}</strong><span>Newest first</span></div>

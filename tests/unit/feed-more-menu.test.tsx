@@ -10,18 +10,21 @@ describe("feed more menu", () => {
     const trigger = screen.getByRole("button", { name: "More" });
     fireEvent.keyDown(trigger, { key: "Enter" });
     expect(await screen.findByRole("menu")).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Saved posts" })).toHaveAttribute("href", "/?view=saved");
+    expect(screen.queryByRole("menuitem", { name: "Saved posts" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Dashboard" })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Settings" })).toHaveAttribute("href", "/settings");
     expect(screen.getByRole("menuitem", { name: "Contact" })).toHaveAttribute("href", "/contact");
+    expect(screen.getByRole("menuitem", { name: "Settings" }).querySelector("svg")).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Contact" }).querySelector("svg")).toBeNull();
     for (const name of ["About", "Privacy", "Terms"]) expect(screen.getByRole("menuitem", { name })).toHaveAttribute("href", `/${name.toLowerCase()}`);
     expect(screen.queryByRole("menuitem", { name: "Moderation" })).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
   });
-  it("exposes moderation to permitted roles and signs out", async () => {
-    render(<FeedMoreMenu canModerate />);
+  it("signs out from the menu", async () => {
+    render(<FeedMoreMenu />);
     fireEvent.keyDown(screen.getByRole("button", { name: "More" }), { key: "Enter" });
-    expect(await screen.findByRole("menuitem", { name: "Moderation" })).toHaveAttribute("href", "/admin");
+    await screen.findByRole("menuitem", { name: "Sign out" });
     fireEvent.click(screen.getByRole("menuitem", { name: "Sign out" }));
     expect(auth.signOut).toHaveBeenCalledWith({ redirectTo: "/login" });
   });

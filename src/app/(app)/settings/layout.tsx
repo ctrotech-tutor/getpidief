@@ -4,7 +4,7 @@ import Link from "next/link";
 
 const SETTINGS_NAV = [
   { href: "/settings",              label: "Profile",        icon: "👤" },
-  { href: "/settings/interests",    label: "Interests",      icon: "✦" },
+  { href: "/settings/interests",    label: "Interests",      icon: "▤" },
   { href: "/settings/academic",     label: "Academic",       icon: "🎓" },
   { href: "/settings/security",     label: "Security",       icon: "🔒" },
   { href: "/settings/notifications",label: "Notifications",  icon: "🔔" },

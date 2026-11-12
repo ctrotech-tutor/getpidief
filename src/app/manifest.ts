@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "getpidief — Academic Resource Network",
+    name: "getpidief | Academic Resource Network",
     short_name: "getpidief",
     description: "Discover, share, and study with millions of verified academic resources.",
     start_url: "/explore",

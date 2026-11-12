@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const profile = await usersRepository.getPublicProfile(username);
   if (!profile) return { title: "User not found" };
   return {
-    title:       `${(profile as PublicProfile).displayName} (@${(profile as PublicProfile).username}) — getpidief`,
+    title:       `${(profile as PublicProfile).displayName} (@${(profile as PublicProfile).username}) - getpidief`,
     description: (profile as PublicProfile).bio ?? `${(profile as PublicProfile).displayName} on getpidief`,
   };
 }
@@ -55,7 +55,7 @@ export default async function ProfilePage({ params }: PageProps) {
     <div className="max-w-7xl mx-auto px-4 lg:px-6 py-8">
       <div className="flex gap-8 flex-col lg:flex-row">
 
-        {/* ── Left column — profile card ────────────────────────────────── */}
+        {/* ── Left column - profile card ────────────────────────────────── */}
         <aside className="lg:w-72 shrink-0 space-y-4">
           {/* Avatar + name */}
           <div className="bg-card border border-border rounded-2xl p-6 text-center space-y-4">
@@ -214,7 +214,7 @@ export default async function ProfilePage({ params }: PageProps) {
           </div>
         </aside>
 
-        {/* ── Right column — documents ────────────────────────────────── */}
+        {/* ── Right column - documents ────────────────────────────────── */}
         <main className="flex-1 min-w-0 space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="font-heading font-semibold text-foreground text-lg tracking-tight">

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import localFont from "next/font/local";
+import "@fontsource-variable/source-sans-3";
+import "@fontsource-variable/newsreader";
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
 import { ThemeProvider, ThemeScript } from "@/components/providers/theme-provider";
@@ -7,23 +8,15 @@ import { Toaster } from "sonner";
 import { TanstackQueryProvider } from "@/components/layouts/TanstackQueryProvider";
 import { PostHogProvider } from "@/components/providers/PostHogProvider";
 
-// ── Fonts ─────────────────────────────────────────────────────────────────────
-
-// Self-hosted variable fonts keep builds independent of Google Fonts and avoid
-// a browser-side third-party font request. Licenses live beside each font.
-const geist = localFont({ src: "./fonts/geist/geist.woff2", variable: "--font-display", display: "swap", weight: "100 900" });
-const inter = localFont({ src: "./fonts/inter/inter.woff2", variable: "--font-body", display: "swap", weight: "100 900" });
-const geistMono = localFont({ src: "./fonts/geist-mono/geist-mono.woff2", variable: "--font-mono", display: "swap", weight: "100 900" });
-
 // ── Metadata ──────────────────────────────────────────────────────────────────
 
 export const metadata: Metadata = {
   title: {
-    template: "%s — getpidief",
-    default: "getpidief — The Academic Resource Network",
+    template: "%s | getpidief",
+    default: "getpidief | The Academic Resource Network",
   },
   description:
-    "Discover, share, and study with millions of verified academic resources — curated by students, trusted by scholars.",
+    "Share questions, notes and ideas with people who love to learn.",
   keywords: [
     "academic resources",
     "past exams",
@@ -44,9 +37,9 @@ export const metadata: Metadata = {
     locale: "en_US",
     url: "https://getpidief.me",
     siteName: "getpidief",
-    title: "getpidief — The Academic Resource Network",
+    title: "getpidief | The Academic Resource Network",
     description:
-      "Discover, share, and study with millions of verified academic resources.",
+      "Share questions, notes and ideas with people who love to learn.",
     images: [
       {
         url: "/og-default.png",
@@ -96,7 +89,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geist.variable} ${inter.variable} ${geistMono.variable}`}
+
     >
       <head>
         <ThemeScript />

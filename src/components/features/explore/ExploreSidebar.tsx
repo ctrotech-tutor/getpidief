@@ -7,20 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils/cn"
-import {
-  Compass,
-  Library,
-  Upload,
-  Bookmark,
-  TrendingUp,
-  Users,
-  FileText,
-  Award,
-  GraduationCap,
-  Settings,
-  Sparkles,
-  Plus,
-} from "lucide-react"
+import { Compass, Books as Library, UploadSimple as Upload, BookmarkSimple as Bookmark, TrendUp as TrendingUp, UsersThree as Users, FileText, Medal as Award, GraduationCap, GearSix as Settings, BookOpenText as Sparkles, Plus } from "@phosphor-icons/react"
 
 interface SidebarUser {
   displayName?: string | null

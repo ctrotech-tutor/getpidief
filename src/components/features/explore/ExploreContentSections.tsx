@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { Suspense } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Users, Star, TrendingUp } from "lucide-react";
+import { BookOpen, UsersThree as Users, Star, TrendUp as TrendingUp } from "@phosphor-icons/react";
 import { PulseFeed } from "@/components/features/dashboard/PulseFeed";
 import { ResourceCardSkeleton } from "@/components/features/documents/ResourceCard";
 import { ShareModal } from "@/components/features/documents/ShareModal";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useServiceWorker } from "@/hooks/useServiceWorker";
-import { Download, RefreshCw, X } from "lucide-react";
+import { DownloadSimple as Download, ArrowsClockwise as RefreshCw, X } from "@phosphor-icons/react";
 import { useState } from "react";
 import { toast } from "sonner";
 

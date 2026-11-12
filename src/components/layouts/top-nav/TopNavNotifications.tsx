@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Bell } from "lucide-react"
+import { Bell } from "@phosphor-icons/react"
 
 interface TopNavNotificationsProps {
   unreadCount: number

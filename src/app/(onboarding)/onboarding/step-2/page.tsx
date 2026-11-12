@@ -9,7 +9,7 @@ import { eq } from "drizzle-orm";
 import styles from "../../onboarding.module.css";
 import { STUDY_AREAS } from "@/lib/onboarding/study-areas";
 
-export const metadata: Metadata = { title: "Step 2 — Academic Focus" };
+export const metadata: Metadata = { title: "Step 2 | Academic Focus" };
 
 const LEVELS = [
   { value: "undergraduate",  label: "Undergraduate" },

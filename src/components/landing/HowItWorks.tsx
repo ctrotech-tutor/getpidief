@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { User, Search, MessageCircle } from "lucide-react"
+import { User, MagnifyingGlass as Search, ChatCircle as MessageCircle } from "@phosphor-icons/react"
 import { cn } from "@/lib/utils/cn"
 
 export function HowItWorks() {

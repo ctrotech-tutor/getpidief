@@ -18,7 +18,7 @@ import { headers } from "next/headers";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function signInWithGoogle() {
-  await signIn("google", { redirectTo: "/" });
+  return signIn("google", { redirect: false, redirectTo: "/" });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

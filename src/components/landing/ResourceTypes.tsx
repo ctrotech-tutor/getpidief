@@ -1,17 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { 
-  FileText, 
-  BookOpen, 
-  Search, 
-  Book, 
-  PenTool, 
-  FileQuestion, 
-  GraduationCap, 
-  Award, 
-  Compass 
-} from "lucide-react"
+import { FileText, BookOpen, MagnifyingGlass as Search, Book, PenNib as PenTool, FileMagnifyingGlass as FileQuestion, GraduationCap, Medal as Award, Compass } from "@phosphor-icons/react"
 import { cn } from "@/lib/utils/cn"
 
 export function ResourceTypes() {

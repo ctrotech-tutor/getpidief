@@ -4,7 +4,7 @@ import { redis, KEYS } from "@/lib/redis/client";
 import crypto from "crypto";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { AlertCircle } from "lucide-react";
+import { WarningCircle as AlertCircle } from "@phosphor-icons/react/ssr";
 
 export const metadata: Metadata = {
   title: "Reset Password - getpidief",

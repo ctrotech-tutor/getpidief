@@ -12,7 +12,7 @@ import {
   TopNavNotifications,
   TopNavUserMenu,
 } from "./top-nav"
-import { Search, Command } from "lucide-react"
+import { MagnifyingGlass as Search, Command } from "@phosphor-icons/react"
 
 export function TopNav() {
   const { user, isLoading } = useSession()
@@ -21,7 +21,7 @@ export function TopNav() {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <header className="fixed top-0 left-0 right-0 z-[300] h-14 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 border-b border-border/40">
+      <header className="fixed top-0 left-0 right-0 z-[300] h-14 bg-background border-b border-border/40">
         <div className="max-w-7xl mx-auto h-full flex items-center justify-between px-4 sm:px-6 lg:px-8">
           {/* Left: Logo */}
           <div className="flex items-center gap-4">

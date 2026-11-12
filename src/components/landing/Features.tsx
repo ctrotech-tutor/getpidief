@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Search, FileText, Activity, Trophy, ShieldCheck, Smartphone, Layers } from "lucide-react"
+import { MagnifyingGlass as Search, FileText, Pulse as Activity, Trophy, ShieldCheck, DeviceMobile as Smartphone, Stack as Layers } from "@phosphor-icons/react"
 import { cn } from "@/lib/utils/cn"
 
 export function Features() {

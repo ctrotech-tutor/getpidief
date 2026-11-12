@@ -16,7 +16,7 @@ type AppSessionUser = {
 // PROTECTED APP SHELL LAYOUT
 //
 // Wraps all authenticated routes: /explore, /search, /d/*, /u/*, /dashboard, etc.
-// Server-side auth check — redirects unauthenticated users to /login.
+// Server-side auth check - redirects unauthenticated users to /login.
 // Renders the top navigation and mobile bottom tabs.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -57,12 +57,12 @@ export default async function AppLayout({
       {/* Fixed top navigation */}
       <TopNav />
 
-      {/* Main content — offset for top nav height */}
+      {/* Main content - offset for top nav height */}
       <main className="pt-[60px] pb-[60px] lg:pb-0 min-h-screen">
         {children}
       </main>
 
-      {/* Mobile bottom tab bar — hidden on desktop */}
+      {/* Mobile bottom tab bar - hidden on desktop */}
       <MobileBottomTabs />
       <CommandPalette />
     </div>

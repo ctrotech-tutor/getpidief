@@ -20,7 +20,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
+import { Eye, EyeSlash as EyeOff, WarningCircle as AlertCircle, CircleNotch as Loader2 } from "@phosphor-icons/react";
 
 // ── Client form schema (matches server registerSchema) ────────────────────────
 const registerFormSchema = z

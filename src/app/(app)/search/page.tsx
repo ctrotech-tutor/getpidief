@@ -15,7 +15,7 @@ import { categories, institutions, documents } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 
 export const metadata: Metadata = {
-  title: "Search — getpidief",
+  title: "Search - getpidief",
   description: "Search millions of verified academic resources.",
 };
 
@@ -52,7 +52,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const session = await auth();
   const user = (session?.user ?? null) as SearchSessionUser | null;
 
-  // Execute search (server-side — no JS needed for initial render)
+  // Execute search (server-side - no JS needed for initial render)
   const [searchResult, allCategoriesRaw, categoryCountRows, activeCategory, activeInstitution] = await Promise.all([
     searchDocuments(
       {

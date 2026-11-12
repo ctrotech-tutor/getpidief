@@ -31,7 +31,7 @@ export async function getEmailTemplate(
         })
       );
       return {
-        subject: `✅ Your document is approved — ${data.metadata.documentTitle}`,
+        subject: `✅ Your document is approved - ${data.metadata.documentTitle}`,
         html,
       };
     }
@@ -45,7 +45,7 @@ export async function getEmailTemplate(
         })
       );
       return {
-        subject: `Document not approved — action required`,
+        subject: `Document not approved - action required`,
         html,
       };
     }

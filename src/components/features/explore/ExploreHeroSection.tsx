@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SearchBar } from "@/components/features/search/SearchBar";
-import { Zap, Users, BookOpen, TrendingUp, Star, Clock, Filter } from "lucide-react";
+import { Lightning as Zap, UsersThree as Users, BookOpen, TrendUp as TrendingUp, Star, Clock, Funnel as Filter } from "@phosphor-icons/react";
 import { getGreeting } from "@/lib/utils/format";
 
 interface ExploreHeroSectionProps {
@@ -31,11 +31,11 @@ export function ExploreHeroSection({ firstName }: ExploreHeroSectionProps) {
           className="space-y-2"
         >
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="bg-background/80 backdrop-blur-sm">
+            <Badge variant="outline" className="bg-background">
               <Zap className="w-3 h-3 mr-1" />
               Powered by AI
             </Badge>
-            <Badge variant="secondary" className="bg-background/80 backdrop-blur-sm">
+            <Badge variant="secondary" className="bg-background">
               <Users className="w-3 h-3 mr-1" />
               {new Intl.NumberFormat('en-US', { notation: 'compact' }).format(50000)}+ Resources
             </Badge>
@@ -56,11 +56,11 @@ export function ExploreHeroSection({ firstName }: ExploreHeroSectionProps) {
           className="space-y-4"
         >
           <div className="relative">
-            <SearchBar size="lg" placeholder="Search by title, course, keyword, institution…" className="bg-background/90 backdrop-blur-sm border-border/50" />
+            <SearchBar size="lg" placeholder="Search by title, course, keyword, institution…" className="bg-background border-border/50" />
             <Button
               variant="outline"
               size="icon"
-              className="absolute right-2 top-1/2 -translate-y-1/2 bg-background/80 backdrop-blur-sm"
+              className="absolute right-2 top-1/2 -translate-y-1/2 bg-background"
             >
               <Filter className="h-4 w-4" />
             </Button>

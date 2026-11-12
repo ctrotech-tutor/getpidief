@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { ArrowRight, Search, Upload, MessageCircle } from "lucide-react"
+import { ArrowRight, MagnifyingGlass as Search, UploadSimple as Upload, ChatCircle as MessageCircle } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils/cn"
 

@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { MessageCircle, Users, Code, Image } from "lucide-react"
+import { ChatCircle as MessageCircle, UsersThree as Users, Code, Image } from "@phosphor-icons/react"
 import { cn } from "@/lib/utils/cn"
 
 export function Footer() {

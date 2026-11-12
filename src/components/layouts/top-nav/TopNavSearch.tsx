@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils/cn"
-import { Search } from "lucide-react"
+import { MagnifyingGlass as Search } from "@phosphor-icons/react"
 
 interface TopNavSearchProps {
   onClick: () => void

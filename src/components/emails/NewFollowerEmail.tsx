@@ -18,7 +18,7 @@ export function NewFollowerEmail({ recipientName, followerName, followerUsername
     >
       <EmailHeading>You have a new follower! 👤</EmailHeading>
       <EmailBody>
-        Hi {firstName} — <strong style={{ color: "#F1F5F9" }}>{followerName}</strong> (@{followerUsername}) is now following your scholar profile.
+        Hi {firstName} - <strong style={{ color: "#F1F5F9" }}>{followerName}</strong> (@{followerUsername}) is now following your scholar profile.
         They'll be notified whenever you upload new resources.
         {followerDocCount > 0 && ` They've contributed ${followerDocCount} document${followerDocCount !== 1 ? "s" : ""} to the archive.`}
       </EmailBody>

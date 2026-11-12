@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { Bookmark, Share2, Eye, Download, Calendar, User, FileText } from "lucide-react";
+import { BookmarkSimple as Bookmark, ShareNetwork as Share2, Eye, DownloadSimple as Download, CalendarBlank as Calendar, User, FileText } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 
 interface ResourceCardListProps {
@@ -53,7 +53,7 @@ export function ResourceCardList({
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
     >
       <Card className={cn(
-        "group overflow-hidden border-border/50 bg-background/60 backdrop-blur-sm",
+        "group overflow-hidden border-border/50 bg-background",
         "transition-all duration-300 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 py-0",
         className
       )}>

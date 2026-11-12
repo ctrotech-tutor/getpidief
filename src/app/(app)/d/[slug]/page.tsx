@@ -22,7 +22,7 @@ interface PageProps {
 // Dynamic OG image per document
 export async function generateMetadata(
   { params }: PageProps,
-  // Parent metadata merge — reserved by Next.js API
+  // Parent metadata merge - reserved by Next.js API
   _parent: ResolvingMetadata
 ): Promise<Metadata> {
   void _parent;
@@ -32,8 +32,8 @@ export async function generateMetadata(
   if (!doc) return { title: "Document not found" };
 
   return {
-    title:       `${doc.title} — getpidief`,
-    description: doc.description ?? `${doc.title} — ${doc.institution?.name ?? ""}`,
+    title:       `${doc.title} - getpidief`,
+    description: doc.description ?? `${doc.title} - ${doc.institution?.name ?? ""}`,
     openGraph: {
       title:  doc.title,
       description: doc.description ?? undefined,
@@ -65,7 +65,7 @@ export default async function DocumentWorkspacePage({ params }: PageProps) {
   return (
     <div className="h-[calc(100vh-60px)] flex flex-col">
       {/* ── Workstation top bar ──────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-background/95 backdrop-blur-sm shrink-0">
+      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-background shrink-0">
         <Link
           href="/search"
           className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors shrink-0"
@@ -118,7 +118,7 @@ export default async function DocumentWorkspacePage({ params }: PageProps) {
 
       {/* ── Split panels ─────────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
-        {/* LEFT — PDF Viewer */}
+        {/* LEFT - PDF Viewer */}
         <div className="flex-1 min-w-0 overflow-hidden">
           <Suspense fallback={<PDFLoadingPlaceholder />}>
             <PDFViewerWrapper
@@ -130,7 +130,7 @@ export default async function DocumentWorkspacePage({ params }: PageProps) {
           </Suspense>
         </div>
 
-        {/* RIGHT — Metadata + Interactions */}
+        {/* RIGHT - Metadata + Interactions */}
         <aside className="w-95 shrink-0 border-l border-border overflow-y-auto bg-background">
           <div className="p-5 space-y-6">
             {/* Title + badges */}

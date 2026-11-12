@@ -21,7 +21,7 @@ export function DocumentApprovedEmail({ contributorName, documentTitle, document
     >
       <EmailHeading>Your document is live. ✅</EmailHeading>
       <EmailBody>
-        Hi {firstName} — your contribution has been reviewed and approved.
+        Hi {firstName} - your contribution has been reviewed and approved.
         It's now searchable and accessible to scholars worldwide.
       </EmailBody>
       <Text style={{ color: "#60A5FA", fontSize: "15px", fontWeight: 600, margin: "0 0 20px" }}>

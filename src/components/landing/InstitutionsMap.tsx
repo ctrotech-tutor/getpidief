@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Image from "next/image"
-import { MapPin, Users, FileText, Globe, ArrowRight } from "lucide-react"
+import { MapPin, UsersThree as Users, FileText, GlobeHemisphereWest as Globe, ArrowRight } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 

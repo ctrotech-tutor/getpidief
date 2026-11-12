@@ -4,7 +4,7 @@ import * as React from "react"
 import { ContextMenu as ContextMenuPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils/cn"
-import { ChevronRightIcon, CheckIcon } from "lucide-react"
+import { CaretRight as ChevronRightIcon, Check as CheckIcon } from "@phosphor-icons/react"
 
 function ContextMenu({
   ...props

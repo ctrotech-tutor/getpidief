@@ -36,7 +36,7 @@ export default async function TagsAdminPage({ searchParams }: PageProps) {
     <div className="space-y-6">
       <div>
         <h1 className="font-heading font-bold text-foreground text-2xl tracking-tight">Tags</h1>
-        <p className="text-muted-foreground text-sm mt-1">Manage document tags — deactivate spam, merge duplicates</p>
+        <p className="text-muted-foreground text-sm mt-1">Manage document tags - deactivate spam, merge duplicates</p>
       </div>
 
       {/* Search */}

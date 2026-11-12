@@ -1,11 +1,13 @@
 import Link from "next/link";
-import { BookOpen, BookmarkSimple as Bookmark, Compass, Heart, House as HomeIcon, ChatCircle as MessageCircle, MagnifyingGlass as Search, BookOpenText as Sparkles, Bell, GearSix, SquaresFour, UploadSimple, ShieldCheck, UserCircle, ArrowUpRight, FileText } from "@phosphor-icons/react/ssr";
+import { BookOpen, BookmarkSimple as Bookmark, Compass, Heart, House as HomeIcon, ChatCircle as MessageCircle, MagnifyingGlass as Search, BookOpenText as Sparkles, Bell, GearSix, UploadSimple, ArrowUpRight, FileText } from "@phosphor-icons/react/ssr";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
 import { users, posts, documents, categories } from "@/lib/db/schema";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { toggleLike, toggleSave, deletePost } from "./actions";
 import { Composer } from "@/components/features/feed/Composer";
+import { FeedMoreMenu } from "@/components/features/feed/FeedMoreMenu";
+import { FeedProfileAvatar } from "@/components/features/feed/FeedProfileAvatar";
 import { Brand, BrandMark } from "@/components/brand/Brand";
 import styles from "@/components/features/feed/feed.module.css";
 
@@ -19,7 +21,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   const params = await searchParams;
   const view: View = params.view === "saved" || params.view === "following" ? params.view : "latest";
   const before = params.before && uuid.test(params.before) ? params.before : undefined;
-  const [profile] = await db.select({ name: users.displayName, username: users.username }).from(users).where(eq(users.id, userId)).limit(1);
+  const [profile] = await db.select({ name: users.displayName, username: users.username, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, userId)).limit(1);
   // Only publicly visible, approved resources appear here; this is not a recommendation ranking.
   const recentResources = await db.select({ id: documents.id, title: documents.title, slug: documents.slug, category: categories.name })
     .from(documents).leftJoin(categories, eq(documents.categoryId, categories.id))
@@ -53,17 +55,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
       <div className={styles.sidebarBrand}><BrandMark /></div>
       <nav className={styles.sideNav} aria-label="Main navigation">
         <Link className={`${styles.sideLink} ${view !== "saved" ? styles.sideActive : ""}`} href="/" aria-current={view !== "saved" ? "page" : undefined}><HomeIcon size={21} weight={view !== "saved" ? "fill" : "regular"} aria-hidden="true" /> Home</Link>
-        <Link className={styles.sideLink} href="/search"><Search size={21} aria-hidden="true" /> Search</Link>
         <Link className={styles.sideLink} href="/explore"><Compass size={21} aria-hidden="true" /> Explore</Link>
         <Link className={styles.sideLink} href="/notifications"><Bell size={21} aria-hidden="true" /> Notifications</Link>
-        <Link className={`${styles.sideLink} ${view === "saved" ? styles.sideActive : ""}`} href="/?view=saved" aria-current={view === "saved" ? "page" : undefined}><Bookmark size={21} weight={view === "saved" ? "fill" : "regular"} aria-hidden="true" /> Saved posts</Link>
         <Link className={styles.sideLink} href="/dashboard/library"><BookOpen size={21} aria-hidden="true" /> Library</Link>
-        <Link className={styles.sideLink} href="/dashboard/uploads"><UploadSimple size={21} aria-hidden="true" /> Uploads</Link>
-        <Link className={styles.sideLink} href="/dashboard"><SquaresFour size={21} aria-hidden="true" /> Dashboard</Link>
-        {profile?.username && <Link className={styles.sideLink} href={`/u/${profile.username}`}><UserCircle size={21} aria-hidden="true" /> Profile</Link>}
-        <Link className={styles.sideLink} href="/settings"><GearSix size={21} aria-hidden="true" /> Settings</Link>
-        {["admin", "super_admin", "moderator"].includes(session?.user?.role ?? "") && <Link className={styles.sideLink} href="/admin"><ShieldCheck size={21} aria-hidden="true" /> Moderation</Link>}
+        {profile?.username && <Link className={styles.sideLink} href={`/u/${profile.username}`}><FeedProfileAvatar name={profile.name} avatarUrl={profile.avatarUrl} /> Profile</Link>}
       </nav>
+      <Link className={styles.uploadCta} href="/dashboard/uploads/new"><UploadSimple size={19} aria-hidden="true" /> Upload a resource</Link>
+      <div className={styles.sidebarMore}><FeedMoreMenu canModerate={["admin", "super_admin", "moderator"].includes(session?.user?.role ?? "")} /></div>
     </aside>
     <section aria-labelledby="feed-title" className={styles.feedColumn}>
       <div className={styles.mobileHeader}><Brand /><div className={styles.mobileHeaderActions}><Link href="/?view=saved" className={styles.mobileSettings} aria-label="Saved posts" aria-current={view === "saved" ? "page" : undefined}><Bookmark size={22} weight={view === "saved" ? "fill" : "regular"} aria-hidden="true" /></Link><Link href="/settings" className={styles.mobileSettings} aria-label="Settings"><GearSix size={22} aria-hidden="true" /></Link></div></div>

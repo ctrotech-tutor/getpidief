@@ -22,6 +22,9 @@ async function fetchEvents(ids: string[], signal: AbortSignal): Promise<FeedItem
 }
 export function DiscoveryStream({ userId, now, seed }: { userId: string; now: string; seed: { candidates: DiscoveryCandidate[]; items: FeedItem[] } }) {
   const [items, setItems] = useState<FeedItem[]>(seed.items);
+  // The server cannot see this browser's viewed history or return snapshot.
+  // Do not reveal its provisional order until the client has resolved both.
+  const [initialized, setInitialized] = useState(false);
   const [hasMore, setHasMore] = useState(seed.candidates.length > 20);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -72,6 +75,7 @@ export function DiscoveryStream({ userId, now, seed }: { userId: string; now: st
           restoreSnapshot.current = null;
           restoreScroll.current = restoredItems.length ? restored.scrollY : null;
           setItems(restoredItems); setHasMore(restored.offset < restored.candidates.length);
+          setInitialized(true);
           setMessage("Returned to your place in the feed.");
           return;
         }
@@ -90,6 +94,7 @@ export function DiscoveryStream({ userId, now, seed }: { userId: string; now: st
         if (active.signal.aborted) return;
         candidates.current = ordered; pendingOwn.current = []; offset.current = Math.min(20, ordered.length);
         setItems(first); setHasMore(offset.current < ordered.length);
+        setInitialized(true);
       } catch { if (!active.signal.aborted) { restoreSnapshot.current = null; setError("Couldn’t load posts. Please try again."); } }
       finally { if (controller.current === active) { busy.current = false; controller.current = null; if (!active.signal.aborted) setLoading(false); } }
     })();
@@ -98,7 +103,8 @@ export function DiscoveryStream({ userId, now, seed }: { userId: string; now: st
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, version]);
   useEffect(() => {
-    if (previousNow.current === now) return;
+    // Do not interrupt the initial history/restore lookup with a server refresh.
+    if (!initialized || previousNow.current === now) return;
     previousNow.current = now;
     const old = itemsRef.current;
     const existing = new Set(candidates.current.map(item => item.id));
@@ -121,7 +127,7 @@ export function DiscoveryStream({ userId, now, seed }: { userId: string; now: st
     })();
   // Keep a browsing snapshot, but insert a newly published own post on refresh.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [now]);
+  }, [now, initialized]);
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => { const network = navigator as Navigator & { connection?: { saveData?: boolean } }; setSupportsAuto("IntersectionObserver" in window); if (network.connection?.saveData) setAutomatic(false); }, []);
   const load = useCallback(async (isAuto: boolean) => {
@@ -154,12 +160,12 @@ export function DiscoveryStream({ userId, now, seed }: { userId: string; now: st
   }, [items]);
   useEffect(() => { if (focusAfter.current) { document.getElementById(focusAfter.current)?.focus(); focusAfter.current = null; } }, [items]);
   useEffect(() => {
-    if (!automatic || !hasMore || loading || refreshing || error || !sentinel.current || !("IntersectionObserver" in window)) return;
+    if (!initialized || !automatic || !hasMore || loading || refreshing || error || !sentinel.current || !("IntersectionObserver" in window)) return;
     const observer = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) void load(true); }, { rootMargin: "400px 0px" });
     observer.observe(sentinel.current); return () => observer.disconnect();
-  }, [automatic, hasMore, loading, refreshing, error, load]);
+  }, [initialized, automatic, hasMore, loading, refreshing, error, load]);
   useEffect(() => {
-    if (loading || refreshing || !("IntersectionObserver" in window)) return;
+    if (!initialized || loading || refreshing || !("IntersectionObserver" in window)) return;
     const timers = new Map<Element, ReturnType<typeof setTimeout>>();
     const clear = () => { for (const timer of timers.values()) clearTimeout(timer); timers.clear(); };
     const observer = new IntersectionObserver(entries => {
@@ -174,16 +180,16 @@ export function DiscoveryStream({ userId, now, seed }: { userId: string; now: st
     for (const item of items) { const el = document.getElementById(`feed-post-${item.id}`); if (el) observer.observe(el); }
     document.addEventListener("visibilitychange", clear);
     return () => { clear(); observer.disconnect(); document.removeEventListener("visibilitychange", clear); };
-  }, [items, userId, loading, refreshing]);
+  }, [initialized, items, userId, loading, refreshing]);
   return <>
     <noscript><p>For more posts, <Link href="/?view=latest">browse posts without JavaScript</Link>.</p></noscript>
-    <div className={styles.posts} onClickCapture={rememberReturn}>{items.map(item => <FeedCard key={item.id} post={item} userId={userId} now={now} refreshing={refreshing} />)}</div>
-    {loading && <PostSkeleton />}
+    {initialized && <div className={styles.posts} onClickCapture={rememberReturn}>{items.map(item => <FeedCard key={item.id} post={item} userId={userId} now={now} refreshing={refreshing} />)}</div>}
+    {((!initialized && !error) || (initialized && loading)) && <PostSkeleton />}
     <div ref={sentinel} className={styles.feedPagination}>
-      <span role="status" aria-live="polite" className={styles.feedAnnouncement}>{refreshing ? "Refreshing posts…" : loading ? "Loading posts…" : message}</span>
+      <span role="status" aria-live="polite" className={styles.feedAnnouncement}>{refreshing ? "Refreshing posts…" : (!initialized && !error) || loading ? "Loading posts…" : message}</span>
       {error && <p role="alert">{error}</p>}
-      {error ? <button type="button" className={styles.more} onClick={restart}>Try again</button> : hasMore ? <button type="button" className={`${styles.more} ${supportsAuto && automatic ? styles.feedAssistControl : ""}`} disabled={loading || refreshing} onClick={() => void load(false)}>Load more</button> : !loading && <p>{items.length ? "You’re all caught up." : "No posts to show yet."}</p>}
-      {hasMore && supportsAuto && <button type="button" className={`${styles.autoToggle} ${automatic ? styles.feedAssistControl : ""}`} onClick={() => setAutomatic(value => !value)}>{automatic ? "Pause automatic loading" : "Resume automatic loading"}</button>}
+      {error ? <button type="button" className={styles.more} onClick={restart}>Try again</button> : initialized && (hasMore ? <button type="button" className={`${styles.more} ${supportsAuto && automatic ? styles.feedAssistControl : ""}`} disabled={loading || refreshing} onClick={() => void load(false)}>Load more</button> : !loading && <p>{items.length ? "You’re all caught up." : "No posts to show yet."}</p>)}
+      {initialized && hasMore && supportsAuto && <button type="button" className={`${styles.autoToggle} ${automatic ? styles.feedAssistControl : ""}`} onClick={() => setAutomatic(value => !value)}>{automatic ? "Pause automatic loading" : "Resume automatic loading"}</button>}
     </div>
   </>;
 }

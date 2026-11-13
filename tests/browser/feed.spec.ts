@@ -172,3 +172,53 @@ test("successful like and repost update immediately and persist without refreshi
     }
   }
 });
+
+test("reload shows no provisional posts while viewed-history order is loading", async ({ page }) => {
+  const initialIds = await page.locator('article[id^="feed-post-"]').evaluateAll(nodes => nodes.map(node => node.id.replace(/^feed-post-/, "")));
+  expect(initialIds.length).toBeGreaterThan(0);
+  await page.evaluate(async ids => {
+    const session = await (await fetch("/api/auth/session")).json();
+    if (!session.user?.id) throw new Error("No local test session");
+    localStorage.setItem(`feed-seen-v1:${session.user.id}`, JSON.stringify(ids.map(id => ({ id, at: Date.now() }))));
+    sessionStorage.removeItem(`feed-return-v1:${session.user.id}`);
+  }, initialIds);
+  let release!: () => void, requestSeen!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const seen = new Promise<void>(resolve => { requestSeen = resolve; });
+  await page.route("**/api/feed?**", async route => { requestSeen(); await gate; await route.continue(); });
+  try {
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await seen;
+    await expect(page.getByRole("navigation", { name: "Feed views" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /what.s on your mind/i })).toBeVisible();
+    await expect(page.locator("[data-feed-skeleton]").first()).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Loading posts" })).toBeAttached();
+    expect(await page.locator('article[id^="feed-"]').count()).toBe(0);
+  } finally { release(); }
+  const first = page.locator('article[id^="feed-post-"]').first();
+  await expect(first).toBeVisible();
+  const revealed = await first.getAttribute("id");
+  expect(initialIds).not.toContain(revealed!.replace(/^feed-post-/, ""));
+  await page.waitForTimeout(750);
+  await expect(page.locator('article[id^="feed-post-"]').first()).toHaveAttribute("id", revealed!);
+});
+
+test("returning from a post revalidates the saved order before showing it", async ({ page }) => {
+  const first = page.locator('article[id^="feed-post-"]').first();
+  const firstId = await first.getAttribute("id");
+  await first.getByRole("link", { name: /^Open post by / }).click();
+  await expect(page).toHaveURL(/\/home\/post\//);
+  let release!: () => void, requestSeen!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const seen = new Promise<void>(resolve => { requestSeen = resolve; });
+  await page.route("**/api/feed?**", async route => { requestSeen(); await gate; await route.continue(); });
+  try {
+    const navigation = page.goBack({ waitUntil: "domcontentloaded" });
+    await seen; await navigation;
+    await expect(page.getByRole("navigation", { name: "Feed views" })).toBeVisible();
+    await expect(page.locator("[data-feed-skeleton]").first()).toBeVisible();
+    expect(await page.locator('article[id^="feed-"]').count()).toBe(0);
+  } finally { release(); }
+  await expect(page.locator('article[id^="feed-post-"]').first()).toHaveAttribute("id", firstId!);
+  await expect(page.getByRole("status").filter({ hasText: "Returned to your place in the feed" })).toBeAttached();
+});

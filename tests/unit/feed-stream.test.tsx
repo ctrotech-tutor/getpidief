@@ -59,7 +59,7 @@ describe("feed stream", () => {
     rerender(<FeedStream initial={{ items: [item("new")], hasMore: true }} view="latest" userId="reader" now="2026-01-02T00:00:00.000Z" />);
     await waitFor(() => expect(screen.queryByText("Post three")).not.toBeInTheDocument());
     expect(screen.getByText("Post two")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Unlike post by Ada" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Unlike post by Ada" })).toBeInTheDocument();
     expect(fetchMock.mock.calls[1][0]).toContain("events=");
   });
   it("removes only events by an unfollowed actor without a feed refresh", async () => {

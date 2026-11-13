@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { StrictMode } from "react";
 import { DiscoveryStream } from "@/components/features/feed/DiscoveryStream";
 import type { FeedItem } from "@/lib/feed/read";
 import type { DiscoveryCandidate } from "@/lib/feed/discovery-ranking";
@@ -14,6 +16,59 @@ const seed = { candidates: ids.map(candidate), items: ids.map(post) };
 beforeEach(() => { localStorage.clear(); sessionStorage.clear(); });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 describe("discovery feed", () => {
+  it("server-renders a loading placeholder rather than provisional posts", () => {
+    const markup = renderToStaticMarkup(<DiscoveryStream userId="reader" now="2026-01-02T00:00:00.000Z" seed={seed} />);
+    expect(markup).toContain("Loading posts");
+    expect(markup).toContain("data-feed-skeleton");
+    expect(markup).not.toContain(`Post ${ids[0]}`);
+    expect(markup).not.toContain(`Post ${ids[1]}`);
+    expect(markup).toContain("browse posts without JavaScript");
+  });
+  it("keeps provisional posts hidden until the viewed-history order is ready", async () => {
+    recordSeen("reader", ids[0]);
+    let complete!: (value: { ok: boolean; json: () => Promise<{ items: FeedItem[] }> }) => void;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(resolve => { complete = resolve; })));
+    const { container } = render(<DiscoveryStream userId="reader" now="2026-01-02T00:00:00.000Z" seed={seed} />);
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading posts");
+    expect(container.querySelector("[data-feed-skeleton]")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
+    await act(async () => complete({ ok: true, json: async () => ({ items: ids.map(post) }) }));
+    expect(screen.getAllByRole("article").map(article => article.textContent)).toEqual([
+      expect.stringContaining(`Post ${ids[1]}`), expect.stringContaining(`Post ${ids[0]}`),
+    ]);
+    expect(container.querySelector("[data-feed-skeleton]")).not.toBeInTheDocument();
+  });
+  it("does not show provisional posts when initial revalidation fails and can retry", async () => {
+    recordSeen("reader", ids[0]);
+    const fetcher = vi.fn().mockResolvedValueOnce({ ok: false })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ candidates: seed.candidates }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ items: seed.items }) });
+    vi.stubGlobal("fetch", fetcher);
+    render(<DiscoveryStream userId="reader" now="2026-01-02T00:00:00.000Z" seed={seed} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn’t load posts");
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.getAllByRole("article")[0]).toHaveTextContent(`Post ${ids[1]}`));
+  });
+  it("preserves a return snapshot across Strict Mode effect replay", async () => {
+    saveDiscoveryReturn("reader", { candidates: [ids[1], ids[0]], loaded: [ids[1], ids[0]], offset: 2, scrollY: 0, savedAt: Date.now() });
+    vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    const requests: Array<(value: { ok: boolean; json: () => Promise<{ items: FeedItem[] }> }) => void> = [];
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(resolve => { requests.push(resolve); })));
+    render(<StrictMode><DiscoveryStream userId="reader" now="2026-01-02T00:00:00.000Z" seed={seed} /></StrictMode>);
+    expect(requests.length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
+    await act(async () => requests.forEach(resolve => resolve({ ok: true, json: async () => ({ items: seed.items }) })));
+    expect(screen.getAllByRole("article")[0]).toHaveTextContent(`Post ${ids[1]}`);
+    expect(screen.getByText("Returned to your place in the feed.")).toBeInTheDocument();
+  });
+  it("keeps the server order without a second request when there is no viewed history", () => {
+    const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
+    render(<DiscoveryStream userId="reader" now="2026-01-02T00:00:00.000Z" seed={seed} />);
+    expect(screen.getAllByRole("article")[0]).toHaveTextContent(`Post ${ids[0]}`);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
   it("moves previously viewed posts behind unseen posts on a new visit", async () => {
     recordSeen("reader", ids[0]);
     const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: ids.map(post) }) }); vi.stubGlobal("fetch", fetcher);

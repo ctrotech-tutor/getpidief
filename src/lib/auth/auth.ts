@@ -56,15 +56,23 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
     // best-effort and must not be responsible for essential database records.
     async createUser(data) {
       return db.transaction(async (tx) => {
-        const [identity] = await tx.insert(authUsers).values({
-          name: data.name, email: data.email, emailVerified: data.emailVerified,
-          image: data.image,
-        }).returning();
+        const [identity] = await tx
+          .insert(authUsers)
+          .values({
+            name: data.name,
+            email: data.email,
+            emailVerified: data.emailVerified,
+            image: data.image,
+          })
+          .returning();
         const username = `learner_${identity.id.replaceAll("-", "").slice(0, 24)}`;
         await tx.insert(users).values({
-          id: identity.id, username,
+          id: identity.id,
+          username,
           displayName: (data.name?.trim() || username).slice(0, 100),
-          avatarUrl: data.image ?? null, onboardingComplete: false, onboardingStep: 1,
+          avatarUrl: data.image ?? null,
+          onboardingComplete: false,
+          onboardingStep: 1,
         });
         return identity;
       });
@@ -76,7 +84,7 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
 
   providers: [
     GoogleProvider({
-      clientId:     process.env.GOOGLE_CLIENT_ID!,
+      clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       // Sign-in does not need Google API access or refresh tokens.
       account: () => ({}),
@@ -84,19 +92,26 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
 
     Credentials({
       credentials: {
-        email:    { label: "Email",    type: "email"    },
+        email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials, request) {
         // The client calls Auth.js directly, so limiting only a server action is insufficient.
         if (process.env.NODE_ENV === "production" && !redisRateLimit) return null;
         const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-        try { if (!(await rateLimiters.login.limit(ip)).success) return null; }
-        catch { return null; }
+        try {
+          if (!(await rateLimiters.login.limit(ip)).success) return null;
+        } catch {
+          return null;
+        }
         const parsed = z
           .object({
-            email:    z.string().email(),
-            password: z.string().min(8).max(72).refine(value => new TextEncoder().encode(value).length <= 72),
+            email: z.string().email(),
+            password: z
+              .string()
+              .min(8)
+              .max(72)
+              .refine((value) => new TextEncoder().encode(value).length <= 72),
           })
           .safeParse(credentials);
 
@@ -118,10 +133,7 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
         });
         if (!account?.providerAccountId) return null;
 
-        const passwordMatch = await bcrypt.compare(
-          password,
-          account.providerAccountId
-        );
+        const passwordMatch = await bcrypt.compare(password, account.providerAccountId);
         if (!passwordMatch) return null;
 
         // Check profile status
@@ -142,25 +154,25 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
         });
 
         if (profile?.status === "suspended") return null;
-        if (profile?.status === "deleted")   return null;
+        if (profile?.status === "deleted") return null;
 
         return {
-          id:                  authUser.id,
-          sessionVersion:      authUser.sessionVersion,
-          email:               authUser.email,
-          name:                authUser.name,
-          image:               authUser.image,
+          id: authUser.id,
+          sessionVersion: authUser.sessionVersion,
+          email: authUser.email,
+          name: authUser.name,
+          image: authUser.image,
           // Extended profile fields attached to user object
-          role:                profile?.role ?? "student",
-          status:              profile?.status ?? "active",
-          username:            profile?.username ?? "",
-          displayName:         profile?.displayName ?? authUser.name ?? "",
-          avatarUrl:           profile?.avatarUrl ?? authUser.image ?? null,
-          onboardingComplete:  profile?.onboardingComplete ?? false,
-          institutionId:       profile?.institutionId ?? null,
-          verificationStatus:  profile?.verificationStatus ?? "unverified",
-          reputationScore:     profile?.reputationScore ?? 0,
-          reputationLevel:     profile?.reputationLevel ?? "scholar",
+          role: profile?.role ?? "student",
+          status: profile?.status ?? "active",
+          username: profile?.username ?? "",
+          displayName: profile?.displayName ?? authUser.name ?? "",
+          avatarUrl: profile?.avatarUrl ?? authUser.image ?? null,
+          onboardingComplete: profile?.onboardingComplete ?? false,
+          institutionId: profile?.institutionId ?? null,
+          verificationStatus: profile?.verificationStatus ?? "unverified",
+          reputationScore: profile?.reputationScore ?? 0,
+          reputationLevel: profile?.reputationLevel ?? "scholar",
         } as AuthSessionUser;
       },
     }),
@@ -172,15 +184,25 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
       if (account?.provider === "google") {
         // Auth.js runs this callback before creating a first-time OAuth user.
         // Only a Google-verified email is accepted. Do not auto-link by email.
-        if (profile?.email_verified !== true || typeof profile.email !== "string" || !profile.email) return false;
+        if (profile?.email_verified !== true || typeof profile.email !== "string" || !profile.email)
+          return false;
         if (!user.id) return false;
-        const existing = await db.query.users.findFirst({ where: eq(users.id, user.id), columns: { status: true, deletedAt: true } });
+        const existing = await db.query.users.findFirst({
+          where: eq(users.id, user.id),
+          columns: { status: true, deletedAt: true },
+        });
         return !existing || (existing.status === "active" && !existing.deletedAt);
       }
       if (!user.id) return false;
-      const authUser = await db.query.authUsers.findFirst({ where: eq(authUsers.id, user.id), columns: { emailVerified: true } });
+      const authUser = await db.query.authUsers.findFirst({
+        where: eq(authUsers.id, user.id),
+        columns: { emailVerified: true },
+      });
       if (!authUser?.emailVerified) return "/verify-email";
-      const profileRow = await db.query.users.findFirst({ where: eq(users.id, user.id), columns: { status: true, deletedAt: true } });
+      const profileRow = await db.query.users.findFirst({
+        where: eq(users.id, user.id),
+        columns: { status: true, deletedAt: true },
+      });
       return !!profileRow && profileRow.status === "active" && !profileRow.deletedAt;
     },
 
@@ -194,7 +216,8 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
       const id = user?.id ?? (typeof token.id === "string" ? token.id : undefined);
       if (!id) return null;
       const account = await db.query.authUsers.findFirst({
-        where: eq(authUsers.id, id), columns: { sessionVersion: true },
+        where: eq(authUsers.id, id),
+        columns: { sessionVersion: true },
       });
       if (!account) return null;
       if (user) {
@@ -202,7 +225,10 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
         // Credentials were verified against this version. Reject a concurrent reset.
         if (version !== undefined && version !== account.sessionVersion) return null;
         token.sessionVersion = account.sessionVersion;
-      } else if (typeof token.sessionVersion !== "number" || token.sessionVersion !== account.sessionVersion) {
+      } else if (
+        typeof token.sessionVersion !== "number" ||
+        token.sessionVersion !== account.sessionVersion
+      ) {
         return null;
       }
       if (user) token.id = user.id!;
@@ -211,7 +237,19 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
       if ((user || trigger === "update") && typeof token.id === "string") {
         const profile = await db.query.users.findFirst({
           where: eq(users.id, token.id),
-          columns: { role: true, status: true, deletedAt: true, onboardingComplete: true, username: true, displayName: true, avatarUrl: true, institutionId: true, verificationStatus: true, reputationScore: true, reputationLevel: true },
+          columns: {
+            role: true,
+            status: true,
+            deletedAt: true,
+            onboardingComplete: true,
+            username: true,
+            displayName: true,
+            avatarUrl: true,
+            institutionId: true,
+            verificationStatus: true,
+            reputationScore: true,
+            reputationLevel: true,
+          },
         });
         if (!profile || profile.status !== "active" || profile.deletedAt) return null;
         token.role = profile.role;
@@ -251,8 +289,8 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
         .update(users)
         .set({
           lastActiveAt: new Date(),
-          lastSeenAt:   new Date(),
-          loginCount:   sql`login_count + 1`,
+          lastSeenAt: new Date(),
+          loginCount: sql`login_count + 1`,
         })
         .where(eq(users.id, user.id));
 
@@ -299,4 +337,3 @@ export async function isAdmin(): Promise<boolean> {
   const user = await getCurrentUser();
   return ["admin", "super_admin"].includes((user?.role as string) ?? "");
 }
-

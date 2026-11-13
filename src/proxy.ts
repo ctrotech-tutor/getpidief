@@ -26,11 +26,7 @@ export default auth((req) => {
   // may have been revoked in the database since this proxy last saw it.
 
   // Block suspended/deleted accounts
-  if (
-    user &&
-    (user.status === "suspended" || user.status === "deleted") &&
-    pathname !== "/login"
-  ) {
+  if (user && (user.status === "suspended" || user.status === "deleted") && pathname !== "/login") {
     const url = new URL("/login", req.url);
     url.searchParams.set("error", "account_suspended");
     return Response.redirect(url);

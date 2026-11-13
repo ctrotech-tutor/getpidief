@@ -52,8 +52,7 @@ export const useUIStore = create<UIState>()((set) => ({
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
     }, toast.duration ?? 4000);
   },
-  removeToast: (id) =>
-    set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+  removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
   shareModalDocumentId: null,
   setShareModalDocumentId: (id) => set({ shareModalDocumentId: id }),
@@ -140,8 +139,7 @@ export const useUploadStore = create<UploadState>()((set) => ({
     set((s) => ({
       uploads: s.uploads.map((u) => (u.id === id ? { ...u, ...update } : u)),
     })),
-  removeUpload: (id) =>
-    set((s) => ({ uploads: s.uploads.filter((u) => u.id !== id) })),
+  removeUpload: (id) => set((s) => ({ uploads: s.uploads.filter((u) => u.id !== id) })),
   clearCompleted: () =>
     set((s) => ({
       uploads: s.uploads.filter((u) => u.status !== "complete"),

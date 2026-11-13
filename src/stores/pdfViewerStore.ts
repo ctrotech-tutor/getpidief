@@ -24,10 +24,7 @@ export const fitModeAtom = atom<"width" | "page" | "custom">("width");
 export const isFullscreenAtom = atom<boolean>(false);
 
 /** Is the thumbnail strip panel visible? */
-export const thumbnailStripOpenAtom = atomWithStorage<boolean>(
-  "pdf-thumbnails",
-  true
-);
+export const thumbnailStripOpenAtom = atomWithStorage<boolean>("pdf-thumbnails", true);
 
 /** Is the document fully loaded? */
 export const documentLoadedAtom = atom<boolean>(false);
@@ -52,9 +49,7 @@ export const prevZoomAtom = atom((get) => {
 });
 
 /** Derived: can go to next page? */
-export const canGoNextAtom = atom(
-  (get) => get(currentPageAtom) < get(totalPagesAtom)
-);
+export const canGoNextAtom = atom((get) => get(currentPageAtom) < get(totalPagesAtom));
 
 /** Derived: can go to previous page? */
 export const canGoPrevAtom = atom((get) => get(currentPageAtom) > 1);

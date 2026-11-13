@@ -58,21 +58,47 @@ export type PaginatedResponse<T> = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type UserRole = "student" | "contributor" | "moderator" | "admin" | "super_admin";
-export type UserStatus = "active" | "suspended" | "pending_verification" | "deactivated" | "deleted";
+export type UserStatus =
+  | "active"
+  | "suspended"
+  | "pending_verification"
+  | "deactivated"
+  | "deleted";
 export type DocumentStatus = "draft" | "pending" | "approved" | "rejected" | "flagged" | "deleted";
 export type ResourceType =
-  | "past_exam" | "lecture_notes" | "research_paper"
-  | "textbook_summary" | "assignment" | "tutorial_sheet"
-  | "course_guide" | "lab_report" | "thesis" | "dissertation" | "other";
+  | "past_exam"
+  | "lecture_notes"
+  | "research_paper"
+  | "textbook_summary"
+  | "assignment"
+  | "tutorial_sheet"
+  | "course_guide"
+  | "lab_report"
+  | "thesis"
+  | "dissertation"
+  | "other";
 export type Visibility = "public" | "institution" | "private";
 export type ReputationLevel =
-  | "scholar" | "analyst" | "archivist"
-  | "senior_contributor" | "distinguished_scholar";
+  | "scholar"
+  | "analyst"
+  | "archivist"
+  | "senior_contributor"
+  | "distinguished_scholar";
 export type NotificationType =
-  | "like" | "dislike" | "comment" | "comment_reply" | "comment_helpful"
-  | "follow" | "document_approved" | "document_rejected" | "document_flagged"
-  | "new_upload_from_following" | "badge_earned" | "reputation_milestone"
-  | "system_announcement" | "mention";
+  | "like"
+  | "dislike"
+  | "comment"
+  | "comment_reply"
+  | "comment_helpful"
+  | "follow"
+  | "document_approved"
+  | "document_rejected"
+  | "document_flagged"
+  | "new_upload_from_following"
+  | "badge_earned"
+  | "reputation_milestone"
+  | "system_announcement"
+  | "mention";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UI COMPONENT PROP TYPES
@@ -116,11 +142,23 @@ export const SORT_OPTIONS: SortOption[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const REPUTATION_LEVELS_CONFIG = [
-  { level: "scholar",               label: "Scholar",                min: 0,    max: 99,   color: "#6B7280" },
-  { level: "analyst",               label: "Analyst",                min: 100,  max: 499,  color: "#2563EB" },
-  { level: "archivist",             label: "Archivist",              min: 500,  max: 1999, color: "#7C3AED" },
-  { level: "senior_contributor",    label: "Senior Contributor",     min: 2000, max: 4999, color: "#F59E0B" },
-  { level: "distinguished_scholar", label: "Distinguished Scholar",  min: 5000, max: Infinity, color: "#DC2626" },
+  { level: "scholar", label: "Scholar", min: 0, max: 99, color: "#6B7280" },
+  { level: "analyst", label: "Analyst", min: 100, max: 499, color: "#2563EB" },
+  { level: "archivist", label: "Archivist", min: 500, max: 1999, color: "#7C3AED" },
+  {
+    level: "senior_contributor",
+    label: "Senior Contributor",
+    min: 2000,
+    max: 4999,
+    color: "#F59E0B",
+  },
+  {
+    level: "distinguished_scholar",
+    label: "Distinguished Scholar",
+    min: 5000,
+    max: Infinity,
+    color: "#DC2626",
+  },
 ] as const;
 
 export function getReputationConfig(level: ReputationLevel) {
@@ -128,9 +166,7 @@ export function getReputationConfig(level: ReputationLevel) {
 }
 
 export function getReputationProgress(score: number): number {
-  const level = REPUTATION_LEVELS_CONFIG.find(
-    (l) => score >= l.min && score <= l.max
-  );
+  const level = REPUTATION_LEVELS_CONFIG.find((l) => score >= l.min && score <= l.max);
   if (!level || level.max === Infinity) return 100;
   return Math.round(((score - level.min) / (level.max - level.min)) * 100);
 }

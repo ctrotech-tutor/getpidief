@@ -6,7 +6,11 @@ import { authUsers, authAccounts, users, accountAgreements } from "@/lib/db/sche
 import { eq, and, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import { registerSchema, forgotPasswordSchema, resetPasswordSchema } from "@/lib/validations/schemas";
+import {
+  registerSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+} from "@/lib/validations/schemas";
 import { rateLimiters } from "@/lib/redis/client";
 import { redis, redisRateLimit, KEYS, TTL } from "@/lib/redis/client";
 import { inngest } from "@/lib/inngest/client";
@@ -29,7 +33,7 @@ export async function signInWithCredentials(
   _: ActionResult<{ redirectTo: string }>,
   formData: FormData
 ): Promise<ActionResult<{ redirectTo: string }>> {
-  const email    = formData.get("email")    as string;
+  const email = formData.get("email") as string;
   const password = formData.get("password") as string;
 
   // Rate limit by IP
@@ -39,9 +43,9 @@ export async function signInWithCredentials(
 
   try {
     await signIn("credentials", {
-      email:      email?.toLowerCase(),
+      email: email?.toLowerCase(),
       password,
-      redirect:   false,
+      redirect: false,
     });
     return actionSuccess({ redirectTo: "/" });
   } catch (error: unknown) {
@@ -61,19 +65,20 @@ export async function registerWithCredentials(
   _: ActionResult<{ message: string }>,
   formData: FormData
 ): Promise<ActionResult<{ message: string }>> {
-  if (process.env.NODE_ENV === "production" && !redisRateLimit) return actionError("Account creation is temporarily unavailable. Please try again later.");
+  if (process.env.NODE_ENV === "production" && !redisRateLimit)
+    return actionError("Account creation is temporarily unavailable. Please try again later.");
   const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const { success: ok } = await rateLimiters.register.limit(ip);
   if (!ok) return actionError("Too many registration attempts. Please wait.");
 
   const raw = {
-    firstName:             formData.get("firstName"),
-    lastName:              formData.get("lastName"),
-    email:                 formData.get("email"),
-    password:              formData.get("password"),
-    confirmPassword:       formData.get("confirmPassword"),
-    acceptTerms:           formData.get("acceptTerms") === "on",
-    isAcademicResearcher:  formData.get("isAcademicResearcher") === "on",
+    firstName: formData.get("firstName"),
+    lastName: formData.get("lastName"),
+    email: formData.get("email"),
+    password: formData.get("password"),
+    confirmPassword: formData.get("confirmPassword"),
+    acceptTerms: formData.get("acceptTerms") === "on",
+    isAcademicResearcher: formData.get("isAcademicResearcher") === "on",
   };
 
   const parsed = registerSchema.safeParse(raw);
@@ -84,7 +89,8 @@ export async function registerWithCredentials(
 
   const { firstName, lastName, email, password, isAcademicResearcher } = parsed.data;
   const fullName = `${firstName.trim()} ${lastName.trim()}`;
-  if (!redis) return actionError("Account creation is temporarily unavailable. Please try again later.");
+  if (!redis)
+    return actionError("Account creation is temporarily unavailable. Please try again later.");
 
   // A single transaction prevents half-created accounts and records the actual
   // agreement and optional self-description alongside the credential profile.
@@ -92,15 +98,42 @@ export async function registerWithCredentials(
   let userId: string;
   try {
     userId = await db.transaction(async (tx) => {
-      const [authUser] = await tx.insert(authUsers).values({ name: fullName, email }).returning({ id: authUsers.id });
-      await tx.insert(authAccounts).values({ userId: authUser.id, type: "credentials", provider: "credentials", providerAccountId: passwordHash });
-      await tx.insert(users).values({ id: authUser.id, username: `learner_${authUser.id.replaceAll("-", "").slice(0, 24)}`, displayName: fullName });
-      await tx.insert(accountAgreements).values({ userId: authUser.id, termsVersion: "legacy-2024", privacyVersion: "legacy-2024", isAcademicResearcherOrStudent: Boolean(isAcademicResearcher) });
+      const [authUser] = await tx
+        .insert(authUsers)
+        .values({ name: fullName, email })
+        .returning({ id: authUsers.id });
+      await tx
+        .insert(authAccounts)
+        .values({
+          userId: authUser.id,
+          type: "credentials",
+          provider: "credentials",
+          providerAccountId: passwordHash,
+        });
+      await tx
+        .insert(users)
+        .values({
+          id: authUser.id,
+          username: `learner_${authUser.id.replaceAll("-", "").slice(0, 24)}`,
+          displayName: fullName,
+        });
+      await tx
+        .insert(accountAgreements)
+        .values({
+          userId: authUser.id,
+          termsVersion: "legacy-2024",
+          privacyVersion: "legacy-2024",
+          isAcademicResearcherOrStudent: Boolean(isAcademicResearcher),
+        });
       return authUser.id;
     });
   } catch (error) {
     const databaseError = (error as { cause?: { code?: string; constraint?: string } }).cause;
-    if (databaseError?.code === "23505" && ["auth_users_email_unique", "auth_users_email_idx"].includes(databaseError.constraint ?? "")) return actionError("An account with this email already exists.", "email");
+    if (
+      databaseError?.code === "23505" &&
+      ["auth_users_email_unique", "auth_users_email_idx"].includes(databaseError.constraint ?? "")
+    )
+      return actionError("An account with this email already exists.", "email");
     // Drizzle errors may contain query parameters, including email and hashes.
     console.error("[Auth] Account creation failed");
     return actionError("Account creation is temporarily unavailable. Please try again.");
@@ -110,15 +143,27 @@ export async function registerWithCredentials(
   // the resend flow rather than being incorrectly reported as not created.
   let verificationRequested = false;
   try {
-    await inngest.send({ name: "email/send-verification", data: { userId, email, name: fullName } });
+    await inngest.send({
+      name: "email/send-verification",
+      data: { userId, email, name: fullName },
+    });
     verificationRequested = true;
-  } catch { console.error("[Auth] Verification dispatch failed"); }
-  try { await inngest.send({ name: "user/registered", data: { userId, email, name: fullName, provider: "email" } }); }
-  catch { console.error("[Auth] Welcome dispatch failed"); }
-  return actionSuccess({ message: verificationRequested
-    ? "Account created. If the verification email does not arrive, request another from the login page."
-    : "Account created, but we could not request a verification email. Please request another from the login page." });
-
+  } catch {
+    console.error("[Auth] Verification dispatch failed");
+  }
+  try {
+    await inngest.send({
+      name: "user/registered",
+      data: { userId, email, name: fullName, provider: "email" },
+    });
+  } catch {
+    console.error("[Auth] Welcome dispatch failed");
+  }
+  return actionSuccess({
+    message: verificationRequested
+      ? "Account created. If the verification email does not arrive, request another from the login page."
+      : "Account created, but we could not request a verification email. Please request another from the login page.",
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -130,11 +175,12 @@ export async function requestPasswordReset(
   formData: FormData
 ): Promise<ActionResult<{ message: string }>> {
   const emailRaw = formData.get("email") as string;
-  const parsed   = forgotPasswordSchema.safeParse({ email: emailRaw });
+  const parsed = forgotPasswordSchema.safeParse({ email: emailRaw });
   if (!parsed.success) return actionError("Please enter a valid email address.");
 
   const { email } = parsed.data;
-  if (!redis || (process.env.NODE_ENV === "production" && !redisRateLimit)) return actionError("Password reset is temporarily unavailable. Please try again later.");
+  if (!redis || (process.env.NODE_ENV === "production" && !redisRateLimit))
+    return actionError("Password reset is temporarily unavailable. Please try again later.");
 
   // Rate limit
   const { success: ok } = await rateLimiters.passwordReset.limit(email);
@@ -148,7 +194,7 @@ export async function requestPasswordReset(
 
   if (authUser) {
     const rawToken = crypto.randomBytes(32).toString("hex");
-    const token    = crypto.createHash("sha256").update(rawToken).digest("hex");
+    const token = crypto.createHash("sha256").update(rawToken).digest("hex");
 
     try {
       await redis.setex(KEYS.passwordResetToken(token), TTL.passwordResetToken, authUser.id);
@@ -156,15 +202,17 @@ export async function requestPasswordReset(
       return actionError("Password reset is temporarily unavailable. Please try again later.");
     }
 
-    try { await inngest.send({
-      name: "email/password-reset",
-      data: {
-        email,
-        token:     rawToken, // raw token goes in the email link
-        name:      authUser.name ?? "Scholar",
-        ipAddress: (await headers()).get("x-forwarded-for") ?? "unknown",
-      },
-    }); } catch {
+    try {
+      await inngest.send({
+        name: "email/password-reset",
+        data: {
+          email,
+          token: rawToken, // raw token goes in the email link
+          name: authUser.name ?? "Scholar",
+          ipAddress: (await headers()).get("x-forwarded-for") ?? "unknown",
+        },
+      });
+    } catch {
       // Do not distinguish existing and non-existing accounts to the requester.
       console.error("[Auth] Password reset dispatch failed");
     }
@@ -184,8 +232,8 @@ export async function resetPassword(
   formData: FormData
 ): Promise<ActionResult<{ message: string }>> {
   const parsed = resetPasswordSchema.safeParse({
-    token:           formData.get("token"),
-    password:        formData.get("password"),
+    token: formData.get("token"),
+    password: formData.get("password"),
     confirmPassword: formData.get("confirmPassword"),
   });
   if (!parsed.success) {
@@ -196,23 +244,40 @@ export async function resetPassword(
 
   const { token: rawToken, password } = parsed.data;
 
-  if (!redis) return actionError("Password reset is temporarily unavailable. Please request a new link later.");
+  if (!redis)
+    return actionError(
+      "Password reset is temporarily unavailable. Please request a new link later."
+    );
   const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
   let userId: string | null;
-  try { userId = await redis.getdel<string>(KEYS.passwordResetToken(tokenHash)); }
-  catch { return actionError("Password reset is temporarily unavailable. Please request a new link later."); }
+  try {
+    userId = await redis.getdel<string>(KEYS.passwordResetToken(tokenHash));
+  } catch {
+    return actionError(
+      "Password reset is temporarily unavailable. Please request a new link later."
+    );
+  }
   if (!userId) return actionError("This reset link has expired or already been used.");
 
   try {
     const newHash = await bcrypt.hash(password, 12);
     const updated = await db.transaction(async (tx) => {
-      const accounts = await tx.update(authAccounts).set({ providerAccountId: newHash })
+      const accounts = await tx
+        .update(authAccounts)
+        .set({ providerAccountId: newHash })
         .where(and(eq(authAccounts.userId, userId), eq(authAccounts.provider, "credentials")))
         .returning({ userId: authAccounts.userId });
-      if (accounts.length) await tx.update(authUsers).set({ sessionVersion: sql`${authUsers.sessionVersion} + 1` }).where(eq(authUsers.id, userId));
+      if (accounts.length)
+        await tx
+          .update(authUsers)
+          .set({ sessionVersion: sql`${authUsers.sessionVersion} + 1` })
+          .where(eq(authUsers.id, userId));
       return accounts;
     });
-    if (!updated.length) return actionError("This account does not have a password. Please use your original sign-in method.");
+    if (!updated.length)
+      return actionError(
+        "This account does not have a password. Please use your original sign-in method."
+      );
   } catch {
     return actionError("We could not update your password. Please request a new link.");
   }
@@ -228,24 +293,36 @@ export async function signOutAction() {
   await signOut({ redirectTo: "/login" });
 }
 
-
 export async function verifyEmailAddress(
   _: ActionResult<{ message: string }>,
   formData: FormData
 ): Promise<ActionResult<{ message: string }>> {
   const token = formData.get("token");
-  if (typeof token !== "string" || !/^[A-Za-z0-9_-]{20,128}$/.test(token)) return actionError("This verification link is invalid.");
-  if (!redis) return actionError("Verification is temporarily unavailable. Please try again later.");
+  if (typeof token !== "string" || !/^[A-Za-z0-9_-]{20,128}$/.test(token))
+    return actionError("This verification link is invalid.");
+  if (!redis)
+    return actionError("Verification is temporarily unavailable. Please try again later.");
   let stored: unknown;
-  try { stored = await redis.getdel(KEYS.emailVerifyToken(token)); }
-  catch { return actionError("Verification is temporarily unavailable. Please try again later."); }
-  if (!stored) return actionError("This link has expired or already been used. Request a new one from the sign-in page.");
+  try {
+    stored = await redis.getdel(KEYS.emailVerifyToken(token));
+  } catch {
+    return actionError("Verification is temporarily unavailable. Please try again later.");
+  }
+  if (!stored)
+    return actionError(
+      "This link has expired or already been used. Request a new one from the sign-in page."
+    );
   let data: { userId?: string; email?: string };
-  try { data = typeof stored === "string" ? JSON.parse(stored) : stored as typeof data; }
-  catch { return actionError("This verification link is invalid."); }
+  try {
+    data = typeof stored === "string" ? JSON.parse(stored) : (stored as typeof data);
+  } catch {
+    return actionError("This verification link is invalid.");
+  }
   if (!data?.userId || !data.email) return actionError("This verification link is invalid.");
   try {
-    const updated = await db.update(authUsers).set({ emailVerified: new Date() })
+    const updated = await db
+      .update(authUsers)
+      .set({ emailVerified: new Date() })
       .where(and(eq(authUsers.id, data.userId), eq(authUsers.email, data.email)))
       .returning({ id: authUsers.id });
     if (!updated.length) return actionError("This verification link is invalid.");

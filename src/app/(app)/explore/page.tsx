@@ -81,8 +81,8 @@ export default async function ExplorePage() {
             <ExploreContentSections
               userId={user?.id}
               recommendedSection={<RecommendedSection userId={user?.id} />}
-              trendingSection={<TrendingSection />}
-              recentSection={<RecentSection />}
+              trendingSection={<TrendingSection userId={user?.id} />}
+              recentSection={<RecentSection userId={user?.id} />}
             />
           </div>
         </div>
@@ -130,14 +130,14 @@ async function RecommendedSection({ userId }: { userId?: string }) {
   return <ResourceSection title="Recommended for You" href="/search?sort=relevance" docs={docs} />;
 }
 
-async function TrendingSection() {
-  const docs = await documentsRepository.getTrending({ limit: 6 });
+async function TrendingSection({ userId }: { userId?: string }) {
+  const docs = await documentsRepository.getTrending({ limit: 6, requestingUserId: userId });
   if (!docs.length) return null;
   return <ResourceSection title="Trending This Week" href="/search?sort=downloads" emoji="🔥" docs={docs} />;
 }
 
-async function RecentSection() {
-  const docs = await documentsRepository.getRecent({ limit: 6 });
+async function RecentSection({ userId }: { userId?: string }) {
+  const docs = await documentsRepository.getRecent({ limit: 6, requestingUserId: userId });
   if (!docs.length) return null;
   return <ResourceSection title="Recently Added" href="/search?sort=recent" emoji="🕐" docs={docs} />;
 }

@@ -1,11 +1,11 @@
 import { db } from "@/lib/db/client";
 import {
-  documents, documentTags, documentBookmarks, documentReactions,
+  documents, documentBookmarks, documentReactions,
   users, institutions, categories, tags,
 } from "@/lib/db/schema";
-import { eq, and, desc, asc, sql, inArray, isNull, not } from "drizzle-orm";
-import { redis, KEYS, TTL, getCache, setCache, invalidateCache, zgetTop } from "@/lib/redis/client";
-import type { SearchFilters } from "@/lib/search/search";
+import { eq, and, desc, sql, inArray, isNull, not } from "drizzle-orm";
+import { KEYS, invalidateCache, zgetTop } from "@/lib/redis/client";
+import { notBlockedByEither } from "@/lib/blocks/visibility";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -204,7 +204,7 @@ export const documentsRepository = {
 
     if (topIds.length === 0) {
       // Fallback: query DB directly if Redis is empty
-      return documentsRepository.getRecent({ limit });
+      return documentsRepository.getRecent({ limit, categoryId, institutionId, requestingUserId: options.requestingUserId });
     }
 
     return documentsRepository.getByIds(topIds, options.requestingUserId);
@@ -226,6 +226,8 @@ export const documentsRepository = {
       eq(documents.status, "approved"),
       eq(documents.visibility, "public"),
       isNull(documents.deletedAt),
+      sql`exists (select 1 from users u where u.id = ${documents.authorId} and u.status = 'active' and u.deleted_at is null)`,
+      notBlockedByEither(options.requestingUserId, sql`${documents.authorId}`),
     ];
 
     if (categoryId) conditions.push(eq(documents.categoryId, categoryId));
@@ -234,7 +236,7 @@ export const documentsRepository = {
     const rows = await withDbRetry(() =>
       db.query.documents.findMany({
       where: and(...conditions),
-      orderBy: [desc(documents.publishedAt)],
+      orderBy: [desc(documents.publishedAt), desc(documents.id)],
       limit,
       with: {
         author: {
@@ -255,56 +257,26 @@ export const documentsRepository = {
     userId: string,
     limit: number = 12
   ): Promise<DocumentCard[]> {
-    const cacheKey = KEYS.recommended(userId);
-    const cached = await getCache<DocumentCard[]>(cacheKey);
-    if (cached) return cached;
-
-    // Query based on user's interest tags + institution
-    const results = await withDbRetry(() =>
-      db.execute<{
-      id: string; slug: string; title: string; description: string | null;
-      thumbnail_url: string | null; resource_type: string; academic_year: number | null;
-      page_count: number | null; download_count: number; like_count: number;
-      comment_count: number; view_count: number; published_at: Date | null;
-      trending_score: number;
-    }>(sql`
-      SELECT DISTINCT ON (d.id)
-        d.id, d.slug, d.title, d.description, d.thumbnail_url,
-        d.resource_type, d.academic_year, d.page_count, d.download_count,
-        d.like_count, d.comment_count, d.view_count, d.published_at,
-        d.trending_score,
-        -- Relevance score: matching tags get boost
-        (d.trending_score * 1.0 + COUNT(dt_match.tag_id) * 10.0) AS relevance
+    // Rank only eligible, unseen public documents; filter before LIMIT so
+    // invisible or previously viewed resources cannot crowd out valid results.
+    // Do not cache hydrated cards: visibility and block state can change at any time.
+    const results = await withDbRetry(() => db.execute<{ id: string }>(sql`
+      SELECT d.id
       FROM documents d
-      -- Join to find tag overlap with user interests
       LEFT JOIN document_tags dt_match
         ON dt_match.document_id = d.id
-        AND dt_match.tag_id IN (
-          SELECT tag_id FROM user_interests WHERE user_id = ${userId}
-        )
-      WHERE d.status = 'approved'
-        AND d.visibility = 'public'
-        AND d.deleted_at IS NULL
-        -- Exclude already viewed
-        AND d.id NOT IN (
-          SELECT document_id FROM document_views
-          WHERE user_id = ${userId}
-          LIMIT 200
-        )
+        AND dt_match.tag_id IN (SELECT tag_id FROM user_interests WHERE user_id = ${userId}::uuid)
+      WHERE d.status = 'approved' AND d.visibility = 'public' AND d.deleted_at IS NULL
+        AND EXISTS (SELECT 1 FROM users u WHERE u.id = d.author_id AND u.status = 'active' AND u.deleted_at IS NULL)
+        AND ${notBlockedByEither(userId, sql`d.author_id`)}
+        AND NOT EXISTS (SELECT 1 FROM document_views v WHERE v.user_id = ${userId}::uuid AND v.document_id = d.id)
       GROUP BY d.id
-      ORDER BY d.id, relevance DESC
+      ORDER BY (d.trending_score + COUNT(dt_match.tag_id) * 10.0) DESC, d.id ASC
       LIMIT ${limit}
     `));
-
-    if (results.rows.length === 0) {
-      return documentsRepository.getTrending({ limit, requestingUserId: userId });
-    }
-
-    const ids = results.rows.map((r) => r.id);
-    const docs = await documentsRepository.getByIds(ids, userId);
-
-    await setCache(cacheKey, docs, TTL.recommended);
-    return docs;
+    // Recheck public and author/block eligibility at hydration time. A concurrent
+    // change can shorten this batch; it must not resurrect a hidden resource.
+    return documentsRepository.getByIds(results.rows.map(row => row.id), userId);
   },
 
   // ── Get documents by array of IDs (preserves order) ──────────────────────
@@ -320,7 +292,10 @@ export const documentsRepository = {
       where: and(
         inArray(documents.id, ids),
         eq(documents.status, "approved"),
-        isNull(documents.deletedAt)
+        eq(documents.visibility, "public"),
+        isNull(documents.deletedAt),
+        sql`exists (select 1 from users u where u.id = ${documents.authorId} and u.status = 'active' and u.deleted_at is null)`,
+        notBlockedByEither(requestingUserId, sql`${documents.authorId}`)
       ),
       with: {
         author: {
@@ -333,8 +308,9 @@ export const documentsRepository = {
     }));
 
     // Preserve Redis sorted set order
+    const byId = new Map(rows.map(row => [row.id, row]));
     const ordered = ids
-      .map((id) => rows.find((r) => r.id === id))
+      .map((id) => byId.get(id))
       .filter(Boolean) as typeof rows;
 
     return ordered.map(toDocumentCard);

@@ -15,17 +15,9 @@ import type { Channel } from "pusher-js";
  */
 export function useNotifications() {
   const { user, isAuthenticated } = useSession();
-  const addNotification  = useNotificationStore((s) => s.addRealtimeNotification);
   const setUnreadCount   = useNotificationStore((s) => s.setUnreadCount);
   const channelRef = useRef<Channel | null>(null);
-  type RealtimeNotification = {
-    id: string;
-    type: string;
-    title: string;
-    message: string;
-    metadata?: Record<string, unknown>;
-    createdAt: string;
-  };
+
 
   // Fetch initial unread count on mount
   useEffect(() => {
@@ -51,16 +43,14 @@ export function useNotifications() {
       const channel = pusher.subscribe(CHANNELS.privateUser(user.id));
       channelRef.current = channel;
 
-      channel.bind(EVENTS.NOTIFICATION, (data: RealtimeNotification) => {
-        addNotification({
-          id:        data.id,
-          type:      data.type,
-          title:     data.title,
-          message:   data.message,
-          metadata:  data.metadata ?? {},
-          isRead:    false,
-          createdAt: data.createdAt,
-        });
+      channel.bind(EVENTS.NOTIFICATION, () => {
+        // Re-read authorized data instead of trusting content in a queued event.
+        fetch("/api/notifications?count=true", { cache: "no-store" })
+          .then((r) => r.json())
+          .then((json) => {
+            if (typeof json.data?.unreadCount === "number") setUnreadCount(json.data.unreadCount);
+          })
+          .catch(() => {});
       });
 
     } catch {
@@ -72,5 +62,5 @@ export function useNotifications() {
         pusher?.unsubscribe(CHANNELS.privateUser(user?.id ?? ""));
       } catch {}
     };
-  }, [isAuthenticated, user?.id, addNotification]);
+  }, [isAuthenticated, user?.id, setUnreadCount]);
 }

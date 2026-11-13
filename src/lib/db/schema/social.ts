@@ -7,6 +7,7 @@ import {
   timestamp,
   index,
   uniqueIndex,
+  check,
   varchar,
   jsonb,
 } from "drizzle-orm/pg-core";
@@ -149,4 +150,15 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
     references: [users.id],
     relationName: "user_sent_notifications",
   }),
+}));
+// Directional relationship. Enforcement belongs in every applicable read and
+// write path; this table alone does not implement user-facing blocking.
+export const userBlocks = pgTable("user_blocks", {
+  blockerId: uuid("blocker_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  blockedId: uuid("blocked_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  pairUnique: uniqueIndex("user_blocks_pair_idx").on(table.blockerId, table.blockedId),
+  blockedIdx: index("user_blocks_blocked_idx").on(table.blockedId, table.blockerId),
+  notSelf: check("user_blocks_not_self", sql`${table.blockerId} <> ${table.blockedId}`),
 }));

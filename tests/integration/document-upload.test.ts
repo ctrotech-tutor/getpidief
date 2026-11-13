@@ -5,6 +5,7 @@ vi.mock("@/lib/auth/auth", () => ({ auth: mocks.auth }));
 vi.mock("@/lib/db/client", () => ({ withTransaction: mocks.tx }));
 vi.mock("@/lib/inngest/client", () => ({ inngest: { send: mocks.send } }));
 import { POST } from "@/app/api/documents/route";
+import { documents, documentTags, tags } from "@/lib/db/schema";
 const user = "11111111-1111-4111-8111-111111111111";
 const id = "22222222-2222-4222-8222-222222222222";
 const body = { title: "Example document", uploadId: id, categoryId: id, institutionId: id, resourceType: "other", visibility: "public", fileUrl: "http://127.0.0.1/private", fileSize: 1 };
@@ -44,6 +45,20 @@ describe("document submission", () => {
     expect(tx.values).toHaveBeenCalledWith(expect.objectContaining({ fileUrl: "https://files.test/a", fileSize: 400, authorId: user, status: "pending" }));
     expect(tx.update).toHaveBeenCalledOnce();
     expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ fileUrl: "https://files.test/a", fileSize: 400 }) }));
+  });
+  it("inserts each resolved document tag only once even without a database constraint", async () => {
+    const tagId = "33333333-3333-4333-8333-333333333333";
+    const docValues = vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id, slug: "example" }]) });
+    const tagValues = vi.fn().mockReturnValue({ onConflictDoUpdate: () => ({ returning: vi.fn().mockResolvedValue([{ id: tagId }]) }) });
+    const links = vi.fn().mockReturnValue({ onConflictDoNothing: vi.fn().mockResolvedValue([]) });
+    let count = 0;
+    const select = () => ({ from: () => ({ where: () => ({ for: vi.fn().mockResolvedValue(++count === 1 ? [{ id: user }] : [{ fileUrl: "https://files.test/a", fileSize: 400 }]) }) }) });
+    mocks.tx.mockImplementation(fn => fn({ select, insert: (table: unknown) => ({ values: table === documents ? docValues : table === tags ? tagValues : table === documentTags ? links : vi.fn() }), update: () => ({ set: () => ({ where: vi.fn().mockResolvedValue([]) }) }) }));
+    const response = await POST(request({ ...body, tagIds: [tagId, tagId], tagNames: ["Biology", "biology"] }));
+    expect(response.status).toBe(201);
+    expect(tagValues).toHaveBeenCalledTimes(1);
+    expect(links).toHaveBeenCalledTimes(1);
+    expect(links).toHaveBeenCalledWith([{ documentId: id, tagId }]);
   });
   it("does not report a saved document as failed when event delivery fails", async () => {
     transaction({ fileUrl: "https://files.test/a", fileSize: 400 });

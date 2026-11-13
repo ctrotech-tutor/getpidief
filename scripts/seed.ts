@@ -7,6 +7,7 @@ import { assertLocalSeedTarget } from "./seed/guard";
 import { account, fixtureId } from "./seed/identity";
 import { topics, guides } from "./seed/content";
 import { writeGuides } from "./seed/pdf";
+import { seedAvatarUrl, writeAvatars } from "./seed/avatars";
 
 config({ path: ".env.local", quiet: true }); config({ path: ".env", quiet: true });
 const USER_COUNT = 50;
@@ -23,12 +24,15 @@ async function seedUsers(client: PoolClient) {
     if (existing.rowCount) {
       const valid = await client.query("SELECT 1 FROM users u JOIN auth_accounts a ON a.user_id = u.id AND a.provider = 'credentials' WHERE u.id = $1 AND u.username = $2", [u.id, u.username]);
       if (!valid.rowCount) throw new Error(`Incomplete or modified demo account ${u.email}; no changes made.`);
-      continue; // Never overwrite a password, profile or real user's edits on rerun.
+      // Add fixture photos to existing demo accounts only when no avatar is set.
+      await client.query("UPDATE users SET avatar_url = $2 WHERE id = $1 AND avatar_url IS NULL", [u.id, seedAvatarUrl(i)]);
+      continue; // Never overwrite a password or existing profile photo.
+
     }
     // Each hash has its own salt; registration currently uses bcrypt cost 12.
     const hash = await bcrypt.hash(PASSWORD, 12);
     await client.query("INSERT INTO auth_users (id, email, name, email_verified) VALUES ($1,$2,$3,now())", [u.id, u.email, u.name]);
-    await client.query("INSERT INTO users (id, username, display_name, bio, role, onboarding_complete, onboarding_step) VALUES ($1,$2,$3,$4,'student',true,3)", [u.id, u.username, u.name, "Fictional local demo account for testing getpidief."]);
+    await client.query("INSERT INTO users (id, username, display_name, bio, avatar_url, role, onboarding_complete, onboarding_step) VALUES ($1,$2,$3,$4,$5,'student',true,3)", [u.id, u.username, u.name, "Fictional local demo account for testing getpidief.", seedAvatarUrl(i)]);
     await client.query("INSERT INTO auth_accounts (user_id, type, provider, provider_account_id) VALUES ($1,'credentials','credentials',$2)", [u.id, hash]);
   }
 }
@@ -96,6 +100,7 @@ async function main() {
       await client.query("BEGIN");
       await client.query("SELECT pg_advisory_xact_lock(734325190)");
       console.log("Creating or checking 50 local demo accounts. This can take a little while...");
+      await writeAvatars(USER_COUNT);
       await seedUsers(client);
       const tagIds = await seedTags(client);
       const sizes = await writeGuides();

@@ -3,6 +3,15 @@ import { users, follows, userBadges, badges, userInterests, tags } from "@/lib/d
 import { eq, and, desc, sql, not } from "drizzle-orm";
 import { KEYS, invalidateCache } from "@/lib/redis/client";
 
+// Apply before pagination and counts. Callers must explicitly supply the viewer;
+// null means an intentionally anonymous/public read.
+function visibleToViewer(viewerId: string | null, accountId: ReturnType<typeof sql>) {
+  if (!viewerId) return undefined;
+  return sql`not exists (select 1 from user_blocks b where
+    (b.blocker_id = ${viewerId}::uuid and b.blocked_id = ${accountId}) or
+    (b.blocked_id = ${viewerId}::uuid and b.blocker_id = ${accountId}))`;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // USERS REPOSITORY
 // ─────────────────────────────────────────────────────────────────────────────
@@ -53,7 +62,8 @@ export const usersRepository = {
       where: and(
         eq(users.username, username),
         eq(users.status, "active"),
-        sql`${users.deletedAt} IS NULL`
+        sql`${users.deletedAt} IS NULL`,
+        requestingUserId ? sql`not exists (select 1 from user_blocks b where (b.blocker_id = ${requestingUserId}::uuid and b.blocked_id = ${users.id}) or (b.blocked_id = ${requestingUserId}::uuid and b.blocker_id = ${users.id}))` : undefined
       ),
       columns: {
         id: true, username: true, displayName: true, bio: true,
@@ -128,9 +138,9 @@ export const usersRepository = {
 
   async getFollowers(
     userId: string,
-    options: { page?: number; limit?: number } = {}
+    options: { viewerId: string | null; page?: number; limit?: number }
   ) {
-    const { page = 1, limit = 24 } = options;
+    const { viewerId, page = 1, limit = 24 } = options;
     const offset = (page - 1) * limit;
 
     const [rows, countResult] = await Promise.all([
@@ -153,7 +163,9 @@ export const usersRepository = {
           and(
             eq(follows.followingId, userId),
             eq(users.status, "active"),
-            sql`${users.deletedAt} IS NULL`
+            sql`${users.deletedAt} IS NULL`,
+            visibleToViewer(viewerId, sql`${users.id}`),
+            visibleToViewer(viewerId, sql`${userId}::uuid`)
           )
         )
         .orderBy(desc(follows.createdAt), desc(follows.id))
@@ -163,7 +175,7 @@ export const usersRepository = {
         .select({ count: sql<number>`count(*)` })
         .from(follows)
         .innerJoin(users, eq(users.id, follows.followerId))
-        .where(and(eq(follows.followingId, userId), eq(users.status, "active"), sql`${users.deletedAt} IS NULL`)),
+        .where(and(eq(follows.followingId, userId), eq(users.status, "active"), sql`${users.deletedAt} IS NULL`, visibleToViewer(viewerId, sql`${users.id}`), visibleToViewer(viewerId, sql`${userId}::uuid`))),
     ]);
 
     return {
@@ -178,9 +190,9 @@ export const usersRepository = {
 
   async getFollowing(
     userId: string,
-    options: { page?: number; limit?: number } = {}
+    options: { viewerId: string | null; page?: number; limit?: number }
   ) {
-    const { page = 1, limit = 24 } = options;
+    const { viewerId, page = 1, limit = 24 } = options;
     const offset = (page - 1) * limit;
 
     const [rows, countResult] = await Promise.all([
@@ -203,7 +215,9 @@ export const usersRepository = {
           and(
             eq(follows.followerId, userId),
             eq(users.status, "active"),
-            sql`${users.deletedAt} IS NULL`
+            sql`${users.deletedAt} IS NULL`,
+            visibleToViewer(viewerId, sql`${users.id}`),
+            visibleToViewer(viewerId, sql`${userId}::uuid`)
           )
         )
         .orderBy(desc(follows.createdAt), desc(follows.id))
@@ -213,7 +227,7 @@ export const usersRepository = {
         .select({ count: sql<number>`count(*)` })
         .from(follows)
         .innerJoin(users, eq(users.id, follows.followingId))
-        .where(and(eq(follows.followerId, userId), eq(users.status, "active"), sql`${users.deletedAt} IS NULL`)),
+        .where(and(eq(follows.followerId, userId), eq(users.status, "active"), sql`${users.deletedAt} IS NULL`, visibleToViewer(viewerId, sql`${users.id}`), visibleToViewer(viewerId, sql`${userId}::uuid`))),
     ]);
 
     return {
@@ -228,28 +242,33 @@ export const usersRepository = {
 
   async follow(followerId: string, followingId: string): Promise<{ changed: boolean }> {
     if (followerId === followingId) throw new Error("INVALID_FOLLOW");
-    const result = await db.execute<{ eligible: boolean; changed: boolean }>(sql`
-      WITH locked AS MATERIALIZED (
+    // Pair locks are acquired in the same order as blocking. Check blocks in a
+    // separate statement after the locks: a pre-lock statement snapshot can be stale.
+    const outcome = await db.transaction(async tx => {
+      const locked = await tx.execute<{ id: string; status: string; deleted_at: string | null }>(sql`
         SELECT id, status, deleted_at FROM users
         WHERE id IN (${followerId}::uuid, ${followingId}::uuid) ORDER BY id FOR UPDATE
-      ), eligible AS MATERIALIZED (
-        SELECT id FROM locked WHERE status = 'active' AND deleted_at IS NULL
-      ), inserted AS (
-        INSERT INTO follows (follower_id, following_id)
-        SELECT ${followerId}, ${followingId}
-        WHERE (SELECT count(*) FROM eligible) = 2
-        ON CONFLICT (follower_id, following_id) DO NOTHING RETURNING id
-      ), updated AS (
-        UPDATE users SET
-          following_count = following_count + CASE WHEN id = ${followerId}::uuid THEN 1 ELSE 0 END,
-          follower_count = follower_count + CASE WHEN id = ${followingId}::uuid THEN 1 ELSE 0 END
-        WHERE id IN (SELECT id FROM locked) AND EXISTS (SELECT 1 FROM inserted) RETURNING id
-      )
-      SELECT (SELECT count(*) FROM eligible) = 2 AS eligible,
-             EXISTS(SELECT 1 FROM updated) AS changed
-    `);
-    const outcome = result.rows[0];
-    if (!outcome?.eligible) throw new Error("NOT_FOUND");
+      `);
+      if (locked.rows.length !== 2 || locked.rows.some(u => u.status !== "active" || u.deleted_at !== null)) throw new Error("NOT_FOUND");
+      const blocked = await tx.execute<{ blocked: boolean }>(sql`
+        SELECT EXISTS (SELECT 1 FROM user_blocks WHERE
+          (blocker_id = ${followerId}::uuid AND blocked_id = ${followingId}::uuid) OR
+          (blocker_id = ${followingId}::uuid AND blocked_id = ${followerId}::uuid)) AS blocked
+      `);
+      if (blocked.rows[0]?.blocked) throw new Error("NOT_FOUND");
+      const inserted = await tx.execute<{ changed: boolean }>(sql`
+        WITH inserted AS (
+          INSERT INTO follows (follower_id, following_id) VALUES (${followerId}::uuid, ${followingId}::uuid)
+          ON CONFLICT (follower_id, following_id) DO NOTHING RETURNING id
+        ), updated AS (
+          UPDATE users SET
+            following_count = following_count + CASE WHEN id = ${followerId}::uuid THEN 1 ELSE 0 END,
+            follower_count = follower_count + CASE WHEN id = ${followingId}::uuid THEN 1 ELSE 0 END
+          WHERE id IN (${followerId}::uuid, ${followingId}::uuid) AND EXISTS (SELECT 1 FROM inserted) RETURNING id
+        ) SELECT EXISTS(SELECT 1 FROM updated) AS changed
+      `);
+      return { changed: inserted.rows[0]?.changed === true };
+    });
     if (outcome.changed) await invalidateCache(KEYS.followerCount(followingId), KEYS.userFollowingList(followerId)).catch(() => {});
     return { changed: outcome.changed };
   },
@@ -274,7 +293,8 @@ export const usersRepository = {
 
   // ── Get follow suggestions for a user ─────────────────────────────────────
 
-  async getFollowSuggestions(userId: string, limit: number = 6) {
+  async getFollowSuggestions(userId: string, limit: number = 6, offset: number = 0) {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0 || offset > 2400000) throw new Error("INVALID_PARAMS");
     return db.execute<{
       id: string; username: string; display_name: string;
       avatar_url: string | null; verification_status: string;
@@ -287,19 +307,25 @@ export const usersRepository = {
         i.name AS institution_name
       FROM users u
       LEFT JOIN institutions i ON i.id = u.institution_id
+      LEFT JOIN (
+        SELECT candidate.user_id, count(*) AS shared_count
+        FROM user_interests viewer
+        JOIN user_interests candidate ON candidate.tag_id = viewer.tag_id
+        WHERE viewer.user_id = ${userId}::uuid
+        GROUP BY candidate.user_id
+      ) overlap ON overlap.user_id = u.id
       WHERE u.status = 'active'
         AND u.deleted_at IS NULL
         AND u.id != ${userId}
-        -- Same institution
-        AND u.institution_id = (SELECT institution_id FROM users WHERE id = ${userId})
-        -- Not already following
-        AND u.id NOT IN (
-          SELECT following_id FROM follows WHERE follower_id = ${userId}
-        )
-        -- Has at least 1 document
-        AND u.document_count > 0
-      ORDER BY u.reputation_score DESC
-      LIMIT ${limit}
+        AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE b.blocker_id = ${userId}::uuid AND b.blocked_id = u.id)
+        AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE b.blocked_id = ${userId}::uuid AND b.blocker_id = u.id)
+        AND u.onboarding_complete = true
+        AND NOT EXISTS (SELECT 1 FROM follows WHERE follower_id = ${userId}::uuid AND following_id = u.id)
+      ORDER BY
+        CASE WHEN u.institution_id IS NOT NULL AND u.institution_id = (SELECT institution_id FROM users WHERE id = ${userId}::uuid) THEN 1 ELSE 0 END DESC,
+        COALESCE(overlap.shared_count, 0) DESC,
+        u.follower_count DESC, u.id ASC
+      LIMIT ${limit} OFFSET ${offset}
     `);
   },
 
@@ -332,14 +358,14 @@ export const usersRepository = {
 
   async updateInterests(userId: string, tagIds: string[]): Promise<void> {
     await db.transaction(async (tx) => {
-      // Delete all existing interests
+      // Serialize with onboarding/settings replacements, even before a unique
+      // constraint exists on user_interests.
+      const [profile] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("update");
+      if (!profile) throw new Error("User not found");
       await tx.delete(userInterests).where(eq(userInterests.userId, userId));
-
-      // Insert new interests
-      if (tagIds.length > 0) {
-        await tx.insert(userInterests).values(
-          tagIds.map((tagId) => ({ userId, tagId }))
-        );
+      const uniqueTagIds = [...new Set(tagIds)];
+      if (uniqueTagIds.length > 0) {
+        await tx.insert(userInterests).values(uniqueTagIds.map((tagId) => ({ userId, tagId })));
       }
     });
 

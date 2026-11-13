@@ -13,3 +13,16 @@ export function Brand({ light = false }: { light?: boolean }) {
     </Link>
   );
 }
+
+/** Compact, single-colour mark for navigation where the full wordmark isn't needed. */
+export function BrandMark() {
+  return (
+    <Link href="/" className={styles.brand} aria-label="getpidief home">
+      <svg width="36" height="36" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect x="2" y="4" width="20" height="24" rx="4" fill="currentColor" opacity=".48" />
+        <rect x="10" y="8" width="20" height="20" rx="4" fill="currentColor" />
+        <circle cx="20" cy="18" r="4" fill="#f5f6f1" />
+      </svg>
+    </Link>
+  );
+}

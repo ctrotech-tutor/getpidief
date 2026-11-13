@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { Suspense } from "react";
+import { FeedLoading } from "@/components/features/feed/FeedLoading";
 const m = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/lib/auth/auth", () => ({ auth: m.auth }));
 vi.mock("@/app/(app)/layout", () => ({ default: () => null }));
@@ -19,7 +21,9 @@ describe("root experience", () => {
     m.auth.mockResolvedValueOnce({ user: { id: "user" } });
     const result = await RootPage({ searchParams });
     expect(result.type).toBe(AppLayout);
-    expect(result.props.children.type).toBe(Feed);
-    expect(result.props.children.props.searchParams).toBe(searchParams);
+    expect(result.props.children.type).toBe(Suspense);
+    expect(result.props.children.props.fallback.type).toBe(FeedLoading);
+    expect(result.props.children.props.children.type).toBe(Feed);
+    expect(result.props.children.props.children.props.searchParams).toBe(searchParams);
   });
 });

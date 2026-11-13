@@ -1,10 +1,12 @@
 import { NextRequest } from "next/server";
+import { visibleNotificationTo } from "@/lib/notifications/visibility";
+import { notificationsRepository } from "@/lib/db/repositories/notifications";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
-import { notifications } from "@/lib/db/schema";
+import { notifications, notificationTypeEnum } from "@/lib/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { redis, KEYS, invalidateCache } from "@/lib/redis/client";
-import { apiSuccess, apiUnauthorized, handleApiError } from "@/lib/utils/api";
+import { KEYS, invalidateCache } from "@/lib/redis/client";
+import { apiSuccess, apiUnauthorized, apiError, handleApiError } from "@/lib/utils/api";
 
 export async function GET(req: NextRequest) {
   try {
@@ -15,32 +17,20 @@ export async function GET(req: NextRequest) {
     const userId    = session.user.id;
 
     if (countOnly) {
-      // Fast path: check Redis first
-      const cached = redis ? await redis.get<number>(KEYS.unreadNotifCount(userId)) : null;
-      if (cached != null) return apiSuccess({ unreadCount: cached });
-
-      const result = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(notifications)
-        .where(and(eq(notifications.recipientId, userId), eq(notifications.isRead, false)));
-
-      const count = result[0]?.count ?? 0;
-      if (redis) {
-        try {
-          await redis.setex(KEYS.unreadNotifCount(userId), 30, count);
-        } catch (error) {
-          console.warn("[Notifications] Failed to set unread count:", error);
-        }
-      }
-      return apiSuccess({ unreadCount: count });
+      return apiSuccess({ unreadCount: await notificationsRepository.getUnreadCount(userId) });
     }
 
-    const page  = parseInt(req.nextUrl.searchParams.get("page")  ?? "1",  10);
-    const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "30", 10);
-    const type  = req.nextUrl.searchParams.get("type");
-    const offset= (page - 1) * limit;
+    const rawPage = req.nextUrl.searchParams.get("page") ?? "1";
+    const rawLimit = req.nextUrl.searchParams.get("limit") ?? "30";
+    const type = req.nextUrl.searchParams.get("type");
+    // Bound work before issuing either the page query or the exact count.
+    if (!/^[1-9]\d*$/.test(rawPage) || !/^[1-9]\d*$/.test(rawLimit)) return apiError("INVALID_PARAMS", "Invalid notification pagination.");
+    const page = Number(rawPage), limit = Number(rawLimit);
+    const offset = (page - 1) * limit;
+    if (!Number.isSafeInteger(page) || !Number.isSafeInteger(limit) || limit > 100 || !Number.isSafeInteger(offset) || offset > 100_000) return apiError("INVALID_PARAMS", "Invalid notification pagination.");
+    if (type && type !== "all" && !notificationTypeEnum.enumValues.includes(type as typeof notificationTypeEnum.enumValues[number])) return apiError("INVALID_PARAMS", "Invalid notification type.");
 
-    const conditions = [eq(notifications.recipientId, userId)];
+    const conditions = [eq(notifications.recipientId, userId), visibleNotificationTo(userId)];
     if (type && type !== "all") {
       conditions.push(eq(notifications.type, type as typeof notifications.$inferSelect["type"]));
     }
@@ -56,7 +46,7 @@ export async function GET(req: NextRequest) {
         },
       }),
       db
-        .select({ count: sql<number>`count(*)` })
+        .select({ count: sql<number>`count(*)::int` })
         .from(notifications)
         .where(and(...conditions)),
     ]);
@@ -84,7 +74,7 @@ export async function PATCH(req: NextRequest) {
       await db
         .update(notifications)
         .set({ isRead: true, readAt: new Date() })
-        .where(and(eq(notifications.recipientId, userId), eq(notifications.isRead, false)));
+        .where(and(eq(notifications.recipientId, userId), eq(notifications.isRead, false), visibleNotificationTo(userId)));
 
       await invalidateCache(KEYS.unreadNotifCount(userId));
       return apiSuccess({ marked: true });
@@ -97,21 +87,12 @@ export async function PATCH(req: NextRequest) {
         .where(
           and(
             eq(notifications.id, body.notificationId),
-            eq(notifications.recipientId, userId)
+            eq(notifications.recipientId, userId),
+            visibleNotificationTo(userId)
           )
         );
 
-      // Decrement Redis counter
-      const current = redis ? await redis.get<number>(KEYS.unreadNotifCount(userId)) : null;
-      if (current != null && current > 0) {
-        if (redis) {
-          try {
-            await redis.setex(KEYS.unreadNotifCount(userId), 30, current - 1);
-          } catch (error) {
-            console.warn("[Notifications] Failed to decrement unread count:", error);
-          }
-        }
-      }
+      await invalidateCache(KEYS.unreadNotifCount(userId));
 
       return apiSuccess({ marked: true });
     }

@@ -1,14 +1,26 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToPipeableStream } from "react-dom/server";
+import { Writable } from "node:stream";
+import type { ReactNode } from "react";
+
+// Wait for Suspense boundaries instead of asserting against their placeholders.
+function renderToCompletedMarkup(element: ReactNode): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let output = "";
+    const destination = new Writable({ write(chunk, _encoding, callback) { output += chunk.toString(); callback(); } });
+    destination.on("finish", () => resolve(output)); destination.on("error", reject);
+    const stream = renderToPipeableStream(element, { onAllReady() { stream.pipe(destination); }, onError: reject });
+  });
+}
 
 const url = process.env.TEST_DATABASE_URL;
 const enabled = !!url && process.env.TEST_DATABASE_WRITE === "yes";
 const m = vi.hoisted(() => ({ auth: vi.fn(), revalidate: vi.fn() }));
 vi.mock("@/lib/auth/auth", () => ({ auth: m.auth }));
 vi.mock("next/cache", () => ({ revalidatePath: m.revalidate }));
-vi.mock("next/navigation", () => ({ redirect: (path: string) => { throw new Error(`REDIRECT:${path}`); }, notFound: () => { throw new Error("NOT_FOUND"); } }));
+vi.mock("next/navigation", () => ({ redirect: (path: string) => { throw new Error(`REDIRECT:${path}`); }, notFound: () => { throw new Error("NOT_FOUND"); }, useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/redis/client", () => ({ redisRateLimit: {}, rateLimiters: { feedPost: { limit: async () => ({ success: true }) }, comment: { limit: async () => ({ success: true }) }, report: { limit: async () => ({ success: true }) } } }));
 
 describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
@@ -48,30 +60,232 @@ describe.skipIf(!enabled)("feed with disposable PostgreSQL", () => {
     expect(rows).toHaveLength(1); postId = rows[0].id;
     as(ids.reader); await actions.reply(form({ postId, body: "Practise and discuss." }));
     replyId = (await db.execute<{id: string}>(sql`SELECT id FROM post_replies WHERE post_id = ${postId}::uuid`)).rows[0].id;
-    expect(await home({ searchParams: Promise.resolve({}) })).toBeTruthy();
+    expect(await home({ searchParams: Promise.resolve({ view: "latest" }) })).toBeTruthy();
     expect(await discussion({ params: Promise.resolve({ id: postId }), searchParams: Promise.resolve({}) })).toBeTruthy();
+  });
+  it("filters blocked post authors in both directions and rejects direct post access and interactions", async () => {
+    await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${ids.reader}::uuid, ${ids.author}::uuid)`);
+    for (const [viewer, target] of [[ids.reader, ids.author], [ids.author, ids.reader]]) {
+      as(viewer);
+      const targetPost = target === ids.author ? postId : randomUUID();
+      if (target === ids.reader) await db.execute(sql`INSERT INTO posts (id, author_id, kind, body) VALUES (${targetPost}::uuid, ${ids.reader}::uuid, 'thought', 'Blocked reader content')`);
+      const markup = await renderToCompletedMarkup(await home({ searchParams: Promise.resolve({ view: "latest" }) }));
+      expect(markup).not.toContain(target === ids.author ? "What is a useful way to learn?" : "Blocked reader content");
+      await expect(discussion({ params: Promise.resolve({ id: targetPost }), searchParams: Promise.resolve({}) })).rejects.toThrow("NOT_FOUND");
+      await expect(actions.toggleLike(form({ postId: targetPost, active: "false" }))).rejects.toThrow("Post unavailable");
+      if (target === ids.reader) await db.execute(sql`DELETE FROM posts WHERE id = ${targetPost}::uuid`);
+    }
+    await db.execute(sql`DELETE FROM user_blocks WHERE blocker_id = ${ids.reader}::uuid AND blocked_id = ${ids.author}::uuid`);
+  });
+  it("does not let a viewer report a blocked person's reply through a direct ID", async () => {
+    const otherPost = randomUUID(), otherReply = randomUUID();
+    await db.execute(sql`INSERT INTO posts (id, author_id, kind, body) VALUES (${otherPost}::uuid, ${ids.moderator}::uuid, 'thought', 'Another post')`);
+    await db.execute(sql`INSERT INTO post_replies (id, post_id, author_id, body) VALUES (${otherReply}::uuid, ${otherPost}::uuid, ${ids.author}::uuid, 'A blocked reply')`);
+    await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${ids.reader}::uuid, ${ids.author}::uuid)`);
+    as(ids.reader);
+    await expect(actions.reportFeedContent(form({ postId: otherPost, replyId: otherReply, reason: "spam" }))).rejects.toThrow("Reply unavailable");
+    await db.execute(sql`DELETE FROM user_blocks WHERE blocker_id = ${ids.reader}::uuid AND blocked_id = ${ids.author}::uuid`);
+    await db.execute(sql`DELETE FROM posts WHERE id = ${otherPost}::uuid`);
   });
   it("paginates posts that share a timestamp without losing or duplicating rows", async () => {
     for (let i = 0; i < 24; i++) await db.execute(sql`INSERT INTO posts (author_id, kind, body, created_at) VALUES (${ids.author}::uuid, 'thought', ${`Cursor fixture ${i}`}, '2026-01-01 00:00:00.123456+00'::timestamptz)`);
     as(ids.reader);
-    const first = renderToStaticMarkup(await home({ searchParams: Promise.resolve({}) }));
+    const first = await renderToCompletedMarkup(await home({ searchParams: Promise.resolve({ view: "latest" }) }));
     const cursor = first.match(/before=([0-9a-f-]{36})/i)?.[1];
     expect(cursor).toBeTruthy();
-    const second = renderToStaticMarkup(await home({ searchParams: Promise.resolve({ before: cursor }) }));
+    const second = await renderToCompletedMarkup(await home({ searchParams: Promise.resolve({ before: cursor }) }));
     const names = [...first.matchAll(/Cursor fixture (\d+)/g), ...second.matchAll(/Cursor fixture (\d+)/g)].map(m => Number(m[1]));
     expect(names).toHaveLength(24);
     expect(new Set(names).size).toBe(24);
   });
+  it("continues pagination from the exact event timestamp after the cursor is deleted", async () => {
+    const { readFeed } = await import("@/lib/feed/read");
+    const created: string[] = [];
+    try {
+      for (let i = 0; i < 25; i++) {
+        const result = await db.execute<{ id: string }>(sql`INSERT INTO posts (author_id, kind, body, created_at) VALUES (${ids.author}::uuid, 'thought', ${`Deletion cursor ${i}`}, '2099-01-01 00:00:00.123456+00'::timestamptz) RETURNING id`);
+        created.push(result.rows[0].id);
+      }
+      const first = await readFeed(ids.reader, "latest");
+      expect(first.hasMore).toBe(true);
+      const cursor = first.items.at(-1)!;
+      expect(cursor.eventAt).toBe("2099-01-01T00:00:00.123456Z");
+      await db.execute(sql`DELETE FROM posts WHERE id = ${cursor.id}::uuid`);
+      const second = await readFeed(ids.reader, "latest", cursor.eventId, cursor.eventKind, cursor.eventAt);
+      const found = [...first.items, ...second.items].filter(item => item.body.startsWith("Deletion cursor"));
+      expect(found).toHaveLength(25);
+      expect(new Set(found.map(item => item.eventId)).size).toBe(25);
+    } finally {
+      if (created.length) await db.execute(sql`DELETE FROM posts WHERE id IN (${sql.join(created.map(id => sql`${id}::uuid`), sql`, `)})`);
+    }
+  });
+  it("filters ineligible recent events before limiting each stream and keeps precise Following cursors", async () => {
+    const { readFeed } = await import("@/lib/feed/read");
+    const good: string[] = Array.from({ length: 25 }, () => randomUUID());
+    const blocked: string[] = Array.from({ length: 30 }, () => randomUUID());
+    try {
+      await db.execute(sql`INSERT INTO follows (follower_id, following_id) VALUES (${ids.reader}::uuid, ${ids.author}::uuid), (${ids.reader}::uuid, ${ids.moderator}::uuid) ON CONFLICT DO NOTHING`);
+      await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${ids.reader}::uuid, ${ids.author}::uuid)`);
+      for (const id of blocked) await db.execute(sql`INSERT INTO posts (id, author_id, kind, body, created_at) VALUES (${id}::uuid, ${ids.author}::uuid, 'thought', 'Hidden top event', '2099-01-01'::timestamptz)`);
+      for (const id of good) await db.execute(sql`INSERT INTO posts (id, author_id, kind, body, created_at) VALUES (${id}::uuid, ${ids.moderator}::uuid, 'thought', 'Eligible event', '2098-01-01'::timestamptz)`);
+      // A followed reposter does not make a blocked original visible, nor does
+      // an allowed original make a blocked reposter visible.
+      await db.execute(sql`INSERT INTO post_reposts (post_id, user_id, created_at) VALUES (${blocked[0]}::uuid, ${ids.moderator}::uuid, '2099-01-02'::timestamptz), (${good[0]}::uuid, ${ids.author}::uuid, '2099-01-02'::timestamptz)`);
+      const first = await readFeed(ids.reader, "following");
+      expect(first.items).toHaveLength(20); expect(first.hasMore).toBe(true);
+      expect(first.items.every(item => good.includes(item.id) && item.eventKind === "post")).toBe(true);
+      const cursor = first.items.at(-1)!;
+      const second = await readFeed(ids.reader, "following", cursor.eventId, cursor.eventKind, cursor.eventAt);
+      const returned = [...first.items, ...second.items].filter(item => good.includes(item.id));
+      expect(returned).toHaveLength(25); expect(new Set(returned.map(item => item.id)).size).toBe(25);
+      const refresh = await readFeed(ids.reader, "following", undefined, undefined, undefined, [{ kind: "post", id: blocked[0] }, { kind: "post", id: good[0] }]);
+      expect(refresh.items.map(item => item.id)).toEqual([good[0]]);
+    } finally {
+      await db.execute(sql`DELETE FROM user_blocks WHERE blocker_id = ${ids.reader}::uuid AND blocked_id = ${ids.author}::uuid`);
+      await db.execute(sql`DELETE FROM follows WHERE follower_id = ${ids.reader}::uuid AND following_id IN (${ids.author}::uuid, ${ids.moderator}::uuid)`);
+      await db.execute(sql`DELETE FROM posts WHERE id IN (${sql.join([...good, ...blocked].map(id => sql`${id}::uuid`), sql`, `)})`);
+    }
+  });
+  it("rechecks loaded events against current interactions and visibility", async () => {
+    const { readFeed } = await import("@/lib/feed/read");
+    const otherPost = randomUUID();
+    try {
+      await db.execute(sql`INSERT INTO posts (id, author_id, kind, body) VALUES (${otherPost}::uuid, ${ids.moderator}::uuid, 'thought', 'Still visible')`);
+      await db.execute(sql`INSERT INTO post_likes (post_id, user_id) VALUES (${postId}::uuid, ${ids.reader}::uuid) ON CONFLICT DO NOTHING`);
+      const keys = [{ id: postId, kind: "post" as const }, { id: otherPost, kind: "post" as const }];
+      const refreshed = await readFeed(ids.reader, "latest", undefined, undefined, undefined, keys);
+      expect(refreshed.items.find(item => item.id === postId)?.liked).toBe(true);
+      expect(refreshed.items.map(item => item.id)).toContain(otherPost);
+      await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${ids.reader}::uuid, ${ids.author}::uuid)`);
+      const blocked = await readFeed(ids.reader, "latest", undefined, undefined, undefined, keys);
+      expect(blocked.items.map(item => item.id)).not.toContain(postId);
+      expect(blocked.items.map(item => item.id)).toContain(otherPost);
+    } finally {
+      await db.execute(sql`DELETE FROM user_blocks WHERE blocker_id = ${ids.reader}::uuid AND blocked_id = ${ids.author}::uuid`);
+      await db.execute(sql`DELETE FROM post_likes WHERE post_id = ${postId}::uuid AND user_id = ${ids.reader}::uuid`);
+      await db.execute(sql`DELETE FROM posts WHERE id = ${otherPost}::uuid`);
+    }
+  });
+  it("builds a bounded discovery pool without blocked or inactive authors, and rechecks visibility on delivery", async () => {
+    const { discoveryCandidates } = await import("@/lib/feed/discovery");
+    const { readFeed } = await import("@/lib/feed/read");
+    const other = randomUUID();
+    try {
+      await db.execute(sql`INSERT INTO posts (id, author_id, kind, body) VALUES (${other}::uuid, ${ids.moderator}::uuid, 'thought', 'Visible discovery')`);
+      await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${ids.reader}::uuid, ${ids.author}::uuid)`);
+      const pool = await discoveryCandidates(ids.reader);
+      expect(pool.length).toBeLessThanOrEqual(120);
+      expect(pool.some(candidate => candidate.id === postId)).toBe(false);
+      expect(pool.some(candidate => candidate.id === other)).toBe(true);
+      await db.execute(sql`UPDATE posts SET deleted_at = now() WHERE id = ${other}::uuid`);
+      const delivered = await readFeed(ids.reader, "latest", undefined, undefined, undefined, [{ id: other, kind: "post" }]);
+      expect(delivered.items).toHaveLength(0);
+      const markup = await renderToCompletedMarkup(await home({ searchParams: Promise.resolve({}) }));
+      expect(markup).toContain("For you"); expect(markup).not.toContain("Visible discovery");
+      expect(markup).not.toContain(">Discover</a>");
+    } finally {
+      await db.execute(sql`DELETE FROM user_blocks WHERE blocker_id = ${ids.reader}::uuid AND blocked_id = ${ids.author}::uuid`);
+      await db.execute(sql`DELETE FROM posts WHERE id = ${other}::uuid`);
+    }
+  });
   it("shows only followed authors in the following feed and preserves the view when paging", async () => {
     as(ids.reader);
-    const empty = renderToStaticMarkup(await home({ searchParams: Promise.resolve({ view: "following" }) }));
+    const empty = await renderToCompletedMarkup(await home({ searchParams: Promise.resolve({ view: "following" }) }));
     expect(empty).toContain("Your circle starts here.");
     expect(empty).not.toContain("Cursor fixture");
     await db.execute(sql`INSERT INTO follows (follower_id, following_id) VALUES (${ids.reader}::uuid, ${ids.author}::uuid)`);
-    const first = renderToStaticMarkup(await home({ searchParams: Promise.resolve({ view: "following" }) }));
+    const first = await renderToCompletedMarkup(await home({ searchParams: Promise.resolve({ view: "following" }) }));
     expect(first).toContain("Cursor fixture");
     expect(first).toContain("view=following&amp;before=");
     await db.execute(sql`DELETE FROM follows WHERE follower_id = ${ids.reader}::uuid AND following_id = ${ids.author}::uuid`);
+  });
+  it("shows real followed accounts in the right rail, excludes blocked and inactive users, and updates after unfollow", async () => {
+    const person = randomUUID(), hidden = randomUUID();
+    try {
+      for (const [id, name] of [[person, "Rail Person"], [hidden, "Rail Hidden"]]) {
+        await db.execute(sql`INSERT INTO auth_users (id, email) VALUES (${id}::uuid, ${id + "@example.test"})`);
+        await db.execute(sql`INSERT INTO users (id, username, display_name, role, onboarding_complete) VALUES (${id}::uuid, ${"rail" + id.replaceAll("-", "")}, ${name}, 'student'::user_role, true)`);
+      }
+      as(ids.reader);
+      await db.execute(sql`INSERT INTO follows (follower_id, following_id) VALUES (${ids.reader}::uuid, ${person}::uuid), (${ids.reader}::uuid, ${hidden}::uuid)`);
+      await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${hidden}::uuid, ${ids.reader}::uuid)`);
+      const markup = await renderToCompletedMarkup(await home({ searchParams: Promise.resolve({ view: "latest" }) }));
+      const rail = markup.split('aria-labelledby="following-accounts-title"')[1].split('</section>')[0];
+      expect(rail).toContain('Rail Person');
+      expect(rail).toContain('/u/rail' + person.replaceAll('-', ''));
+      expect(rail).toContain('/dashboard/following');
+      expect(rail).not.toContain('Rail Hidden');
+      expect(markup.indexOf('following-accounts-title')).toBeLessThan(markup.indexOf('follow-suggestions-title'));
+      await db.execute(sql`DELETE FROM follows WHERE follower_id = ${ids.reader}::uuid AND following_id = ${person}::uuid`);
+      const empty = await renderToCompletedMarkup(await home({ searchParams: Promise.resolve({ view: "latest" }) }));
+      const emptyRail = empty.split('aria-labelledby="following-accounts-title"')[1].split('</section>')[0];
+      expect(emptyRail).toContain('not following anyone yet');
+      expect(emptyRail).not.toContain('Rail Person');
+      await db.execute(sql`DELETE FROM user_blocks WHERE blocker_id = ${hidden}::uuid AND blocked_id = ${ids.reader}::uuid`);
+      await db.execute(sql`UPDATE users SET status = 'suspended' WHERE id = ${hidden}::uuid`);
+      const inactive = await renderToCompletedMarkup(await home({ searchParams: Promise.resolve({ view: "latest" }) }));
+      expect(inactive.split('aria-labelledby="following-accounts-title"')[1].split('</section>')[0]).not.toContain('Rail Hidden');
+    } finally {
+      for (const id of [person, hidden]) await db.execute(sql`DELETE FROM auth_users WHERE id = ${id}::uuid`);
+    }
+  });
+  it("suggests eligible unfollowed people even without an institution and removes them after following", async () => {
+    const candidate = randomUUID(), hidden = randomUUID(), inactive = randomUUID();
+    try {
+      for (const [id, name] of [[candidate, "Suggested Person"], [hidden, "Blocked Suggestion"], [inactive, "Inactive Suggestion"]]) {
+        await db.execute(sql`INSERT INTO auth_users (id, email) VALUES (${id}::uuid, ${id + "@example.test"})`);
+        await db.execute(sql`INSERT INTO users (id, username, display_name, role, onboarding_complete, follower_count) VALUES (${id}::uuid, ${"sug" + id.replaceAll("-", "")}, ${name}, 'student'::user_role, true, 10000)`);
+      }
+      await db.execute(sql`UPDATE users SET status = 'suspended' WHERE id = ${inactive}::uuid`);
+      await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${hidden}::uuid, ${ids.reader}::uuid)`);
+      as(ids.reader);
+      const section = (html: string) => html.split('aria-labelledby="follow-suggestions-title"')[1].split('</section>')[0];
+      const markup = section(await renderToCompletedMarkup(await home({ searchParams: Promise.resolve({ view: "latest" }) })));
+      expect(markup).toContain('Suggested Person'); expect(markup).toContain('Follow Suggested Person');
+      expect(markup).toContain('href="/who-to-follow"'); expect(markup).toContain('See all');
+      expect(markup).not.toContain('Blocked Suggestion'); expect(markup).not.toContain('Inactive Suggestion');
+      expect(markup).not.toContain('reader');
+      await db.execute(sql`INSERT INTO follows (follower_id, following_id) VALUES (${ids.reader}::uuid, ${candidate}::uuid)`);
+      expect(section(await renderToCompletedMarkup(await home({ searchParams: Promise.resolve({ view: "latest" }) })))).not.toContain('Suggested Person');
+    } finally { for (const id of [candidate, hidden, inactive]) await db.execute(sql`DELETE FROM auth_users WHERE id = ${id}::uuid`); }
+  });
+  it("reposts idempotently, attributes the event, and allows undo", async () => {
+    as(ids.reader);
+    await Promise.all(Array.from({ length: 4 }, () => actions.setRepost(form({ postId, repost: "true" }))));
+    expect((await db.execute<{ n: number }>(sql`SELECT count(*)::int as n FROM post_reposts WHERE post_id = ${postId}::uuid AND user_id = ${ids.reader}::uuid`)).rows[0].n).toBe(1);
+    const feed = await renderToCompletedMarkup(await home({ searchParams: Promise.resolve({ view: "latest" }) }));
+    expect(feed).toContain("reader</a> reposted");
+    as(ids.moderator);
+    await db.execute(sql`INSERT INTO follows (follower_id, following_id) VALUES (${ids.moderator}::uuid, ${ids.reader}::uuid)`);
+    const following = await renderToCompletedMarkup(await home({ searchParams: Promise.resolve({ view: "following" }) }));
+    expect(following).toContain("reader</a> reposted");
+    expect(following).toContain("What is a useful way to learn?");
+    as(ids.reader);
+    await actions.setRepost(form({ postId, repost: "false" }));
+    await actions.setRepost(form({ postId, repost: "false" }));
+    expect((await db.execute<{ n: number }>(sql`SELECT count(*)::int as n FROM post_reposts WHERE post_id = ${postId}::uuid`)).rows[0].n).toBe(0);
+    await expect(actions.setRepost(form({ postId, repost: "invalid" }))).rejects.toThrow("Invalid repost");
+  });
+  it("paginates mixed posts and reposts sharing a timestamp", async () => {
+    const timestamp = "2026-02-01 00:00:00.123456+00";
+    for (let i = 0; i < 24; i++) {
+      const id = randomUUID();
+      await db.execute(sql`INSERT INTO posts (id, author_id, kind, body, created_at) VALUES (${id}::uuid, ${ids.author}::uuid, 'thought', ${`Mixed fixture ${i}`}, ${timestamp}::timestamptz)`);
+      await db.execute(sql`INSERT INTO post_reposts (post_id, user_id, created_at) VALUES (${id}::uuid, ${ids.reader}::uuid, ${timestamp}::timestamptz)`);
+    }
+    as(ids.moderator);
+    let params: { before?: string; beforeKind?: string } = {};
+    const seen: string[] = [];
+    for (let page = 0; page < 4; page++) {
+      const markup = await renderToCompletedMarkup(await home({ searchParams: Promise.resolve({ ...params, view: "latest" }) }));
+      seen.push(...Array.from(markup.matchAll(/Mixed fixture (\d+)/g), m => m[1]));
+      const match = markup.match(/before=([0-9a-f-]{36})(?:&amp;beforeKind=(repost))?/i);
+      if (!match) break;
+      params = { before: match[1], beforeKind: match[2] };
+    }
+    expect(seen).toHaveLength(48);
+    for (let i = 0; i < 24; i++) expect(seen.filter(x => x === String(i))).toHaveLength(2);
+    await db.execute(sql`DELETE FROM posts WHERE body LIKE 'Mixed fixture %' AND author_id = ${ids.author}::uuid`);
   });
   it("makes repeated likes and saves idempotent and blocks another user deleting the post", async () => {
     as(ids.reader);

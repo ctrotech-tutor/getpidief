@@ -2,6 +2,17 @@ import "@testing-library/jest-dom";
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeAll, afterAll, vi } from "vitest";
 import { server } from "./mocks/server";
+import { assertLocalTestDatabase } from "../scripts/lib/local-test-database";
+
+// Write tests must never accept URL query parameters: node-postgres can use
+// `?host=...` to override the apparently local authority. Loopback itself may
+// still be a tunnel, so operators must verify the target independently.
+if (process.env.TEST_DATABASE_WRITE === "yes") {
+  for (const url of [process.env.TEST_DATABASE_URL, process.env.TEST_SEED_DATABASE_URL]) {
+    if (url) assertLocalTestDatabase(url);
+  }
+}
+
 
 // ── MSW lifecycle ─────────────────────────────────────────────────────────────
 beforeAll(() => server.listen({ onUnhandledRequest: "warn" }));

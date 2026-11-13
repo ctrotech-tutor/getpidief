@@ -2,7 +2,8 @@ import { inngest } from "../../client";
 import { db } from "@/lib/db/client";
 import { notifications, users, pushSubscriptions, documents, comments, userActivityLog } from "@/lib/db/schema";
 import { eq, and, sql } from "drizzle-orm";
-import { redis, KEYS, incrCounter, invalidateCache } from "@/lib/redis/client";
+import { compileWeeklyDigest } from "@/lib/notifications/weekly-digest";
+import { insertVisibleNotification, canDeliverNotification } from "@/lib/notifications/delivery";
 import { pusherServer, CHANNELS, EVENTS } from "@/lib/pusher/server";
 import { getEmailClient } from "@/lib/email/client";
 import webpush from "web-push";
@@ -82,47 +83,26 @@ export const sendNotification = inngest.createFunction(
 
     // ── Step 2: Insert in-app notification ────────────────────────────────────
     const notifId = await step.run("insert-notification", async () => {
-      const [notif] = await db
-        .insert(notifications)
-        .values({
-          recipientId,
-          senderId: senderId ?? null,
-          type: type as typeof notifications.$inferInsert["type"],
-          entityType: (entityType ?? null) as typeof notifications.$inferInsert["entityType"],
-          entityId: entityId ?? null,
-          title,
-          message,
-          metadata: metadata ?? {},
-        })
-        .returning({ id: notifications.id });
-
-      return notif.id;
+      return insertVisibleNotification({
+        recipientId,
+        senderId: senderId ?? null,
+        type: type as typeof notifications.$inferInsert["type"],
+        entityType: (entityType ?? null) as typeof notifications.$inferInsert["entityType"],
+        entityId: entityId ?? null,
+        title,
+        message,
+        metadata: metadata ?? {},
+      });
     });
+    if (!notifId) return { skipped: true, reason: "Notification unavailable" };
 
     // ── Step 3: Deliver via Pusher (real-time in-app) ─────────────────────────
     if (prefs[`${typeKey}_inapp`] !== false) {
       await step.run("push-via-pusher", async () => {
-        await pusherServer.trigger(
-          CHANNELS.privateUser(recipientId),
-          EVENTS.NOTIFICATION,
-          {
-            id: notifId,
-            type,
-            title,
-            message,
-            metadata,
-            createdAt: new Date().toISOString(),
-          }
-        );
-
-        // Increment unread count in Redis
-        if (redis) {
-          try {
-            await incrCounter(KEYS.unreadNotifCount(recipientId));
-          } catch (error) {
-            console.warn("[Inngest] Failed to increment unread count:", error);
-          }
-        }
+        if (!await canDeliverNotification(recipientId, senderId)) return;
+        // A signal only: clients fetch the current, filtered count, rather than
+        // receiving potentially stale sender content from a queued event.
+        await pusherServer.trigger(CHANNELS.privateUser(recipientId), EVENTS.NOTIFICATION, {});
       });
     }
 
@@ -139,7 +119,7 @@ export const sendNotification = inngest.createFunction(
           metadata,
         });
 
-        if (!emailTemplate) return;
+        if (!emailTemplate || !await canDeliverNotification(recipientId, senderId)) return;
 
         await getEmailClient().send({
           from: "getpidief <notifications@getpidief.me>",
@@ -184,6 +164,7 @@ export const sendNotification = inngest.createFunction(
         await Promise.allSettled(
           subs.map(async (sub) => {
             try {
+              if (!await canDeliverNotification(recipientId, senderId)) return;
               await webpush.sendNotification(
                 {
                   endpoint: sub.endpoint,
@@ -211,7 +192,8 @@ export const sendNotification = inngest.createFunction(
       });
     }
 
-    return { notifId, delivered: { inapp: true, email: shouldEmail, push: shouldPush } };
+    // Provider delivery can be skipped or fail; preferences are not delivery receipts.
+    return { notifId, processed: true };
   }
 );
 
@@ -285,16 +267,7 @@ export const handleUserFollowed = inngest.createFunction(
     });
 
     await step.run("broadcast-follow-to-pulse", async () => {
-      await pusherServer.trigger(CHANNELS.EXPLORE, EVENTS.PULSE_ACTIVITY, {
-        type: "follow",
-        actorId: followerId,
-        actorName: follower.displayName ?? follower.username ?? "Scholar",
-        actorAvatarUrl: follower.avatarUrl ?? null,
-        institutionId: null,
-        description: "Started following a contributor",
-        entityId: followingId,
-        createdAt: new Date().toISOString(),
-      });
+      await pusherServer.trigger(CHANNELS.EXPLORE, EVENTS.PULSE_ACTIVITY, {});
     });
 
     return { followerId, followingId, processed: true };
@@ -419,16 +392,7 @@ export const handleCommentPosted = inngest.createFunction(
     });
 
     await step.run("broadcast-comment-to-pulse", async () => {
-      await pusherServer.trigger(CHANNELS.EXPLORE, EVENTS.PULSE_ACTIVITY, {
-        type: "milestone",
-        actorId: authorId,
-        actorName: author.displayName ?? author.username ?? "Scholar",
-        actorAvatarUrl: author.avatarUrl ?? null,
-        institutionId: null,
-        description: "Started a new discussion",
-        entityId: commentId,
-        createdAt: new Date().toISOString(),
-      });
+      await pusherServer.trigger(CHANNELS.EXPLORE, EVENTS.PULSE_ACTIVITY, {});
     });
 
     return { commentId, processed: true };
@@ -515,9 +479,9 @@ export const sendWeeklyDigest = inngest.createFunction(
   async ({ step }) => {
     // ── Step 1: Get users who want weekly digest ──────────────────────────────
     const eligibleUsers = await step.run("get-eligible-users", async () => {
-      const result = await db.execute<{ id: string; email: string }>(
+      const result = await db.execute<{ id: string }>(
         sql`
-          SELECT u.id, au.email
+          SELECT u.id
           FROM users u
           JOIN auth_users au ON au.id = u.id
           WHERE u.status = 'active'
@@ -536,7 +500,7 @@ export const sendWeeklyDigest = inngest.createFunction(
       "fan-out-digests",
       eligibleUsers.map((u) => ({
         name: "email/weekly-digest" as const,
-        data: { userId: u.id, email: u.email },
+        data: { userId: u.id },
       }))
     );
 
@@ -553,119 +517,39 @@ export const processWeeklyDigest = inngest.createFunction(
     triggers: [{ event: "email/weekly-digest" }],
   },
   async ({ event, step }) => {
-    const { userId, email } = event.data;
-    const { sql } = await import("drizzle-orm");
-
-    const digestData = await step.run("compile-digest", async () => {
-      // Get documents from followed contributors in last 7 days
-      const followedDocs = await db.execute<{
-        id: string;
-        title: string;
-        slug: string;
-        thumbnail_url: string | null;
-        author_name: string;
-        download_count: number;
-      }>(sql`
-        SELECT d.id, d.title, d.slug, d.thumbnail_url,
-               u.display_name AS author_name, d.download_count
-        FROM documents d
-        JOIN follows f ON f.following_id = d.author_id
-        JOIN users u ON u.id = d.author_id
-        WHERE f.follower_id = ${userId}
-          AND d.status = 'approved'
-          AND d.published_at >= NOW() - INTERVAL '7 days'
-        ORDER BY d.download_count DESC
-        LIMIT 5
-      `);
-
-      // Get trending documents in user's area of interest
-      const trendingDocs = await db.execute<{
-        id: string;
-        title: string;
-        slug: string;
-        thumbnail_url: string | null;
-        download_count: number;
-      }>(sql`
-        SELECT d.id, d.title, d.slug, d.thumbnail_url, d.download_count
-        FROM documents d
-        JOIN document_tags dt ON dt.document_id = d.id
-        JOIN user_interests ui ON ui.tag_id = dt.tag_id AND ui.user_id = ${userId}
-        WHERE d.status = 'approved'
-          AND d.published_at >= NOW() - INTERVAL '7 days'
-        GROUP BY d.id
-        ORDER BY d.download_count DESC
-        LIMIT 5
-      `);
-
-      return {
-        followedDocs: followedDocs.rows,
-        trendingDocs: trendingDocs.rows,
-      };
-    });
-
-    // Only send if there's something to show
-    if (
-      digestData.followedDocs.length === 0 &&
-      digestData.trendingDocs.length === 0
-    ) {
-      return { skipped: true, reason: "No content for digest" };
-    }
-
-    await step.run("send-digest-email", async () => {
+    const { userId } = event.data;
+    const sent = await step.run("send-digest-email", async () => {
+      // Inngest memoizes completed steps. Compile inside the delivery step so
+      // delayed jobs and retries don't reuse stale blocks, follows or opt-ins.
+      const digest = await compileWeeklyDigest(userId);
+      if (!digest || (!digest.followed.length && !digest.trending.length)) return false;
       const { WeeklyDigestEmail } = await import("@/components/emails/WeeklyDigestEmail");
-      
-      // Get user info for recipient name
-      const userInfo = await db.query.users.findFirst({
-        where: eq(users.id, userId),
-        columns: { displayName: true, username: true }
-      });
-      
-      // Transform data to match interfaces
-      const fromFollowed: DigestContributor[] = [];
-      const contributorMap = new Map<string, DigestContributor>();
-      
-      digestData.followedDocs.forEach(doc => {
-        const key = doc.author_name;
-        if (!contributorMap.has(key)) {
-          contributorMap.set(key, {
-            displayName: doc.author_name,
-            username: doc.author_name.toLowerCase().replace(/\s+/g, ''),
-            documents: []
-          });
+      const contributors = new Map<string, DigestContributor>();
+      for (const doc of digest.followed) {
+        let contributor = contributors.get(doc.author_id);
+        if (!contributor) {
+          contributor = { displayName: doc.author_name, username: doc.author_username, documents: [] };
+          contributors.set(doc.author_id, contributor);
         }
-        const contributor = contributorMap.get(key)!;
-        contributor.documents.push({
-          title: doc.title,
-          slug: doc.slug,
-          resourceType: 'document',
-          authorName: doc.author_name,
-          downloadCount: doc.download_count
-        });
-      });
-      
-      const trendingAtInstitution: DigestDocument[] = digestData.trendingDocs.map(doc => ({
-        title: doc.title,
-        slug: doc.slug,
-        resourceType: 'document',
-        authorName: 'Unknown Author', // trending docs query doesn't include author info
-        downloadCount: doc.download_count
+        contributor.documents.push({ title: doc.title, slug: doc.slug, resourceType: doc.resource_type, authorName: doc.author_name, downloadCount: doc.download_count });
+      }
+      const trendingAtInstitution: DigestDocument[] = digest.trending.map(doc => ({
+        title: doc.title, slug: doc.slug, resourceType: doc.resource_type,
+        authorName: doc.author_name, downloadCount: doc.download_count,
       }));
-      
       const digestHtml = await render(WeeklyDigestEmail({
-          recipientName: userInfo?.displayName || userInfo?.username || "Scholar",
-          weekLabel: "This week",
-          fromFollowed: Array.from(contributorMap.values()),
-          trendingAtInstitution,
-        }));
+        recipientName: digest.recipient.display_name || digest.recipient.username,
+        weekLabel: "This week", fromFollowed: Array.from(contributors.values()), trendingAtInstitution,
+      }));
       await getEmailClient().send({
         from: "getpidief <digest@getpidief.me>",
-        to: email,
+        to: digest.recipient.email,
         subject: "Your weekly academic digest 📚",
         html: digestHtml,
       });
+      return true;
     });
-
-    return { userId, sent: true };
+    return { userId, sent };
   }
 );
 

@@ -4,6 +4,13 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Buttons indicate an available action; component styles can override this for special cases. */
+@layer base {
+  :where(button:not(:disabled):not([aria-disabled="true"]), input:is([type="button"], [type="submit"], [type="reset"]):not(:disabled)) { cursor: pointer; }
+  :where(button:disabled, button[aria-disabled="true"], input:is([type="button"], [type="submit"], [type="reset"]):disabled) { cursor: not-allowed; }
+}
+
+
 @theme inline {
   /* Core System Colors */
   --color-background: var(--background);
@@ -96,6 +103,7 @@
 
 :root {
   --font-body: "Source Sans 3 Variable", system-ui, sans-serif;
+  --feed-background: #f5f6f1;
   --font-display: "Newsreader Variable", Georgia, serif;
   /* === Premium Light Theme === */
   
@@ -445,4 +453,10 @@
   .dark ::-webkit-scrollbar-thumb:hover {
     background: oklch(0.38 0.01 265);
   }
+}
+/* Match the page scrollbar track to the feed without changing other pages. */
+html:has([data-feed-shell]) { scrollbar-color: var(--border) var(--feed-background); }
+html:has([data-feed-shell])::-webkit-scrollbar-track { background: var(--feed-background); }
+@media (forced-colors: active) {
+  html:has([data-feed-shell]) { scrollbar-color: auto; }
 }

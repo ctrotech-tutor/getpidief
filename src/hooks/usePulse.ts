@@ -3,10 +3,16 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { getPusherClient } from "@/lib/pusher/server";
 import { CHANNELS, EVENTS } from "@/lib/pusher/server";
-import type { PusherPayloads } from "@/lib/pusher/server";
 
-export type PulseActivity = PusherPayloads[typeof EVENTS.PULSE_ACTIVITY];
-export type PulseDocument  = PusherPayloads[typeof EVENTS.DOCUMENT_PUBLISHED];
+export type PulseActivity = {
+  type: "upload" | "follow" | "milestone"; actorId: string; actorName: string;
+  actorAvatarUrl: string | null; institutionId: string | null; description: string;
+  entityId: string; createdAt: string;
+};
+export type PulseDocument = {
+  documentId: string; slug: string; title: string; authorId: string;
+  thumbnailUrl: string | null; categoryId: string | null; institutionId: string | null; publishedAt: string;
+};
 type PulseApiItem = {
   id: string;
   type: "activity" | "published";
@@ -41,20 +47,13 @@ export function usePulse({ maxItems = 20, onNewItem }: UsePulseOptions = {}) {
   const [memberCount] = useState(0);
   const channelRef = useRef<ReturnType<typeof getPusherClient>["subscribe"] extends (ch: string) => infer C ? C : never | null>(null);
 
-  const mergeItems = useCallback((incoming: PulseItem[]) => {
-    setItems((prev) => {
-      const merged = [...incoming, ...prev];
-      const unique = new Map<string, PulseItem>();
-      for (const item of merged) {
-        if (!unique.has(item.id)) unique.set(item.id, item);
-      }
-      return [...unique.values()]
-        .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-        .slice(0, maxItems);
-    });
-  }, [maxItems]);
+  const requestVersion = useRef(0);
+  const knownIds = useRef<Set<string> | null>(null);
+  const onNewItemRef = useRef(onNewItem);
+  useEffect(() => { onNewItemRef.current = onNewItem; }, [onNewItem]);
 
   const refreshFromApi = useCallback(async () => {
+    const version = ++requestVersion.current;
     try {
       const res = await fetch(`/api/pulse?limit=${Math.min(maxItems, 20)}`, { cache: "no-store" });
       if (!res.ok) return;
@@ -78,11 +77,18 @@ export function usePulse({ maxItems = 20, onNewItem }: UsePulseOptions = {}) {
             }
           : undefined,
       }));
-      mergeItems(parsed);
+      if (version !== requestVersion.current) return;
+      if (knownIds.current) {
+        for (const item of parsed) if (!knownIds.current.has(item.id)) onNewItemRef.current?.(item);
+      }
+      knownIds.current = new Set(parsed.map(item => item.id));
+      // Replace rather than merge: accounts blocked since the previous response
+      // must not remain visible in client state.
+      setItems(parsed.slice(0, maxItems));
     } catch {
       // silent fallback
     }
-  }, [maxItems, mergeItems]);
+  }, [maxItems]);
 
   useEffect(() => {
     let mounted = true;
@@ -108,29 +114,10 @@ export function usePulse({ maxItems = 20, onNewItem }: UsePulseOptions = {}) {
         if (mounted) setConnected(false);
       });
 
-      channel.bind(EVENTS.DOCUMENT_PUBLISHED, (data: PulseDocument) => {
-        if (!mounted) return;
-        const item: PulseItem = {
-          id:        `pub-${data.documentId}-${Date.now()}`,
-          type:      "published",
-          timestamp: new Date(),
-          document:  data,
-        };
-        mergeItems([item]);
-        onNewItem?.(item);
-      });
-
-      channel.bind(EVENTS.PULSE_ACTIVITY, (data: PulseActivity) => {
-        if (!mounted) return;
-        const item: PulseItem = {
-          id:        `act-${data.actorId}-${Date.now()}`,
-          type:      "activity",
-          timestamp: new Date(),
-          activity:  data,
-        };
-        mergeItems([item]);
-        onNewItem?.(item);
-      });
+      // Shared public events never contain account data; refresh through the
+      // viewer-aware API. Ignore payloads from older deployed workers too.
+      channel.bind(EVENTS.DOCUMENT_PUBLISHED, () => { if (mounted) void refreshFromApi(); });
+      channel.bind(EVENTS.PULSE_ACTIVITY, () => { if (mounted) void refreshFromApi(); });
 
     } catch (err) {
       // Pusher not available (SSR, missing keys) — fall back gracefully
@@ -139,13 +126,14 @@ export function usePulse({ maxItems = 20, onNewItem }: UsePulseOptions = {}) {
 
     return () => {
       mounted = false;
+      requestVersion.current++;
       clearTimeout(initialTimer);
       clearInterval(interval);
       try {
         pusher?.unsubscribe(CHANNELS.EXPLORE);
       } catch {}
     };
-  }, [maxItems, mergeItems, onNewItem, refreshFromApi]);
+  }, [refreshFromApi]);
 
   const clearItems = useCallback(() => setItems([]), []);
 

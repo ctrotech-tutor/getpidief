@@ -321,32 +321,8 @@ export const handleDocumentApproved = inngest.createFunction(
 
     // ── Step 9: Broadcast to Pulse feed ──────────────────────────────────────
     await step.run("broadcast-to-pulse", async () => {
-      const author = await db.query.users.findFirst({
-        where: (u, { eq }) => eq(u.id, authorId),
-        columns: { displayName: true },
-      });
-
-      await pusherServer.trigger(CHANNELS.EXPLORE, EVENTS.DOCUMENT_PUBLISHED, {
-        documentId,
-        slug: doc.slug,
-        title: doc.title,
-        authorId,
-        institutionId: doc.institutionId,
-        thumbnailUrl: doc.thumbnailUrl,
-        categoryId: doc.categoryId,
-        publishedAt: new Date().toISOString(),
-      });
-
-      await pusherServer.trigger(CHANNELS.EXPLORE, EVENTS.PULSE_ACTIVITY, {
-        type: "upload",
-        actorId: authorId,
-        actorName: author?.displayName ?? "Scholar",
-        actorAvatarUrl: null,
-        institutionId: doc.institutionId,
-        description: "Published a new document",
-        entityId: documentId,
-        createdAt: new Date().toISOString(),
-      });
+      // Public channels carry refresh signals only; the API applies viewer visibility.
+      await pusherServer.trigger(CHANNELS.EXPLORE, EVENTS.DOCUMENT_PUBLISHED, {});
     });
 
     return { documentId, status: "approved" };

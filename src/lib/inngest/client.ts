@@ -281,7 +281,7 @@ export type InngestEvents = {
   "email/weekly-digest": {
     data: {
       userId: string;
-      email: string;
+      email?: string; // Legacy queued events; delivery reads the current address.
     };
   };
 

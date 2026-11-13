@@ -36,28 +36,30 @@ export const authConfig: NextAuthConfig = {
   useSecureCookies: process.env.NODE_ENV === "production",
 
   pages: {
-    signIn:      "/login",
-    signOut:     "/login",
-    error:       "/login",
+    signIn: "/login",
+    signOut: "/login",
+    error: "/login",
     verifyRequest: "/verify-email",
-    newUser:     "/onboarding/step-1",
+    newUser: "/onboarding/step-1",
   },
 
   providers: [
     // Providers listed here are only used in middleware for session shape.
     // The real authorize() logic lives in the full auth.ts.
     GoogleProvider({
-      clientId:     process.env.GOOGLE_CLIENT_ID!,
+      clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
     Credentials({
       credentials: {
-        email:    { label: "Email",    type: "email"    },
+        email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
       // authorize() NOT defined here — defined in full auth.ts
       // Middleware only checks token presence, not credentials
-      async authorize() { return null; },
+      async authorize() {
+        return null;
+      },
     }),
   ],
 
@@ -109,9 +111,7 @@ export const authConfig: NextAuthConfig = {
 
       const isPublic =
         pathname === "/" ||
-        publicPrefixes.some(
-          (p) => pathname === p || pathname.startsWith(p + "/")
-        );
+        publicPrefixes.some((p) => pathname === p || pathname.startsWith(p + "/"));
 
       if (isPublic) return true;
 

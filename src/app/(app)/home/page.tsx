@@ -1,70 +1,86 @@
+import { Suspense } from "react";
+import { PostSkeleton } from "@/components/features/feed/PostSkeleton";
+import { FEED_UUID, validFeedTime } from "@/lib/feed/cursor";
+import { readFeed, type FeedView } from "@/lib/feed/read";
+import { discoveryCandidates } from "@/lib/feed/discovery";
+import { arrangeDiscovery } from "@/lib/feed/discovery-ranking";
+import { DiscoveryStream } from "@/components/features/feed/DiscoveryStream";
+import { FeedStream } from "@/components/features/feed/FeedStream";
 import Link from "next/link";
-import { BookOpen, BookmarkSimple as Bookmark, Compass, Heart, House as HomeIcon, ChatCircle as MessageCircle, MagnifyingGlass as Search, BookOpenText as Sparkles, UsersThree as Users } from "@phosphor-icons/react/ssr";
+import { BookOpen, Compass, House as HomeIcon, MagnifyingGlass as Search, BookOpenText as Sparkles, Bell, GearSix, SquaresFour, UploadSimple } from "@phosphor-icons/react/ssr";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
-import { users, posts } from "@/lib/db/schema";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { toggleLike, toggleSave, deletePost } from "./actions";
+import { usersRepository } from "@/lib/db/repositories/users";
+import { users } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import { Composer } from "@/components/features/feed/Composer";
+import { FeedMoreMenu } from "@/components/features/feed/FeedMoreMenu";
+import { PeopleRail } from "@/components/features/feed/PeopleRail";
+import { FeedProfileAvatar } from "@/components/features/feed/FeedProfileAvatar";
+import { Brand, BrandMark } from "@/components/brand/Brand";
 import styles from "@/components/features/feed/feed.module.css";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Home | getpidief" };
-type View = "latest" | "following" | "saved";
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+type View = FeedView | "discover";
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ view?: string; before?: string }> }) {
+export default async function Home({ searchParams }: { searchParams: Promise<{ view?: string; before?: string; beforeKind?: string; beforeAt?: string }> }) {
   const session = await auth(); const userId = session!.user!.id!;
   const params = await searchParams;
-  const view: View = params.view === "saved" || params.view === "following" ? params.view : "latest";
-  const before = params.before && uuid.test(params.before) ? params.before : undefined;
-  const [profile] = await db.select({ name: users.displayName, username: users.username }).from(users).where(eq(users.id, userId)).limit(1);
-  // The cursor is resolved by PostgreSQL to preserve timestamp precision.
-  const rows = await db.select({ id: posts.id, authorId: posts.authorId, body: posts.body, kind: posts.kind, createdAt: posts.createdAt, name: users.displayName, username: users.username,
-    likeCount: sql<number>`(select count(*)::int from post_likes where post_id = ${posts.id})`,
-    liked: sql<boolean>`exists (select 1 from post_likes where post_id = ${posts.id} and user_id = ${userId}::uuid)`,
-    saved: sql<boolean>`exists (select 1 from post_saves where post_id = ${posts.id} and user_id = ${userId}::uuid)`,
-    replyCount: sql<number>`(select count(*)::int from post_replies r join users u on u.id = r.author_id where r.post_id = ${posts.id} and r.deleted_at is null and u.status = 'active' and u.deleted_at is null)`,
-  }).from(posts).innerJoin(users, eq(posts.authorId, users.id)).where(and(isNull(posts.deletedAt), eq(users.status, "active"), isNull(users.deletedAt),
-    view === "saved" ? sql`exists (select 1 from post_saves where post_id = ${posts.id} and user_id = ${userId}::uuid)` : undefined,
-    view === "following" ? sql`exists (select 1 from follows where follower_id = ${userId}::uuid and following_id = ${posts.authorId})` : undefined,
-    before ? sql`(${posts.createdAt}, ${posts.id}) < (select created_at, id from posts where id = ${before}::uuid)` : undefined,
-  )).orderBy(desc(posts.createdAt), desc(posts.id)).limit(21);
-  const visible = rows.slice(0, 20); const ids = visible.map(x => x.id);
-  const replies = ids.length ? await db.execute<{ id: string; post_id: string; body: string; name: string; username: string }>(sql`
-    select r.id, p.id as post_id, r.body, r.name, r.username from posts p
-    cross join lateral (
-      select r.id, r.body, u.display_name as name, u.username, r.created_at
-      from post_replies r join users u on u.id = r.author_id
-      where r.post_id = p.id and r.deleted_at is null and u.status = 'active' and u.deleted_at is null
-      order by r.created_at desc, r.id desc limit 2
-    ) r where p.id in (${sql.join(ids.map(id => sql`${id}::uuid`), sql`, `)})
-    order by p.id, r.created_at, r.id
-  `) : { rows: [] };
-  const tabs: { view: View; label: string; href: string }[] = [{ view: "latest", label: "Latest", href: "/" }, { view: "following", label: "Following", href: "/?view=following" }, { view: "saved", label: "Saved", href: "/?view=saved" }];
-  return <div className={styles.shell}><div className={styles.layout}>
-    <aside className={styles.left} aria-label="Your space"><p className={styles.eyebrow}>Your space</p><nav className={styles.sideNav} aria-label="Feed navigation">
-      <Link className={`${styles.sideLink} ${view !== "saved" ? styles.sideActive : ""}`} href="/"><HomeIcon size={18} aria-hidden="true" /> Home</Link>
-      <Link className={styles.sideLink} href="/search"><Search size={18} aria-hidden="true" /> Search</Link>
-      <Link className={`${styles.sideLink} ${view === "saved" ? styles.sideActive : ""}`} href="/?view=saved"><Bookmark size={18} aria-hidden="true" /> Saved posts</Link>
-      <Link className={styles.sideLink} href="/dashboard/library"><BookOpen size={18} aria-hidden="true" /> Your library</Link>
-      {profile?.username && <Link className={styles.sideLink} href={`/u/${profile.username}`}><Users size={18} aria-hidden="true" /> Your profile</Link>}
-    </nav><p className={styles.sideNote}>A little curiosity goes a long way.<br /><Link href="/settings/interests">Manage your interests</Link></p></aside>
-    <section aria-labelledby="feed-title"><header className={styles.header}><div><p className={styles.eyebrow}>A place for curious minds</p><h1 id="feed-title">Your home for ideas.</h1><p>Learn something. Share something. Start a conversation.</p></div><div className={styles.headerMark}><span /> Always learning</div></header>
-      <Composer name={profile?.name ?? "You"} />
+  const view: View = params.view === "saved" || params.view === "following" || params.view === "latest" ? params.view : params.before ? "latest" : "discover";
+  const before = params.before && FEED_UUID.test(params.before) ? params.before : undefined;
+  const beforeAt = params.beforeAt && validFeedTime(params.beforeAt) ? params.beforeAt : undefined;
+  const [profile] = await db.select({ name: users.displayName, username: users.username, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, userId)).limit(1);
+  const tabs: { view: View; label: string; href: string }[] = [{ view: "discover", label: "For you", href: "/" }, { view: "following", label: "Following", href: "/?view=following" }];
+  return <div className={styles.shell} data-feed-shell><div className={styles.layout}>
+    <aside className={styles.left} aria-label="Main navigation">
+      <div className={styles.sidebarBrand}><BrandMark /></div>
+      <nav className={styles.sideNav} aria-label="Main navigation">
+        <Link className={`${styles.sideLink} ${view !== "saved" ? styles.sideActive : ""}`} href="/" aria-current={view !== "saved" ? "page" : undefined}><HomeIcon size={24} weight={view !== "saved" ? "fill" : "regular"} aria-hidden="true" /> Home</Link>
+        <Link className={`${styles.sideLink} ${styles.tabletSearch}`} href="/search"><Search size={24} aria-hidden="true" /> Search</Link>
+        <Link className={styles.sideLink} href="/explore"><Compass size={24} aria-hidden="true" /> Explore</Link>
+        <Link className={styles.sideLink} href="/notifications"><Bell size={24} aria-hidden="true" /> Notifications</Link>
+        <Link className={styles.sideLink} href="/dashboard/library"><BookOpen size={24} aria-hidden="true" /> Library</Link>
+        <Link className={styles.sideLink} href="/dashboard"><SquaresFour size={24} aria-hidden="true" /> Dashboard</Link>
+        {profile?.username && <Link className={styles.sideLink} href={`/u/${profile.username}`}><FeedProfileAvatar name={profile.name} avatarUrl={profile.avatarUrl} /> Profile</Link>}
+      </nav>
+      <Link className={styles.uploadCta} href="/dashboard/uploads/new"><UploadSimple size={19} aria-hidden="true" /> Upload a resource</Link>
+      <div className={styles.sidebarMore}><FeedMoreMenu /></div>
+    </aside>
+    <section aria-labelledby="feed-title" className={styles.feedColumn}>
+      <div className={styles.mobileHeader}><Brand /><Link href="/settings" className={styles.mobileSettings} aria-label="Settings"><GearSix size={22} aria-hidden="true" /></Link></div>
+      <h1 id="feed-title" className="sr-only">{view === "saved" ? "Saved posts" : "Home"}</h1>
+      <Composer name={profile?.name ?? "You"} avatarUrl={profile?.avatarUrl ?? null} />
       <nav aria-label="Feed views" className={styles.tabs}>{tabs.map(tab => <Link key={tab.view} href={tab.href} aria-current={view === tab.view ? "page" : undefined} className={`${styles.tab} ${view === tab.view ? styles.activeTab : ""}`}>{tab.label}</Link>)}</nav>
-      <div className={styles.feedIntro}><strong>{view === "following" ? "From people you follow" : view === "saved" ? "Your saved posts" : "The latest conversations"}</strong><span>Newest first</span></div>
-      {visible.length === 0 ? <div className={styles.empty}><span className={styles.emptyIcon}><Sparkles size={22} aria-hidden="true" /></span><h2>{view === "saved" ? "Keep the good ideas close." : view === "following" ? "Your circle starts here." : "Every conversation starts somewhere."}</h2><p>{view === "saved" ? "When a post is worth coming back to, save it and you’ll find it here." : view === "following" ? "Posts from people you follow will show up here, newest first." : "Be the first to share a thought or ask a question. Someone else might be wondering the same thing."}</p>{view !== "latest" && <Link href="/">See the latest posts</Link>}</div> : <div className={styles.posts}>{visible.map(post => <article key={post.id} className={styles.post}>
-        <div className={styles.postTop}><span className={styles.avatar} aria-hidden="true">{post.name.trim().charAt(0).toUpperCase() || "?"}</span><div className={styles.author}><Link href={`/u/${post.username}`}>{post.name}</Link><p className={styles.meta}>@{post.username} · <time dateTime={post.createdAt.toISOString()}>{post.createdAt.toLocaleDateString("en", { dateStyle: "medium", timeZone: "UTC" })}</time></p></div>{post.kind === "question" && <span className={styles.postType}>Question</span>}</div>
-        <p className={styles.postBody}>{post.body}</p>
-        <div className={styles.actions}><form action={toggleLike}><input type="hidden" name="postId" value={post.id}/><input type="hidden" name="active" value={String(post.liked)}/><button className={`${styles.action} ${post.liked ? styles.actionActive : ""}`} aria-pressed={post.liked} aria-label={`${post.liked ? "Unlike" : "Like"} post by ${post.name}`}><Heart size={17} aria-hidden="true" fill={post.liked ? "currentColor" : "none"}/><span>{post.likeCount}</span></button></form>
-          <Link className={styles.action} href={`/home/post/${post.id}`} aria-label={`Open discussion on post by ${post.name}, ${post.replyCount} replies`}><MessageCircle size={17} aria-hidden="true" />{post.replyCount}</Link>
-          <form action={toggleSave}><input type="hidden" name="postId" value={post.id}/><input type="hidden" name="active" value={String(post.saved)}/><button className={`${styles.action} ${post.saved ? styles.actionActive : ""}`} aria-pressed={post.saved} aria-label={`${post.saved ? "Remove saved" : "Save"} post by ${post.name}`}><Bookmark size={17} aria-hidden="true" fill={post.saved ? "currentColor" : "none"}/>{post.saved ? "Saved" : "Save"}</button></form>
-          {post.authorId === userId && <form action={deletePost} className={styles.delete}><input type="hidden" name="postId" value={post.id}/><button>Delete</button></form>}</div>
-        {replies.rows.some(r => r.post_id === post.id) && <div className={styles.replies}>{replies.rows.filter(r => r.post_id === post.id).map(r => <p key={r.id} className={styles.reply}><Link href={`/u/${r.username}`}><strong>{r.name}</strong></Link> {r.body}</p>)}<Link className={styles.action} href={`/home/post/${post.id}`}>{post.replyCount > 2 ? `View all ${post.replyCount} replies` : "Join the conversation"}</Link></div>}
-      </article>)}</div>}
-      {rows.length > 20 && <Link className={styles.more} href={`/?${view !== "latest" ? `view=${view}&` : ""}before=${visible[visible.length - 1].id}`}>Older posts</Link>}
+      <Suspense fallback={<div role="status" aria-label="Loading posts"><span className="sr-only">Loading posts…</span><PostSkeleton count={3} /></div>}>
+        <HomePosts userId={userId} view={view} before={before} beforeKind={params.beforeKind} beforeAt={beforeAt} />
+      </Suspense>
+
     </section>
-    <aside className={styles.right} aria-label="Discover"><div className={styles.rightCard}><p className={styles.eyebrow}>Your curiosity, your way</p><h2>There’s always more to discover.</h2><p>Search the resource library for something useful, then bring what you learn back to the conversation.</p><Link href="/search"><Compass size={16} aria-hidden="true" />&nbsp; Search resources</Link></div><div className={styles.rightSmall}><Link href="/about">About</Link> · <Link href="/privacy">Privacy</Link> · <Link href="/terms">Terms</Link><br />A space to learn together.</div></aside>
+    <aside className={styles.right} aria-label="Discover people and resources" tabIndex={0}>
+      <form action="/search" className={styles.resourceSearch} role="search">
+        <Search size={20} aria-hidden="true" />
+        <label htmlFor="feed-resource-search" className="sr-only">Search resources</label>
+        <input id="feed-resource-search" name="q" type="search" placeholder="Search resources" />
+        <button type="submit" className="sr-only">Search</button>
+      </form>
+      <Suspense fallback={<div role="status" className="sr-only">Loading people…</div>}><HomePeople userId={userId} /></Suspense>
+    </aside>
   </div></div>;
+}
+
+async function HomePosts({ userId, view, before, beforeKind, beforeAt }: { userId: string; view: View; before?: string; beforeKind?: string; beforeAt?: string }) {
+  const candidates = view === "discover" ? arrangeDiscovery(await discoveryCandidates(userId), new Set()) : [];
+  const page = view === "discover" ? candidates.length ? await readFeed(userId, "latest", undefined, undefined, undefined, candidates.slice(0, 20).map(item => ({ id: item.id, kind: "post" as const }))) : { items: [], hasMore: false } : await readFeed(userId, view, before, beforeKind, beforeAt);
+  const byId = new Map(page.items.map(item => [item.id, item]));
+  const visible = view === "discover" ? candidates.slice(0, 20).flatMap(item => { const post = byId.get(item.id); return post ? [post] : []; }) : page.items;
+  return view === "discover" ? <DiscoveryStream key={`${userId}:discover`} userId={userId} now={new Date().toISOString()} seed={{ candidates, items: visible }} /> : visible.length === 0 ? <div className={styles.empty}><span className={styles.emptyIcon}><Sparkles size={22} aria-hidden="true" /></span><h2>{view === "saved" ? "Keep the good ideas close." : view === "following" ? "Your circle starts here." : "Every conversation starts somewhere."}</h2><p>{view === "saved" ? "When a post is worth coming back to, save it and you’ll find it here." : view === "following" ? "Posts from people you follow will show up here, newest first." : "Be the first to share a thought or ask a question. Someone else might be wondering the same thing."}</p>{view !== "latest" && <Link href="/">Explore posts</Link>}</div> : <FeedStream key={`${userId}:${view}:${before ?? ""}`} initial={page} userId={userId} view={view} now={new Date().toISOString()} />;
+}
+
+async function HomePeople({ userId }: { userId: string }) {
+  const [following, suggestions] = await Promise.all([
+    usersRepository.getFollowing(userId, { viewerId: userId, limit: 3 }),
+    usersRepository.getFollowSuggestions(userId, 3),
+  ]);
+  return <PeopleRail initial={{ following: { total: following.total, following: following.following.map(({ id, username, displayName, avatarUrl }) => ({ id, username, displayName, avatarUrl })) }, suggestions: suggestions.rows.map(({ id, username, display_name, avatar_url }) => ({ id, username, display_name, avatar_url })) }} />;
 }

@@ -3,9 +3,7 @@ import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { TopNav } from "@/components/layouts/TopNav";
-import { MobileBottomTabs } from "@/components/layouts/MobileBottomTabs";
-import { CommandPalette } from "@/components/layouts/CommandPalette";
+import { AppChrome } from "@/components/layouts/AppChrome";
 
 type AppSessionUser = {
   onboardingComplete?: boolean;
@@ -52,19 +50,5 @@ export default async function AppLayout({
     redirect("/login?error=account_suspended");
   }
 
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Fixed top navigation */}
-      <TopNav />
-
-      {/* Main content - offset for top nav height */}
-      <main className="pt-[60px] pb-[60px] lg:pb-0 min-h-screen">
-        {children}
-      </main>
-
-      {/* Mobile bottom tab bar - hidden on desktop */}
-      <MobileBottomTabs />
-      <CommandPalette />
-    </div>
-  );
+  return <AppChrome>{children}</AppChrome>;
 }

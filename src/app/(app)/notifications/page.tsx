@@ -1,3 +1,4 @@
+import { visibleNotificationTo } from "@/lib/notifications/visibility";
 import { auth } from "@/lib/auth/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db/client";
@@ -31,7 +32,7 @@ export default async function NotificationsPage({
   const params = await searchParams;
   const filter = params.filter ?? "all";
 
-  const conditions = [eq(notifications.recipientId, session.user.id)];
+  const conditions = [eq(notifications.recipientId, session.user.id), visibleNotificationTo(session.user.id)];
   if (filter === "unread") conditions.push(eq(notifications.isRead, false));
 
   const items = await db.query.notifications.findMany({
@@ -65,7 +66,7 @@ export default async function NotificationsPage({
             if (!s?.user?.id) return;
             await db.update(notifications)
               .set({ isRead: true, readAt: new Date() })
-              .where(and(eq(notifications.recipientId, s.user.id), eq(notifications.isRead, false)));
+              .where(and(eq(notifications.recipientId, s.user.id), eq(notifications.isRead, false), visibleNotificationTo(s.user.id)));
           }}>
             <button
               type="submit"

@@ -20,7 +20,8 @@ type BadgeRow = Awaited<ReturnType<typeof usersRepository.getBadges>>[number];
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { username } = await params;
-  const profile = await usersRepository.getPublicProfile(username);
+  const session = await auth();
+  const profile = await usersRepository.getPublicProfile(username, session?.user?.id);
   if (!profile) return { title: "User not found" };
   return {
     title:       `${(profile as PublicProfile).displayName} (@${(profile as PublicProfile).username}) - getpidief`,

@@ -307,18 +307,23 @@ export const usersRepository = {
         i.name AS institution_name
       FROM users u
       LEFT JOIN institutions i ON i.id = u.institution_id
+      LEFT JOIN (
+        SELECT candidate.user_id, count(*) AS shared_count
+        FROM user_interests viewer
+        JOIN user_interests candidate ON candidate.tag_id = viewer.tag_id
+        WHERE viewer.user_id = ${userId}::uuid
+        GROUP BY candidate.user_id
+      ) overlap ON overlap.user_id = u.id
       WHERE u.status = 'active'
         AND u.deleted_at IS NULL
         AND u.id != ${userId}
-        AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE
-          (b.blocker_id = ${userId}::uuid AND b.blocked_id = u.id) OR
-          (b.blocked_id = ${userId}::uuid AND b.blocker_id = u.id))
+        AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE b.blocker_id = ${userId}::uuid AND b.blocked_id = u.id)
+        AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE b.blocked_id = ${userId}::uuid AND b.blocker_id = u.id)
         AND u.onboarding_complete = true
         AND NOT EXISTS (SELECT 1 FROM follows WHERE follower_id = ${userId}::uuid AND following_id = u.id)
       ORDER BY
         CASE WHEN u.institution_id IS NOT NULL AND u.institution_id = (SELECT institution_id FROM users WHERE id = ${userId}::uuid) THEN 1 ELSE 0 END DESC,
-        (SELECT count(*) FROM user_interests candidate JOIN user_interests viewer ON viewer.tag_id = candidate.tag_id
-          WHERE candidate.user_id = u.id AND viewer.user_id = ${userId}::uuid) DESC,
+        COALESCE(overlap.shared_count, 0) DESC,
         u.follower_count DESC, u.id ASC
       LIMIT ${limit} OFFSET ${offset}
     `);

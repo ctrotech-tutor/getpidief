@@ -4,9 +4,11 @@ import { sql } from "drizzle-orm";
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
- * Serializes feed writes with account blocks and post deletion. Acquire account
- * locks in ID order (same as blocks/follows), then the post lock; re-check the
- * block in a fresh statement after acquiring the account locks.
+ * Protects feed writes against account blocks and post deletion. Shared row
+ * locks allow independent interactions concurrently, but conflict with account
+ * updates/blocks and post updates/deletions. Acquire accounts in ID order, then
+ * the post; re-check block state after acquiring the account locks. Callbacks
+ * must not update either locked account or the post itself (no lock upgrades).
  */
 export async function withPostInteraction<T>(viewerId: string, postId: string, work: (tx: Transaction) => Promise<T>): Promise<T> {
   return db.transaction(async tx => {
@@ -14,7 +16,7 @@ export async function withPostInteraction<T>(viewerId: string, postId: string, w
     const authorId = original.rows[0]?.author_id;
     if (!authorId) throw new Error("Post unavailable.");
     const accounts = await tx.execute<{ id: string; status: string; deleted_at: string | null; onboarding_complete: boolean }>(sql`
-      SELECT id, status, deleted_at, onboarding_complete FROM users WHERE id IN (${viewerId}::uuid, ${authorId}::uuid) ORDER BY id FOR UPDATE
+      SELECT id, status, deleted_at, onboarding_complete FROM users WHERE id IN (${viewerId}::uuid, ${authorId}::uuid) ORDER BY id FOR SHARE
     `);
     const viewer = accounts.rows.find(row => row.id === viewerId);
     const author = accounts.rows.find(row => row.id === authorId);
@@ -25,7 +27,7 @@ export async function withPostInteraction<T>(viewerId: string, postId: string, w
     `);
     if (relationship.rows[0]?.blocked) throw new Error("Post unavailable.");
     const lockedPost = await tx.execute<{ id: string }>(sql`
-      SELECT id FROM posts WHERE id = ${postId}::uuid AND author_id = ${authorId}::uuid AND deleted_at IS NULL FOR UPDATE
+      SELECT id FROM posts WHERE id = ${postId}::uuid AND author_id = ${authorId}::uuid AND deleted_at IS NULL FOR SHARE
     `);
     if (!lockedPost.rows.length) throw new Error("Post unavailable.");
     return work(tx);

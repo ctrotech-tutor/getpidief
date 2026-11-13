@@ -358,14 +358,14 @@ export const usersRepository = {
 
   async updateInterests(userId: string, tagIds: string[]): Promise<void> {
     await db.transaction(async (tx) => {
-      // Delete all existing interests
+      // Serialize with onboarding/settings replacements, even before a unique
+      // constraint exists on user_interests.
+      const [profile] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("update");
+      if (!profile) throw new Error("User not found");
       await tx.delete(userInterests).where(eq(userInterests.userId, userId));
-
-      // Insert new interests
-      if (tagIds.length > 0) {
-        await tx.insert(userInterests).values(
-          tagIds.map((tagId) => ({ userId, tagId }))
-        );
+      const uniqueTagIds = [...new Set(tagIds)];
+      if (uniqueTagIds.length > 0) {
+        await tx.insert(userInterests).values(uniqueTagIds.map((tagId) => ({ userId, tagId })));
       }
     });
 

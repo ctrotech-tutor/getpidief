@@ -40,15 +40,24 @@ export async function POST(req: NextRequest) {
         allowDownload: data.allowDownload, allowPrint: data.allowPrint, status: "pending", previewStatus: "pending",
       }).returning({ id: documents.id, slug: documents.slug });
       if (!doc) throw new Error("Failed to create document");
-      if (data.tagIds?.length) await tx.insert(documentTags).values(
-        data.tagIds.map((tagId) => ({ documentId: doc.id, tagId }))
-      ).onConflictDoNothing();
+      // The current database does not yet enforce uniqueness on document_tags.
+      // Resolve all inputs first: an ID and a name can refer to the same tag.
+      const tagIds = new Set(data.tagIds ?? []);
+      const namesBySlug = new Map<string, string>();
       for (const name of data.tagNames ?? []) {
-        const [tag] = await tx.insert(tags).values({ name: sanitizeText(name), slug: slugify(name) })
-          .onConflictDoUpdate({ target: [tags.slug], set: { usageCount: sql`usage_count + 1` } })
-          .returning({ id: tags.id });
-        if (tag) await tx.insert(documentTags).values({ documentId: doc.id, tagId: tag.id }).onConflictDoNothing();
+        const slug = slugify(name);
+        if (!namesBySlug.has(slug)) namesBySlug.set(slug, name);
       }
+      // Lock existing tag rows in a consistent order across uploads.
+      for (const [slug, name] of [...namesBySlug].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
+        const [tag] = await tx.insert(tags).values({ name: sanitizeText(name), slug })
+          .onConflictDoUpdate({ target: [tags.slug], set: { usageCount: sql`${tags.usageCount} + 1` } })
+          .returning({ id: tags.id });
+        if (tag) tagIds.add(tag.id);
+      }
+      if (tagIds.size) await tx.insert(documentTags).values(
+        [...tagIds].map((tagId) => ({ documentId: doc.id, tagId }))
+      ).onConflictDoNothing();
       await tx.update(documentUploads).set({ consumedAt: new Date(), documentId: doc.id }).where(eq(documentUploads.id, receipt.id));
       return { doc, fileUrl: receipt.fileUrl, fileSize: receipt.fileSize };
     });

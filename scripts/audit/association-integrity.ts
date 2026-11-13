@@ -1,3 +1,4 @@
+import { assertLocalTestDatabase } from "../lib/local-test-database";
 /** Read-only aggregate checks for an isolated local/staging copy; never print IDs or URLs. */
 import { Client } from "pg";
 
@@ -22,10 +23,7 @@ export async function inspectAssociations(client: Client) {
 }
 
 async function main() {
-  const url = process.env.TEST_DATABASE_URL;
-  if (!url) throw new Error("Set TEST_DATABASE_URL to an isolated local _test database or staging copy.");
-  const target = new URL(url);
-  if (!["localhost", "127.0.0.1", "[::1]"].includes(target.hostname) || !/^\/[a-zA-Z0-9_]+_test$/.test(target.pathname)) throw new Error("Only local databases ending in _test are allowed.");
+  const url = assertLocalTestDatabase(process.env.TEST_DATABASE_URL);
   const client = new Client({ connectionString: url, connectionTimeoutMillis: 10000 });
   try {
     await client.connect();

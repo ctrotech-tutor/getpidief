@@ -1,3 +1,4 @@
+import { assertLocalTestDatabase } from "../lib/local-test-database";
 /** Synthetic benchmark: disposable, isolated local _test databases only. */
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
@@ -5,10 +6,7 @@ import { Pool } from "pg";
 import { PgDialect } from "drizzle-orm/pg-core";
 const id = (s: string) => createHash("md5").update(s).digest("hex").replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, "$1-$2-$3-$4-$5");
 async function main() {
-  const url = process.env.TEST_DATABASE_URL;
-  if (!url) throw new Error("Set TEST_DATABASE_URL to an isolated local _test database.");
-  const target = new URL(url);
-  if (!["localhost", "127.0.0.1", "[::1]"].includes(target.hostname) || !/^\/[a-zA-Z0-9_]+_test$/.test(target.pathname)) throw new Error("Only local _test databases are allowed.");
+  const url = assertLocalTestDatabase(process.env.TEST_DATABASE_URL);
   const pool = new Pool({ connectionString: url, max: 1 });
   let appPool: { end(): Promise<void> } | undefined;
   try {

@@ -5,15 +5,23 @@ export type FeedView = "latest" | "following" | "saved";
 export type FeedEventKey = { id: string; kind: "post" | "repost" };
 export async function readFeed(userId: string, view: FeedView, before?: string, beforeKind?: string, beforeAt?: string, refreshKeys?: FeedEventKey[]) {
   // Saved is a collection of originals; Following includes posts and reposts by followed people.
+  if (refreshKeys?.length === 0) return { items: [], hasMore: false };
   type FeedEvent = { eventId: string; actorId: string; eventKind: "post" | "repost"; id: string; authorId: string; body: string; kind: string; createdAt: string; eventAt: string; name: string; username: string; avatarUrl: string | null; likeCount: number; liked: boolean; saved: boolean; following: boolean; replyCount: number; reposted: boolean; repostCount: number; reposterName: string | null; reposterUsername: string | null };
   const cursorKind = beforeKind === "repost" ? "repost" : "post";
   // Taking at most one page from each independently ordered event stream is
   // exact only after all visibility, view and cursor filters have been applied.
   const cursorTime = sql`COALESCE(${beforeAt ?? null}::timestamptz, (SELECT event_at FROM cursor_event))`;
+  // Push the bounded refresh IDs into each event branch so PostgreSQL can use
+  // primary-key lookups before the union and visibility checks. IN retains the
+  // existing set semantics for repeated keys.
+  const postKeys = refreshKeys?.filter(key => key.kind === "post").map(key => key.id) ?? [];
+  const repostKeys = refreshKeys?.filter(key => key.kind === "repost").map(key => key.id) ?? [];
   const eventPool = refreshKeys ? sql`
-    SELECT p.id AS event_id, 'post'::text AS event_kind, p.created_at AS event_at, p.id AS post_id, p.author_id AS actor_id FROM posts p WHERE p.deleted_at IS NULL
+    SELECT p.id AS event_id, 'post'::text AS event_kind, p.created_at AS event_at, p.id AS post_id, p.author_id AS actor_id FROM posts p
+    WHERE p.deleted_at IS NULL AND ${postKeys.length ? sql`p.id IN (${sql.join(postKeys.map(id => sql`${id}::uuid`), sql`, `)})` : sql`false`}
     UNION ALL
-    SELECT r.id, 'repost'::text, r.created_at, r.post_id, r.user_id FROM post_reposts r WHERE ${view !== "saved"}
+    SELECT r.id, 'repost'::text, r.created_at, r.post_id, r.user_id FROM post_reposts r
+    WHERE ${view !== "saved"} AND ${repostKeys.length ? sql`r.id IN (${sql.join(repostKeys.map(id => sql`${id}::uuid`), sql`, `)})` : sql`false`}
   ` : sql`
     (SELECT p.id AS event_id, 'post'::text AS event_kind, p.created_at AS event_at, p.id AS post_id, p.author_id AS actor_id
       FROM posts p JOIN users author ON author.id = p.author_id
@@ -63,7 +71,6 @@ export async function readFeed(userId: string, view: FeedView, before?: string, 
       AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE (b.blocker_id = ${userId}::uuid AND b.blocked_id IN (u.id, actor.id)) OR (b.blocked_id = ${userId}::uuid AND b.blocker_id IN (u.id, actor.id)))
       AND (${view !== "saved"} OR EXISTS (SELECT 1 FROM post_saves s WHERE s.post_id = p.id AND s.user_id = ${userId}::uuid))
       AND (${view !== "following"} OR EXISTS (SELECT 1 FROM follows f WHERE f.follower_id = ${userId}::uuid AND f.following_id = e.actor_id))
-      ${refreshKeys ? sql`AND (e.event_kind, e.event_id) IN (${sql.join(refreshKeys.map(key => sql`(${key.kind}::text, ${key.id}::uuid)`), sql`, `)})` : sql``}
       AND (${before === undefined} OR (e.event_at, e.event_kind, e.event_id) < (COALESCE(${beforeAt ?? null}::timestamptz, (SELECT event_at FROM cursor_event)), ${cursorKind}, ${before ?? null}::uuid))
     ORDER BY e.event_at DESC, e.event_kind DESC, e.event_id DESC LIMIT ${refreshKeys ? refreshKeys.length : 21}
   `);

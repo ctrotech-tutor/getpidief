@@ -1,3 +1,4 @@
+import { assertLocalTestDatabase } from "../lib/local-test-database";
 /** Writes synthetic data: use only a newly migrated, disposable local database. */
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
@@ -7,9 +8,7 @@ import { sql } from "drizzle-orm";
 function target() {
   const url = process.env.TEST_DATABASE_URL;
   if (!url || process.env.BENCH_WRITE !== "yes") throw new Error("Set TEST_DATABASE_URL and BENCH_WRITE=yes for an isolated local test database.");
-  const parsed = new URL(url);
-  if (!["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname) || !/^\/[a-zA-Z0-9_]+_test$/.test(parsed.pathname)) throw new Error("Only local databases ending in _test are allowed.");
-  return url;
+  return assertLocalTestDatabase(url);
 }
 const id = (s: string) => createHash("md5").update(s).digest("hex").replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, "$1-$2-$3-$4-$5");
 async function main() {

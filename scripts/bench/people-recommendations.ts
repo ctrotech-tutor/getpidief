@@ -1,3 +1,4 @@
+import { assertLocalTestDatabase } from "../lib/local-test-database";
 /** Synthetic, disposable local database only. Never point this at hosted data. */
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
@@ -6,9 +7,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 function target() {
   const url = process.env.TEST_DATABASE_URL;
   if (!url) throw new Error("Set TEST_DATABASE_URL to a disposable local _test database.");
-  const parsed = new URL(url);
-  if (!["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname) || !/^\/[a-zA-Z0-9_]+_test$/.test(parsed.pathname)) throw new Error("Only local databases ending in _test are allowed.");
-  return url;
+  return assertLocalTestDatabase(url);
 }
 const id = (s: string) => createHash("md5").update(s).digest("hex").replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, "$1-$2-$3-$4-$5");
 async function main() {

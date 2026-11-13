@@ -1,15 +1,13 @@
 /** Rollback-only experiment for an isolated local test database. NOT a production migration. */
 import { Client } from "pg";
 import { inspectAssociations } from "./association-integrity";
+import { assertLocalTestDatabase } from "../lib/local-test-database";
 
 type Result = { removed: Record<string, number>; after: Awaited<ReturnType<typeof inspectAssociations>> };
 export async function rehearseAssociationUniqueness(url: string, confirmed: boolean): Promise<Result> {
-  const target = new URL(url);
-  if (!confirmed || target.protocol !== "postgres:" && target.protocol !== "postgresql:" ||
-      !["localhost", "127.0.0.1", "[::1]"].includes(target.hostname) ||
-      !/^\/[a-zA-Z0-9_]+_test$/.test(target.pathname) || target.search || target.hash) {
-    throw new Error("Requires explicit confirmation and an isolated local _test database URL without parameters.");
-  }
+  if (!confirmed) throw new Error("Requires explicit confirmation and an isolated local _test database URL without parameters.");
+  try { assertLocalTestDatabase(url); }
+  catch { throw new Error("Requires explicit confirmation and an isolated local _test database URL without parameters."); }
   const client = new Client({ connectionString: url, connectionTimeoutMillis: 10000 });
   try {
     await client.connect();

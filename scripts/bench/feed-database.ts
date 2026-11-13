@@ -1,3 +1,4 @@
+import { assertLocalTestDatabase } from "../lib/local-test-database";
 /** Disposable local benchmark only: never run against production or personal data. */
 import { Pool } from "pg";
 import { createHash } from "node:crypto";
@@ -7,9 +8,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 function target(): string {
   const url = process.env.TEST_DATABASE_URL;
   if (!url) throw new Error("Set TEST_DATABASE_URL to a disposable local database ending in _test.");
-  const parsed = new URL(url);
-  if (!['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname) || !/^\/[a-zA-Z0-9_]+_test$/.test(parsed.pathname)) throw new Error("Benchmark requires a local database ending in _test.");
-  return url;
+  return assertLocalTestDatabase(url);
 }
 const id = (value: string) => createHash("md5").update(value).digest("hex").replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, "$1-$2-$3-$4-$5");
 const queries = [
@@ -27,6 +26,8 @@ const queries = [
 ];
 async function main() {
   const url = target(); const pool = new Pool({ connectionString: url, max: 1 });
+  let appPool: { end(): Promise<void> } | undefined;
+  try {
   if (process.argv.includes("--seed")) {
     if (process.env.BENCH_WRITE !== "yes") throw new Error("Set BENCH_WRITE=yes to seed an EMPTY disposable local test database.");
     const c = await pool.connect();
@@ -42,10 +43,10 @@ async function main() {
       await c.query('COMMIT');
     }
     catch (e) { await c.query('ROLLBACK'); throw e; } finally { c.release(); }
-    await pool.query('ANALYZE'); console.log('Synthetic fixtures created.'); await pool.end(); return;
+    await pool.query('ANALYZE'); console.log('Synthetic fixtures created.'); return;
   }
   process.env.DATABASE_URL = url; Object.assign(process.env, { NODE_ENV: 'production' });
-  const { db } = await import('../../src/lib/db/client'); const { readFeed } = await import('../../src/lib/feed/read');
+  const { db } = await import('../../src/lib/db/client'); appPool = db.$client; const { readFeed } = await import('../../src/lib/feed/read');
   const { discoveryCandidates } = await import('../../src/lib/feed/discovery');
   const { usersRepository } = await import('../../src/lib/db/repositories/users');
   const dialect = new PgDialect(); const captured: { sql: string; params: unknown[] }[] = [];
@@ -56,6 +57,8 @@ async function main() {
   const scenarios: [string, () => Promise<unknown>][] = [
     ['for-you candidates', () => discoveryCandidates(id('u1'))],
     ['for-you 20 IDs', () => readFeed(id('u1'), 'latest', undefined, undefined, undefined, Array.from({length:20}, (_,i) => ({kind: 'post' as const, id: id('p'+(i+1))})))],
+    ['refresh 140 posts', () => readFeed(id('u1'), 'latest', undefined, undefined, undefined, Array.from({length:140}, (_,i) => ({kind: 'post' as const, id: id('p'+(i+1))})))],
+    ['refresh 140 mixed', () => readFeed(id('u1'), 'latest', undefined, undefined, undefined, Array.from({length:140}, (_,i) => i%2 === 0 ? ({kind: 'post' as const, id: id('p'+(i+1))}) : ({kind: 'repost' as const, id: id('r'+(i+1))})))],
     ['following 100 accounts', () => readFeed(id('u1'), 'following')],
     ['following 1 account', () => readFeed(id('u2'), 'following')],
     ['following none', () => readFeed(id('u3'), 'following')],
@@ -70,8 +73,8 @@ async function main() {
     times.sort((a,b)=>a-b); const q = captured[0];
     const explain = await pool.query('EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) '+q.sql, q.params);
     const plan = explain.rows[0]['QUERY PLAN'][0];
-    console.log(`${name}: p50=${times[4].toFixed(2)}ms p95(sample max)=${times[9].toFixed(2)}ms plan=${plan['Execution Time'].toFixed(2)}ms shared_hits=${plan.Plan['Shared Hit Blocks']}`);
+    console.log(`${name}: median(lower middle)=${times[4].toFixed(2)}ms sample-max=${times[9].toFixed(2)}ms plan=${plan['Execution Time'].toFixed(2)}ms shared_hits=${plan.Plan['Shared Hit Blocks']}`);
   }
-  await pool.end(); await db.$client.end();
+  } finally { await appPool?.end(); await pool.end(); }
 }
 main().catch(error => { console.error(error instanceof Error ? error.message : 'Benchmark failed'); process.exitCode = 1; });

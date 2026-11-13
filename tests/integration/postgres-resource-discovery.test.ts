@@ -46,4 +46,23 @@ describe.skipIf(!url || process.env.TEST_DATABASE_WRITE !== "yes")("resource dis
     expect((await search.searchDocuments({ query: 'celestial' }, viewer)).total).toBe(6);
     expect(mocks.getCache.mock.calls.every(([key]) => key === 'categories')).toBe(true);
   });
+  it("returns accurate totals on empty pages and deterministic pages for each sort", async () => {
+    for (const sort of ["relevance", "recent", "downloads", "likes", "discussed"] as const) {
+      const pages = await Promise.all([1, 2, 3, 4].map(page => search.searchDocuments({ query: 'celestial', limit: 2, page, sort }, viewer)));
+      for (const page of pages) { expect(page.total).toBe(6); expect(page.totalPages).toBe(3); }
+      expect(pages[3].results).toEqual([]);
+      const ids = pages.flatMap(page => page.results.map(item => item.id));
+      expect(ids).toHaveLength(6); expect(new Set(ids).size).toBe(6);
+    }
+    const none = await search.searchDocuments({ query: 'nomatchingterm', limit: 2, page: 4 }, viewer);
+    expect(none.total).toBe(0); expect(none.totalPages).toBe(0); expect(none.results).toEqual([]);
+  });
+  it("keeps empty-page totals subject to block and account visibility", async () => {
+    await db.execute(sql`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (${hidden}::uuid, ${viewer}::uuid)`);
+    try {
+      const page = await search.searchDocuments({ query: 'celestial', limit: 1, page: 2 }, viewer);
+      expect(page.results).toEqual([]); expect(page.total).toBe(1); expect(page.totalPages).toBe(1);
+    } finally { await db.execute(sql`DELETE FROM user_blocks WHERE blocker_id = ${hidden}::uuid AND blocked_id = ${viewer}::uuid`); }
+  });
+
 });

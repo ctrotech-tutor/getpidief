@@ -3,10 +3,10 @@ import { visibleNotificationTo } from "@/lib/notifications/visibility";
 import { notificationsRepository } from "@/lib/db/repositories/notifications";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/client";
-import { notifications } from "@/lib/db/schema";
+import { notifications, notificationTypeEnum } from "@/lib/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { KEYS, invalidateCache } from "@/lib/redis/client";
-import { apiSuccess, apiUnauthorized, handleApiError } from "@/lib/utils/api";
+import { apiSuccess, apiUnauthorized, apiError, handleApiError } from "@/lib/utils/api";
 
 export async function GET(req: NextRequest) {
   try {
@@ -20,10 +20,15 @@ export async function GET(req: NextRequest) {
       return apiSuccess({ unreadCount: await notificationsRepository.getUnreadCount(userId) });
     }
 
-    const page  = parseInt(req.nextUrl.searchParams.get("page")  ?? "1",  10);
-    const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "30", 10);
-    const type  = req.nextUrl.searchParams.get("type");
-    const offset= (page - 1) * limit;
+    const rawPage = req.nextUrl.searchParams.get("page") ?? "1";
+    const rawLimit = req.nextUrl.searchParams.get("limit") ?? "30";
+    const type = req.nextUrl.searchParams.get("type");
+    // Bound work before issuing either the page query or the exact count.
+    if (!/^[1-9]\d*$/.test(rawPage) || !/^[1-9]\d*$/.test(rawLimit)) return apiError("INVALID_PARAMS", "Invalid notification pagination.");
+    const page = Number(rawPage), limit = Number(rawLimit);
+    const offset = (page - 1) * limit;
+    if (!Number.isSafeInteger(page) || !Number.isSafeInteger(limit) || limit > 100 || !Number.isSafeInteger(offset) || offset > 100_000) return apiError("INVALID_PARAMS", "Invalid notification pagination.");
+    if (type && type !== "all" && !notificationTypeEnum.enumValues.includes(type as typeof notificationTypeEnum.enumValues[number])) return apiError("INVALID_PARAMS", "Invalid notification type.");
 
     const conditions = [eq(notifications.recipientId, userId), visibleNotificationTo(userId)];
     if (type && type !== "all") {

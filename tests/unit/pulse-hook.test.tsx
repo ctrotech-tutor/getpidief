@@ -25,6 +25,19 @@ describe("Pulse refresh signals", () => {
     await waitFor(() => expect(result.current.items.map(i => i.id)).toEqual(["new"]));
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+  it("uses the latest callback without resubscribing to realtime events", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(response([item("old")])).mockResolvedValueOnce(response([item("new")]));
+    vi.stubGlobal("fetch", fetchMock);
+    const first = vi.fn(); const latest = vi.fn();
+    const { rerender, result } = renderHook(({ callback }) => usePulse({ onNewItem: callback }), { initialProps: { callback: first } });
+    await waitFor(() => expect(result.current.items.map(i => i.id)).toEqual(["old"]));
+    await waitFor(() => expect(pusher.bind).toHaveBeenCalledTimes(4));
+    rerender({ callback: latest });
+    await act(async () => { pusher.handlers["pulse:activity"](); });
+    await waitFor(() => expect(latest).toHaveBeenCalledWith(expect.objectContaining({ id: "new" })));
+    expect(first).not.toHaveBeenCalled();
+    expect(pusher.bind).toHaveBeenCalledTimes(4);
+  });
   it("does not let an older response overwrite a newer one", async () => {
     let resolveOld!: (value: unknown) => void;
     const fetchMock = vi.fn().mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; })).mockResolvedValueOnce(response([item("new")]));

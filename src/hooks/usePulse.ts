@@ -50,7 +50,7 @@ export function usePulse({ maxItems = 20, onNewItem }: UsePulseOptions = {}) {
   const requestVersion = useRef(0);
   const knownIds = useRef<Set<string> | null>(null);
   const onNewItemRef = useRef(onNewItem);
-  onNewItemRef.current = onNewItem;
+  useEffect(() => { onNewItemRef.current = onNewItem; }, [onNewItem]);
 
   const refreshFromApi = useCallback(async () => {
     const version = ++requestVersion.current;
